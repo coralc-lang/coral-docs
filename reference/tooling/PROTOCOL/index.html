@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coral editor protocol | Coral Docs</title>
+  <link rel="stylesheet" href="../../../textbook/book.css" />
+  <script src="../../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../../../textbook/index.html">Book contents</a><a href="../../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Reference</p>
+      <h1>Coral editor protocol</h1>
+      
+      <p>The contract between an editor and <code>coralc --serve</code>.</p>
+<p><strong>Status: this document is normative.</strong> Both extensions are implemented and tested against it. <code>coralc --serve</code> is a work in progress; where it diverges, the divergence is listed explicitly under <a href="#current-state">Current state</a> so the gap is visible rather than assumed.</p>
+<hr />
+<section><h2 id="1-transport">1. Transport</h2></section>
+<p><strong>JSON-RPC 2.0 over stdio, with LSP base-protocol framing.</strong></p>
+<p>Every message, in both directions, is preceded by a header block and then exactly <em>N</em> bytes of UTF-8 JSON:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">Content-Length: 143\r\n
+Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n
+\r\n
+{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;result&quot;:{…}}</code></pre>
+<p>Rules:</p>
+<ul><li><code>Content-Length</code> is <strong>bytes</strong>, not characters. A UTF-8 multibyte character counts as its encoded length.</li><li>The header block ends with a <strong>blank line</strong> (<code>\r\n\r\n</code>). The server may omit <code>Content-Type</code>; clients must accept its absence.</li><li>Messages are not newline-delimited. A <code>\n</code> inside a JSON string is escaped as <code>\n</code> and does not terminate a message.</li><li><strong>No JSON-RPC batching.</strong> LSP does not support it; clients and servers must not send arrays.</li><li><strong>Stdout carries the protocol and nothing else.</strong> No banners, no progress, no debug prints. Anything human-facing goes to <strong>stderr</strong>.</li></ul>
+<blockquote><p><strong>Correction.</strong> Earlier revisions of this document specified one JSON object per line. That was wrong: the real <code>coralc --serve</code> already emits <code>Content-Length</code> framing. Both clients were fixed to match.</p></blockquote>
+<h3 id="startup">Startup</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">editor → coralc --serve        (newline-framed argv; the flag, not a subcommand)
+coralc → stdio                 (nothing may be written before initialize is answered)</code></pre>
+<hr />
+<section><h2 id="2-lifecycle">2. Lifecycle</h2></section>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">editor → {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{…}}
+coralc → {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;result&quot;:{&quot;capabilities&quot;:{…},&quot;serverInfo&quot;:{…}}}
+editor → {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;method&quot;:&quot;initialized&quot;,&quot;params&quot;:{}}
+editor → {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;method&quot;:&quot;textDocument/didOpen&quot;,&quot;params&quot;:{…}}
+coralc → {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;method&quot;:&quot;textDocument/publishDiagnostics&quot;,&quot;params&quot;:{…}}
+        …
+editor → {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:2,&quot;method&quot;:&quot;shutdown&quot;,&quot;params&quot;:null}
+coralc → {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:2,&quot;result&quot;:null}
+editor → {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;method&quot;:&quot;exit&quot;,&quot;params&quot;:null}
+coralc → process exits</code></pre>
+<p>Hard requirements, per LSP 3.18:</p>
+<ul><li><code>initialize</code> <strong>must</strong> carry <code>protocolVersion</code>, <code>processId</code>, <code>rootUri</code>, and <code>capabilities</code>. <code>rootUri</code> may be <code>null</code> (single-file session); the server then anchors analysis to the opened document's own directory, see <a href="#3b-standalone-files">§3b Standalone files</a>.</li><li>Before responding to <code>initialize</code>, the server must not send any request or notification, with one exception: <code>window/showMessage</code>, <code>window/logMessage</code>, <code>window/showMessageRequest</code>, <code>telemetry/event</code>, and <code>$/progress</code> are permitted while <code>initialize</code> is in flight.</li><li>A request received before <code>initialize</code> must be answered with error <strong><code>-32002</code> (ServerNotInitialized)</strong>. Notifications received before it are dropped, except <code>exit</code>.</li><li><code>initialize</code> may be sent <strong>only once</strong>.</li><li>The client must not send anything else until it has received the <code>InitializeResult</code>.</li><li><code>shutdown</code> is a <strong>request</strong>; <code>exit</code> is a <strong>notification</strong>.</li><li>Exit code <strong>0</strong> if <code>shutdown</code> was received, <strong>1</strong> otherwise. On stdin EOF the server should exit cleanly.</li></ul>
+<h3 id="initialize-client-server"><code>initialize</code>, client → server</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{
+  &quot;protocolVersion&quot;: &quot;3.18&quot;,
+  &quot;processId&quot;: 4711,
+  &quot;rootUri&quot;: &quot;file:///home/you/coralc&quot;,
+  &quot;workspaceFolders&quot;: null,
+  &quot;clientInfo&quot;: {&quot;name&quot;: &quot;coral-vscode&quot;},
+  &quot;capabilities&quot;: {
+    &quot;textDocument&quot;: {
+      &quot;hover&quot;: {&quot;contentFormat&quot;: [&quot;markdown&quot;]},
+      &quot;documentSymbol&quot;: {&quot;hierarchicalDocumentSymbolSupport&quot;: false}
+    }
+  }
+}</code></pre>
+<h3 id="initialize-server-client"><code>initialize</code>, server → client</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{
+  &quot;capabilities&quot;: {
+    &quot;textDocumentSync&quot;: 1,
+    &quot;hoverProvider&quot;: true,
+    &quot;definitionProvider&quot;: true
+  },
+  &quot;serverInfo&quot;: {&quot;name&quot;: &quot;coralc&quot;, &quot;version&quot;: &quot;0.1.0&quot;}
+}</code></pre>
+<p><code>textDocumentSync: 1</code> means <strong>Full</strong>. Both extensions send full text and neither implements incremental sync.</p>
+<hr />
+<section><h2 id="3-locating-the-compiler">3. Locating the compiler</h2></section>
+<p>Resolution order, first hit wins. Both extensions implement this identically.</p>
+<ol><li><strong>Explicit setting</strong>, <code>coral.languageServer.path</code> (VS Code) or <code>language_servers.coral.path</code> (Zed). Absolute or <code>~</code>-prefixed.</li><li><strong><code>CORALC</code></strong> environment variable.</li><li><strong><code>CORAL_HOME</code></strong> → <code>$CORAL_HOME/coralc[.exe]</code>.</li><li><strong><code>coralc</code> on <code>PATH</code></strong>.</li><li><strong>Platform install roots:</strong></li></ol>
+<div class="table-wrap"><table><thead><tr><th>Platform</th><th>Paths</th></tr></thead><tbody><tr><td>Linux</td><td><code>~/.coral/bin/coralc</code>, <code>~/.local/bin/coralc</code>, <code>~/bin/coralc</code>, <code>/usr/local/bin/coralc</code>, <code>/usr/bin/coralc</code></td></tr><tr><td>macOS</td><td><code>~/.coral/bin/coralc</code>, <code>~/bin/coralc</code>, <code>/opt/homebrew/bin/coralc</code>, <code>/usr/local/bin/coralc</code></td></tr><tr><td>Windows</td><td><code>%USERPROFILE%\.coral\bin\coralc.exe</code>, <code>%LOCALAPPDATA%\coral\coralc.exe</code>, <code>%LOCALAPPDATA%\Programs\coral\coralc.exe</code></td></tr></tbody></table></div>
+<ol><li><strong>Give up.</strong> Log <code>no coralc found</code>; run no server. Highlighting is tree-sitter/TextMate only and keeps working.</li></ol>
+<p>A configured path that does not exist falls through to the next candidate rather than failing outright. A candidate that exists but fails to spawn is a real error and should be surfaced.</p>
+<p>The launcher must invoke <code>coralc --serve</code>, never <code>coralc serve</code>.</p>
+<h3 id="how-each-editor-starts-it">How each editor starts it</h3>
+<div class="table-wrap"><table><thead><tr><th>Editor</th><th>Mechanism</th></tr></thead><tbody><tr><td>VS Code</td><td>The extension spawns the binary itself on activation, probing for <code>coralc</code>. No configuration.</td></tr><tr><td>Zed</td><td>The extension's <code>language_server_command</code> resolves <code>coralc</code> via <code>worktree.which()</code> and passes <code>--serve</code>. No configuration.</td></tr></tbody></table></div>
+<p>Neither editor asks the user to configure anything. A <code>settings.json</code> contributor would fix one machine and would not ship.</p>
+<h3 id="library-resolution-is-the-compiler-s-pro">Library resolution is the compiler's problem</h3>
+<p>The editor never passes library paths, module maps, or <code>CORAL_HOME</code>. On Linux the compiler owns <code>~/.coral/{lib,store,projects}</code> and the per-project <code>.coral/{cache,modules.map,artifacts,graph.dot,metrics.json}</code>. Encoding any of that in an editor breaks the moment the compiler changes its layout.</p>
+<hr />
+<section><h2 id="4-document-synchronisation">4. Document synchronisation</h2></section>
+<p>Full text, no incremental ranges. Coral files are small and the compiler parses whole files anyway.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">// textDocument/didOpen
+{&quot;textDocument&quot;:{&quot;uri&quot;:&quot;file:///p/x.crl&quot;,&quot;languageId&quot;:&quot;coral&quot;,&quot;version&quot;:1,&quot;text&quot;:&quot;…&quot;}}
+
+// textDocument/didChange, one full-content change
+{&quot;textDocument&quot;:{&quot;uri&quot;:&quot;file:///p/x.crl&quot;,&quot;version&quot;:2},&quot;contentChanges&quot;:[{&quot;text&quot;:&quot;…&quot;}]}
+
+// textDocument/didClose
+{&quot;textDocument&quot;:{&quot;uri&quot;:&quot;file:///p/x.crl&quot;}}</code></pre>
+<p><code>version</code> is monotonic per document. The editor may coalesce rapid edits and send the latest text when the server goes quiet.</p>
+<p>On <code>didClose</code> the server should clear that document's diagnostics.</p>
+<hr />
+<section><h2 id="5-methods">5. Methods</h2></section>
+<p>Every method is optional. An absent capability means the editor hides the affordance; it never surfaces an error.</p>
+<div class="table-wrap"><table><thead><tr><th>Method</th><th>Direction</th><th>Purpose</th></tr></thead><tbody><tr><td><code>initialize</code> / <code>initialized</code></td><td>both</td><td>Handshake</td></tr><tr><td><code>shutdown</code> / <code>exit</code></td><td>both</td><td>Teardown</td></tr><tr><td><code>textDocument/didOpen</code> / <code>didChange</code> / <code>didClose</code></td><td>editor → server</td><td>Sync</td></tr><tr><td><code>textDocument/publishDiagnostics</code></td><td>server → editor</td><td>Errors</td></tr><tr><td><code>textDocument/hover</code></td><td>editor → server</td><td>Type under cursor</td></tr><tr><td><code>textDocument/completion</code></td><td>editor → server</td><td>Completions</td></tr><tr><td><code>textDocument/signatureHelp</code></td><td>editor → server</td><td>Call arguments</td></tr><tr><td><code>textDocument/documentSymbol</code></td><td>editor → server</td><td>Outline</td></tr><tr><td><code>textDocument/definition</code> / <code>typeDefinition</code> / <code>references</code></td><td>editor → server</td><td>Navigation</td></tr><tr><td><code>textDocument/documentHighlight</code></td><td>editor → server</td><td>Occurrences</td></tr><tr><td><code>textDocument/semanticTokens/full</code></td><td>server → editor</td><td>Type-aware colour</td></tr><tr><td><code>textDocument/inlayHint</code></td><td>server → editor</td><td>Inferred types</td></tr><tr><td><code>textDocument/codeAction</code></td><td>server → editor</td><td>Quick fixes</td></tr><tr><td><code>coral/attributes</code></td><td>editor → server</td><td>Attributes inside <code>#[[…]]</code></td></tr><tr><td><code>coral/typeInfo</code></td><td>editor → server</td><td>Node inspector</td></tr></tbody></table></div>
+<p>The full list, with phasing and current implementation status, is <a href="#11-capability-matrix">§11 Capability matrix</a>. The exact payloads for type information are in <a href="#9b-type-information">§9b</a>.</p>
+<section><h2 id="6-textdocument-publishdiagnostics-server">6. <code>textDocument/publishDiagnostics</code> (server → editor)</h2></section>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{
+  &quot;method&quot;: &quot;textDocument/publishDiagnostics&quot;,
+  &quot;params&quot;: {
+    &quot;uri&quot;: &quot;file:///p/x.crl&quot;,
+    &quot;version&quot;: 2,
+    &quot;diagnostics&quot;: [
+      {
+        &quot;range&quot;: {&quot;start&quot;: {&quot;line&quot;: 0, &quot;character&quot;: 21},
+                  &quot;end&quot;:   {&quot;line&quot;: 0, &quot;character&quot;: 24}},
+        &quot;severity&quot;: 1,
+        &quot;code&quot;: &quot;P0001&quot;,
+        &quot;source&quot;: &quot;coral&quot;,
+        &quot;message&quot;: &quot;expected &#x27;{&#x27;, found &#x27;u32&#x27;&quot;
+      }
+    ]
+  }
+}</code></pre>
+<p>Rules:</p>
+<ul><li><code>severity</code> is LSP: <strong>1</strong> error, <strong>2</strong> warning, <strong>3</strong> information, <strong>4</strong> hint.</li><li><code>code</code> is the compiler's <strong>stable error-code identifier</strong> (<code>P0001</code>, <code>P0002</code>, <code>P0003</code>, …) so editors can key off identity rather than message text.</li><li><code>source</code> is <code>"coral"</code>.</li><li>Lines and characters are <strong>zero-based UTF-16 code units</strong>, not bytes.</li><li>The server must publish a <strong>full set per document after every change</strong>, including an <strong>empty array</strong> when a document becomes clean, an empty array is what clears the file in the editor. Silence is not "no errors".</li><li>Parse failures are diagnostics too. They must not abort the rest of the file; recover and keep going so one syntax error does not cascade.</li></ul>
+<hr />
+<section><h2 id="7-textdocument-hover-editor-server">7. <code>textDocument/hover</code> (editor → server)</h2></section>
+<p>Request:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{&quot;method&quot;:&quot;textDocument/hover&quot;,
+ &quot;params&quot;:{&quot;textDocument&quot;:{&quot;uri&quot;:&quot;file:///p/x.crl&quot;},
+           &quot;position&quot;:{&quot;line&quot;:4,&quot;character&quot;:6}}}</code></pre>
+<p>Response, <code>Hover | null</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{
+  &quot;contents&quot;: {&quot;kind&quot;: &quot;markdown&quot;, &quot;value&quot;: &quot;```coral\nT at(usize i)\n```\n\nArray element access.&quot;},
+  &quot;range&quot;: {&quot;start&quot;: {&quot;line&quot;: 4, &quot;character&quot;: 5}, &quot;end&quot;: {&quot;line&quot;: 4, &quot;character&quot;: 7}}
+}</code></pre>
+<p><code>null</code> is a valid answer meaning "nothing to say here". It must <strong>not</strong> be an error, and the editor must not surface one.</p>
+<hr />
+<section><h2 id="8-textdocument-documentsymbol-editor-ser">8. <code>textDocument/documentSymbol</code> (editor → server)</h2></section>
+<p>Returns <code>DocumentSymbol[] | SymbolInformation[] | null</code>. The editor advertises <code>hierarchicalDocumentSymbolSupport: false</code>, so <code>SymbolInformation[]</code> is the expected shape.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">[{&quot;name&quot;: &quot;at&quot;, &quot;kind&quot;: 12,
+  &quot;detail&quot;: &quot;T at(usize i)&quot;,
+  &quot;location&quot;: {&quot;uri&quot;: &quot;file:///p/x.crl&quot;,
+               &quot;range&quot;: {&quot;start&quot;: {&quot;line&quot;: 4, &quot;character&quot;: 5},
+                         &quot;end&quot;:   {&quot;line&quot;: 4, &quot;character&quot;: 7}}}}]</code></pre>
+<div class="table-wrap"><table><thead><tr><th>Coral</th><th><code>SymbolKind</code></th></tr></thead><tbody><tr><td><code>struct</code>, <code>union</code>, <code>extend</code>, <code>variant</code>, <code>enum</code></td><td>5 Class</td></tr><tr><td><code>trait</code></td><td>11 Interface</td></tr><tr><td>functions, methods, constructors</td><td>12 Function</td></tr><tr><td>fields, variant members</td><td>8 Field</td></tr><tr><td>constants, locals</td><td>13 Variable</td></tr></tbody></table></div>
+<p><code>detail</code> is the declaration as written <strong>minus its body</strong>. Because Coral is type-first this is what makes an outline readable: <code>T at(usize i)</code>, not <code>at</code>.</p>
+<hr />
+<section><h2 id="9-coral-specific-methods">9. Coral-specific methods</h2></section>
+<p><code>coral/attributes</code>, every attribute understood at a position, so the editor can complete inside <code>#[[…]]</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{&quot;result&quot;: [
+  {&quot;name&quot;: &quot;no_drop_all&quot;, &quot;doc&quot;: &quot;disable auto-RAII for this file&quot;},
+  {&quot;name&quot;: &quot;packed&quot;,      &quot;doc&quot;: &quot;packed struct layout&quot;},
+  {&quot;name&quot;: &quot;generate&quot;,    &quot;doc&quot;: &quot;generate trait boilerplate&quot;,
+                          &quot;parameters&quot;: [{&quot;name&quot;: &quot;traits&quot;, &quot;variadic&quot;: true}]}
+]}</code></pre>
+<p><code>coral/typeInfo</code>, the node under the cursor for the scopes/inspect affordances:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{&quot;result&quot;: {
+  &quot;kind&quot;: &quot;method&quot;, &quot;name&quot;: &quot;at&quot;, &quot;qualified&quot;: &quot;Arr.at&quot;,
+  &quot;type&quot;: &quot;fn(usize) -&gt; T&quot;, &quot;doc&quot;: &quot;Array element access.&quot;, &quot;attributes&quot;: []}}</code></pre>
+<hr />
+<section><h2 id="9b-type-information">9b. Type information</h2></section>
+<p>This is the core of what makes Coral pleasant to edit, and it is three separate mechanisms. None of them work today.</p>
+<h3 id="hover-the-type-and-signature-under-the-c">Hover, the type and signature under the cursor</h3>
+<p><code>Hover | null</code>. <code>null</code> is valid; an unimplemented feature must be <code>-32601</code> instead, otherwise editors will keep offering a hover that yields nothing.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{&quot;contents&quot;: [
+    {&quot;language&quot;: &quot;coral&quot;, &quot;value&quot;: &quot;fn at(usize i) -&gt; T&quot;},
+    &quot;
+Array element access. Returns `self.data[i]`.
+&quot;
+  ],
+ &quot;range&quot;: {&quot;start&quot;: {&quot;line&quot;: 4, &quot;character&quot;: 5}, &quot;end&quot;: {&quot;line&quot;: 4, &quot;character&quot;: 7}}}</code></pre>
+<p>Contents is <code>MarkupContent</code> or an array mixing <code>MarkedString</code> and markdown. Both clients advertise <code>hover.contentFormat: ["markdown"]</code>.</p>
+<h3 id="semantic-tokens-colour-by-meaning-not-by">Semantic tokens, colour by meaning, not by syntax</h3>
+<p>Tree-sitter knows the <em>shape</em> of <code>T at(usize i)</code>; only the compiler knows <code>T</code> is a type parameter and <code>i</code> is a parameter. Semantic tokens close that gap. This is what makes types visually distinct from values.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">// result: { &quot;data&quot;: [ ... ] }, flat u32 array, 5 ints per token
+{&quot;data&quot;: [0, 0, 4, 2, 0, 5, 0, 2, 0, 5, 0, 5, 2, 0, 0]}</code></pre>
+<p>Token types and modifiers are declared in the server's initialize result:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">&quot;semanticTokensProvider&quot;: {
+  &quot;legend&quot;: {
+    &quot;tokenTypes&quot;: [&quot;type&quot;, &quot;parameter&quot;, &quot;property&quot;, &quot;function&quot;, &quot;method&quot;,
+                   &quot;struct&quot;, &quot;genericParameter&quot;, &quot;keyword&quot;],
+    &quot;tokenModifiers&quot;: [&quot;declaration&quot;, &quot;readonly&quot;]
+  },
+  &quot;full&quot;: true, &quot;range&quot;: false
+}</code></pre>
+<p>Encoding: <code>deltaLine</code>, <code>deltaStartChar</code>, <code>length</code>, <code>tokenType</code>, <code>tokenModifiers</code> , all relative to the previous token, sorted, non-overlapping, never spanning lines.</p>
+<blockquote><p><strong>Correction.</strong> An earlier revision said the editor never asks for semantic tokens, on the grounds that highlighting belongs to tree-sitter. That is right for <em>syntax</em> and wrong for <em>types</em>: tree-sitter cannot know that <code>T</code> is a type parameter. Zed supports <code>"semantic_tokens": "combined"</code> (LSP colours on top of tree-sitter) and <code>"full"</code>. VS Code enables this automatically when the server advertises the capability.</p></blockquote>
+<h3 id="inlay-hints-inferred-types-inline">Inlay hints, inferred types inline</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{&quot;label&quot;: &quot;: T&quot;, &quot;position&quot;: {&quot;line&quot;: 8, &quot;character&quot;: 20},
+ &quot;kind&quot;: 1, &quot;paddingRight&quot;: true}</code></pre>
+<p><code>kind</code> 1 is Type, 2 Parameter. Particularly valuable for <code>let</code>/<code>const</code> bindings whose type is not written.</p>
+<h3 id="completion-and-signature-help">Completion and signature help</h3>
+<p><code>textDocument/completion</code> returns <code>CompletionItem[] | CompletionList | null</code>. For Coral the trigger characters matter more than usual:</p>
+<div class="table-wrap"><table><thead><tr><th>Trigger</th><th>Completes</th></tr></thead><tbody><tr><td><code>.</code></td><td>fields and methods on the receiver, narrowed to its type</td></tr><tr><td><code>::</code></td><td>module paths, types, associated constants</td></tr><tr><td><code>#[[</code></td><td>attributes, from <code>coral/attributes</code></td></tr><tr><td>`<code> </code> `` or identifier</td><td>declarations in scope</td></tr></tbody></table></div>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{&quot;label&quot;: &quot;count&quot;, &quot;kind&quot;: 2, &quot;detail&quot;: &quot;fn count() -&gt; usize&quot;,
+ &quot;documentation&quot;: {&quot;kind&quot;: &quot;markdown&quot;, &quot;value&quot;: &quot;Number of elements.&quot;},
+ &quot;insertText&quot;: &quot;count()&quot;, &quot;sortText&quot;: &quot;0000&quot;}</code></pre>
+<p><code>completionItem/resolve</code> fills in <code>documentation</code> lazily, so the initial response stays small. Both clients advertise <code>completionItem.snippetSupport</code> and <code>documentationFormat: markdown</code>.</p>
+<p><code>textDocument/signatureHelp</code> matters more for Coral than most languages because declarations are type-first and the return type sits in the middle:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">{&quot;signatures&quot;: [{&quot;label&quot;: &quot;at(usize i) -&gt; T&quot;,
+                 &quot;parameters&quot;: [{&quot;label&quot;: &quot;usize i&quot;}, {&quot;label&quot;: &quot;-&gt; T&quot;}],
+                 &quot;activeParameter&quot;: 0}],
+ &quot;activeSignature&quot;: 0}</code></pre>
+<h3 id="occurrences-navigation-quick-fixes">Occurrences, navigation, quick fixes</h3>
+<ul><li><code>textDocument/documentHighlight</code>, every other occurrence of the symbol under the cursor (<code>Read</code>/<code>Write</code>/<code>Text</code> document highlight kinds). Cheap, and the most visible quality-of-life win after hover.</li><li><code>textDocument/definition</code> returns <code>Location | Location[] | LocationLink[] | null</code>. Both clients advertise <code>definition.linkSupport</code>, which is preferred: it carries <code>originSelectionRange</code> so the editor can highlight the declaration site without a second round trip.</li><li><code>textDocument/typeDefinition</code>, for Coral this is often the more useful jump: from a <code>T</code> use to the <code>struct</code> or <code>variant</code> that defines it.</li><li><code>textDocument/codeAction</code>, quick fixes for diagnostics. Coral is a good fit because most diagnostics are mechanical (<code>P0002</code> array size, unused import). A fix is returned as a <code>WorkspaceEdit</code>; apply it with <code>workspace/applyEdit</code>, which both clients advertise support for.</li></ul>
+<section><h2 id="9c-messages-the-server-must-accept">9c. Messages the server must accept</h2></section>
+<p>Beyond document sync, a conforming server must tolerate these without erroring:</p>
+<div class="table-wrap"><table><thead><tr><th>Message</th><th>From</th><th>Handling</th></tr></thead><tbody><tr><td><code>workspace/didChangeConfiguration</code></td><td>client</td><td>Accept. Zed sends it immediately after <code>initialized</code>. Must not be treated as unknown.</td></tr><tr><td><code>workspace/didChangeWorkspaceFolders</code></td><td>client</td><td>Accept, optionally re-resolve libraries.</td></tr><tr><td><code>workspace/didChangeWatchedFiles</code></td><td>client</td><td>Accept; useful if std sources change on disk.</td></tr><tr><td><code>$/setTrace</code>, <code>$/cancelRequest</code>, <code>$/progress</code></td><td>both</td><td>Optional. Honour cancellation before expensive analysis.</td></tr></tbody></table></div>
+<section><h2 id="9d-messages-the-server-should-send">9d. Messages the server should send</h2></section>
+<p>Without these the compiler fails silently, which is exactly how <code>--serve</code> behaved before <code>build.crlb</code> handling was fixed:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">// surface a fatal configuration problem instead of exiting quietly
+{&quot;method&quot;: &quot;window/showMessage&quot;,
+ &quot;params&quot;: {&quot;type&quot;: 1, &quot;message&quot;: &quot;coralc: no build.crlb found in the project root&quot;}}
+
+// progress for whole-project analysis
+{&quot;method&quot;: &quot;window/logMessage&quot;,
+ &quot;params&quot;: {&quot;type&quot;: 3, &quot;message&quot;: &quot;indexed 412 files in 84 ms&quot;}}</code></pre>
+<p><code>type</code> is 1 Error, 2 Warning, 3 Info, 4 Log. These are permitted even while <code>initialize</code> is in flight.</p>
+<section><h2 id="9e-position-encoding">9e. Position encoding</h2></section>
+<p>LSP 3.17 added <code>general.positionEncodings</code>. The server should pick the first encoding the client lists, defaulting to <strong>UTF-16 code units</strong>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-jsonc">// client -&gt; initialize
+&quot;capabilities&quot;: {&quot;general&quot;: {&quot;positionEncodings&quot;: [&quot;utf-16&quot;, &quot;utf-8&quot;]}},
+&quot;positionEncoding&quot;: &quot;utf-16&quot;      // server -&gt; initialize, echo the choice</code></pre>
+<p><code>publishDiagnostics</code> positions must use the negotiated encoding. Coral source is UTF-8 and may contain non-ASCII identifiers and string literals, so this is a real off-by-N risk rather than a theoretical one. Both clients currently advertise UTF-16 only.</p>
+<section><h2 id="10-errors">10. Errors</h2></section>
+<div class="table-wrap"><table><thead><tr><th>Code</th><th>Meaning</th><th>When</th></tr></thead><tbody><tr><td><code>-32700</code></td><td>ParseError</td><td>Malformed JSON on the wire</td></tr><tr><td><code>-32600</code></td><td>InvalidRequest</td><td>Valid JSON, invalid JSON-RPC shape</td></tr><tr><td><code>-32601</code></td><td><strong>MethodNotFound</strong></td><td>Unsupported method, <strong>the normal "not implemented" answer</strong></td></tr><tr><td><code>-32602</code></td><td>InvalidParams</td><td>Bad params for a known method</td></tr><tr><td><code>-32603</code></td><td>InternalError</td><td>Server bug</td></tr><tr><td><code>-32002</code></td><td>ServerNotInitialized</td><td>Request before <code>initialize</code></td></tr><tr><td><code>-32800</code></td><td>RequestCancelled</td><td><code>$/cancelRequest</code> was honoured</td></tr></tbody></table></div>
+<p><code>-32601</code> is the single most important one: a server that does not implement a method <strong>must</strong> answer with it rather than ignoring the request or crashing. Both extensions treat <code>-32601</code> as "feature absent" and silently degrade.</p>
+<hr />
+<section><h2 id="11-capability-matrix">11. Capability matrix</h2></section>
+<p>Phase 1 is the minimum that makes the editor feel alive. Phase 2 is what a mature Coral server should grow into. Phases 3+ are optional refinements.</p>
+<div class="table-wrap"><table><thead><tr><th>Method</th><th>Purpose</th><th>Phase</th><th>Status in <code>coralc 0.1.0</code></th></tr></thead><tbody><tr><td><code>textDocument/publishDiagnostics</code></td><td>errors, warnings</td><td>1</td><td>works (empty set missing)</td></tr><tr><td><code>textDocument/hover</code></td><td>signature, type, docs</td><td>1</td><td>returns <code>null</code></td></tr><tr><td><code>textDocument/documentSymbol</code></td><td>outline</td><td>1</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/definition</code></td><td>go to declaration</td><td>1</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/completion</code></td><td>member + path completion</td><td>1</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/signatureHelp</code></td><td>call argument help</td><td>1</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/documentHighlight</code></td><td>occurrence highlighting</td><td>2</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/semanticTokens/full</code></td><td>type-aware colouring</td><td>2</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/inlayHint</code></td><td>inferred types inline</td><td>2</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/references</code></td><td>find uses</td><td>2</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/typeDefinition</code></td><td>jump to a type</td><td>2</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/codeAction</code></td><td>quick fixes</td><td>2</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/foldingRange</code></td><td>fold bodies</td><td>2</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/rename</code></td><td>rename safely</td><td>3</td><td><code>-32601</code></td></tr><tr><td><code>workspace/symbol</code></td><td>project-wide search</td><td>3</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/prepareCallHierarchy</code></td><td>callers/callees</td><td>3</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/diagnostic</code></td><td>pull diagnostics (3.17)</td><td>3</td><td><code>-32601</code></td></tr><tr><td><code>workspace/diagnostic</code></td><td>workspace pull (3.18)</td><td>3</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/selectionRange</code></td><td>expand selection</td><td>3</td><td><code>-32601</code></td></tr><tr><td><code>textDocument/codeLens</code>, <code>textDocument/formatting</code></td><td>not wanted</td><td>,</td><td><code>-32601</code> by design</td></tr></tbody></table></div>
+<p><code>textDocument/colorProvider</code>, <code>documentLink</code>, and <code>inlineValue</code> are deliberately out of scope for Coral.</p>
+<h3 id="responding-correctly">Responding correctly</h3>
+<p>Any method not implemented must return <strong><code>-32601</code></strong>. That is how an editor learns a feature is absent and hides the affordance. Silence is worse than <code>-32601</code>: the editor waits for a response that never comes.</p>
+<section><h2 id="11b-full-method-audit">11b. Full method audit</h2></section>
+<p>Probed against <code>coralc 0.1.0</code> with all 51 standard requests plus 12 notifications. The server answered every one and stayed alive, returning <code>-32601</code> for all 50 it does not implement. <strong>Rejecting correctly is half the job</strong>, an editor hides the affordance rather than waiting forever.</p>
+<h3 id="build-first-the-server-is-not-usable-wit">Build first, the server is not usable without these</h3>
+<div class="table-wrap"><table><thead><tr><th>Method</th><th>Why it matters for Coral</th></tr></thead><tbody><tr><td><code>textDocument/publishDiagnostics</code> <em>(empty set)</em></td><td>Only implemented method that works. Must send <code>[]</code> to clear.</td></tr><tr><td><code>textDocument/hover</code></td><td>Advertised but always <code>null</code>.</td></tr><tr><td><code>textDocument/documentSymbol</code></td><td>Outline is empty. <code>detail</code> carries the type-first signature.</td></tr><tr><td><code>textDocument/definition</code></td><td>Jump to declaration.</td></tr><tr><td><code>textDocument/completion</code> + <code>completionItem/resolve</code></td><td>The single biggest daily-use feature.</td></tr><tr><td><code>textDocument/signatureHelp</code></td><td>Type-first declarations put the return type mid-signature.</td></tr></tbody></table></div>
+<h3 id="build-next-what-makes-it-feel-like-a-rea">Build next, what makes it feel like a real language</h3>
+<div class="table-wrap"><table><thead><tr><th>Method</th><th>Why</th></tr></thead><tbody><tr><td><code>textDocument/semanticTokens/full</code> (+ <code>/delta</code>, <code>/range</code>)</td><td>Only the compiler knows <code>T</code> is a type parameter. Needs <code>positionEncoding</code>.</td></tr><tr><td><code>textDocument/documentHighlight</code></td><td>Occurrence highlighting. Cheapest quality-of-life win.</td></tr><tr><td><code>textDocument/typeDefinition</code></td><td>From a <code>T</code> use to its <code>struct</code>/<code>variant</code>. Often the more useful jump.</td></tr><tr><td><code>textDocument/references</code></td><td>Shared resolution with definition and highlight.</td></tr><tr><td><code>textDocument/codeAction</code> + <code>workspace/applyEdit</code></td><td>Quick fixes; most Coral diagnostics are mechanical.</td></tr><tr><td><code>textDocument/inlayHint</code> (+ <code>inlayHint/resolve</code>)</td><td>Inferred types on bindings.</td></tr><tr><td><code>textDocument/foldingRange</code></td><td>Struct and function bodies.</td></tr><tr><td><code>textDocument/prepareTypeHierarchy</code>, <code>typeHierarchy/supertypes</code>, <code>typeHierarchy/subtypes</code></td><td><strong>Coral-specific value</strong>: <code>trait</code> and <code>extend</code> make a real type hierarchy. Cheap once resolution exists.</td></tr><tr><td><code>workspace/executeCommand</code></td><td>Needed to back code actions and any command the editor surfaces.</td></tr><tr><td><code>window/workDoneProgress/create</code> + <code>$/progress</code></td><td>Whole-project indexing takes real time; progress beats a frozen editor.</td></tr><tr><td><code>languageStatus</code> (3.18)</td><td>Compiler status in the editor status bar, "indexing", "5 errors", "no build.crlb".</td></tr><tr><td><code>window/showMessage</code> / <code>window/logMessage</code></td><td>Report fatal setup problems instead of exiting silently.</td></tr></tbody></table></div>
+<h3 id="build-if-you-want-the-full-story">Build if you want the full story</h3>
+<div class="table-wrap"><table><thead><tr><th>Method</th><th>Why</th></tr></thead><tbody><tr><td><code>textDocument/declaration</code></td><td>Distinct from <code>definition</code>: where a symbol is <em>declared</em> vs <em>defined</em>. Coral has both.</td></tr><tr><td><code>textDocument/prepareRename</code> + <code>rename</code></td><td>Safe rename with shadowing checks.</td></tr><tr><td><code>textDocument/prepareCallHierarchy</code>, <code>callHierarchy/incomingCalls</code>, <code>outgoingCalls</code></td><td>Callers/callees, valuable in a systems language.</td></tr><tr><td><code>workspace/symbol</code> + <code>workspaceSymbol/resolve</code></td><td>Project-wide symbol search.</td></tr><tr><td><code>textDocument/diagnostic</code> + <code>workspace/diagnostic</code></td><td>Pull diagnostics (3.17/3.18): versioned results, <code>relatedInformation</code>, workspace-wide.</td></tr><tr><td><code>textDocument/selectionRange</code></td><td>Expand selection structurally.</td></tr><tr><td><code>workspace/willRenameFiles</code></td><td><strong>Coral-specific value</strong>: rename a file and fix <code>import</code> statements.</td></tr><tr><td><code>textDocument/willSaveWaitUntil</code></td><td>Compute edits before save. Pairs with <code>willSave</code>/<code>didSave</code>.</td></tr></tbody></table></div>
+<h3 id="notifications-to-accept">Notifications to accept</h3>
+<p><code>workspace/didChangeConfiguration</code> (<strong>Zed sends this unprompted</strong>), <code>workspace/didChangeWatchedFiles</code>, <code>workspace/didChangeWorkspaceFolders</code>, <code>textDocument/willSave</code>, <code>textDocument/didSave</code>, <code>workspace/didCreateFiles</code>, <code>workspace/didDeleteFiles</code>, <code>workspace/didRenameFiles</code>, <code>$/setTrace</code>, <code>$/progress</code>.</p>
+<p>All were sent during the audit and none crashed the server. They should be tolerated silently even if ignored.</p>
+<h3 id="deliberately-not-built">Deliberately not built</h3>
+<div class="table-wrap"><table><thead><tr><th>Method</th><th>Reason</th></tr></thead><tbody><tr><td><code>textDocument/formatting</code>, <code>rangeFormatting</code>, <code>onTypeFormatting</code></td><td>Coral has no formatter. Return <code>-32601</code> permanently.</td></tr><tr><td><code>textDocument/codeLens</code> (+ <code>resolve</code>)</td><td>Usually annotates test counts or references. Revisit only if Coral gains runnable tests.</td></tr><tr><td><code>textDocument/documentColor</code>, <code>colorPresentation</code></td><td>No colour literals in the language.</td></tr><tr><td><code>textDocument/documentLink</code> (+ <code>resolve</code>)</td><td>No URLs in source.</td></tr><tr><td><code>textDocument/inlineValue</code></td><td>Debugger protocol, not a language server concern.</td></tr><tr><td><code>textDocument/linkedEditingRange</code></td><td>No delimiter pairs worth linking.</td></tr><tr><td><code>notebookDocument/*</code></td><td>Only if Coral notebooks exist.</td></tr><tr><td><code>textDocument/implementation</code></td><td>Meaningless without an inheritance model beyond traits, which <code>typeHierarchy</code> covers.</td></tr></tbody></table></div>
+<section><h2 id="12-current-state">12. Current state</h2></section>
+<p>Verified against <code>~/.coral/bin/coralc 0.1.0</code> (<code>coralc --help</code> advertises <code>--serve  run the language server on stdio (LSP)</code>), including the coral-vscode live handshake (<code>tools/test-live-server.js</code>, 9/9) and the compiler-side suite (lifecycle, exit codes, UTF-16 columns, project report, cleared markers).</p>
+<p><strong>Working:</strong></p>
+<ul><li><code>Content-Length</code> framing, exactly as specified above.</li><li><code>initialize</code> → <code>{textDocumentSync: 1, hoverProvider: true, definitionProvider: true}</code>; a request before <code>initialize</code> answers <strong><code>-32002</code></strong>; a second <code>initialize</code> answers <code>-32600</code>.</li><li>Malformed JSON answers <strong><code>-32700</code></strong>; non-object messages <code>-32600</code>.</li><li><code>shutdown</code> / <code>exit</code> with the specified exit codes: <strong>0</strong> after <code>shutdown</code>, <strong>1</strong> without; stdin EOF exits cleanly.</li><li><code>textDocument/didOpen</code> / <code>didChange</code> / <code>didClose</code> (full text); <code>didClose</code> publishes an empty set, clearing the document's markers.</li><li><code>textDocument/publishDiagnostics</code> with <code>source: "coral"</code>, stable <code>P####</code> / <code>T####</code> codes, UTF-16 <code>character</code> offsets, and an <strong>empty array</strong> whenever a document becomes clean, silence is not "no errors".</li><li><strong>Whole-project error report</strong>: opening any file analyzes the build entry (<code>coral.crlb</code>) and publishes diagnostics for every file in the import closure, so errors in files the open buffer never imports appear too. Files that stop having records are cleared on the next report.</li><li><code>textDocument/hover</code> returns the markdown-typed declaration of the expression or symbol under the cursor. Verified for structs, fields, locals, generics, <code>self</code>, imports and libc, e.g. <code>self</code> → <code>Arr&lt;T, N&gt;<em></code>, <code>data</code> → <code>T</code>, <code>val</code> → <code>T val</code>, <code>printf</code> → <code>i32 printf(const cchar</em> fmt, ? )</code>.</li><li><code>textDocument/definition</code> resolves; 32 of 64 identifier positions in <code>arr.crl</code>.</li><li><code>-32601</code> for unimplemented methods; <code>$/cancelRequest</code> accepted.</li></ul>
+<p><strong>Gaps to close:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Gap</th><th>Detail</th></tr></thead><tbody><tr><td><strong>Methods absent from the symbol table</strong></td><td>Hover <strong>and</strong> definition return nothing for every member declaration, <code>at</code>, <code>count</code>, <code>ptr</code>, <code>constPtr</code>, <code>atPtr</code>, <code>isEmpty</code>, <code>set</code>, <code>front</code>, <code>back</code>, <code>fill</code>, <code>copyTo</code>, <code>copyFrom</code>, <code>new</code>. Fields, locals, types and free functions all resolve, so member declarations are evidently collected separately and never registered. <strong>Highest-leverage fix remaining:</strong> one table unblocks hover, definition, references, documentSymbol and rename.</td></tr><tr><td><code>pub</code> declarations unresolved</td><td><code>pub void main()</code> returns nothing from hover; plain <code>fn main()</code> works.</td></tr><tr><td>No <code>documentSymbol</code></td><td><code>method not found</code>. Outline is empty.</td></tr><tr><td>No <code>references</code>, <code>completion</code>, <code>signatureHelp</code></td><td><code>method not found</code>.</td></tr><tr><td>No <code>semanticTokens</code>, <code>inlayHint</code>, <code>foldingRange</code></td><td><code>method not found</code>. Type info is hover-only, not visible in the buffer.</td></tr><tr><td>No <code>coral/attributes</code> / <code>coral/typeInfo</code></td><td><code>-32601</code>.</td></tr></tbody></table></div>
+<h3 id="two-behaviours-that-look-like-bugs-but-a">Two behaviours that look like bugs but are not</h3>
+<p><strong>Hover resolves by nearest-preceding-identifier.</strong> A caret resting between two symbols returns the earlier one, and whitespace or punctuation still resolves to the previous symbol. Always check the reported position before concluding that resolution is wrong.</p>
+<p><strong>Advertised capabilities are not evidence.</strong> <code>definitionProvider: true</code> was advertised while the method still returned <code>null</code> everywhere. Verify per position rather than trusting the initialize result.</p>
+<h3 id="verifying-a-capability">Verifying a capability</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-sh">node /home/cerie/Documents/coral-vscode/tools/lsp-probe.js FILE --method textDocument/hover
+node /home/cerie/Documents/coral-vscode/tools/lsp-probe.js FILE --method textDocument/definition
+node /home/cerie/Documents/coral-vscode/tools/lsp-probe.js FILE --method textDocument/documentSymbol --json
+node /home/cerie/Documents/coral-vscode/tools/lsp-probe.js --list
+node /home/cerie/Documents/coral-vscode/tools/vscode-diagnostics.js FILE
+python3 /home/cerie/Documents/coral-vscode/tools/lsp-diagnostics.py FILE</code></pre>
+<p><code>lsp-probe.js</code> reports resolved positions and then the unresolved tokens, which is how the method-table gap was identified. Run it after each server change.</p>
+<p>Hover does not send the optional <code>range</code> field yet. Type spellings come from the compiler's own type printer, so diagnostics and hover follow real semantics rather than a parallel grammar, there is no separate parser to drift.</p>
+      <nav class="chapter-nav"><span></span><span></span></nav>
+    </article>
+  </main>
+</body>
+</html>

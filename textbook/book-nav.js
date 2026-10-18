@@ -86,8 +86,8 @@ sidebar.append(
   ]),
   group("Coral Docs · Tooling", [
     { href: "../coral-docs/tooling/index.html", text: "Tooling overview" },
-    { href: "../reference/tooling/EDITOR-API.md", text: "Editor API and Tree-sitter" },
-    { href: "../reference/tooling/PROTOCOL.md", text: "Language-server protocol" },
+    { href: "../reference/tooling/EDITOR-API/index.html", text: "Editor API and Tree-sitter" },
+    { href: "../reference/tooling/PROTOCOL/index.html", text: "Language-server protocol" },
   ])
 );
 
@@ -147,4 +147,20 @@ if (topbar) {
       }
     }
   });
+
+  const contentsButton = document.createElement("button");
+  contentsButton.className = "book-contents-button";
+  contentsButton.type = "button";
+  contentsButton.textContent = "Contents";
+  contentsButton.setAttribute("aria-controls", "book-navigation");
+  contentsButton.setAttribute("aria-expanded", "true");
+  contentsButton.addEventListener("click", () => {
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      setOpen(!document.body.classList.contains("book-nav-open"));
+    } else {
+      const collapsed = document.body.classList.toggle("book-nav-collapsed");
+      contentsButton.setAttribute("aria-expanded", String(!collapsed));
+    }
+  });
+  document.body.append(contentsButton);
 }

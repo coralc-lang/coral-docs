@@ -9,9 +9,9 @@ Output: textbook/<slug>/index.html for every chapter/appendix, a regenerated
 textbook/index.html landing page, and textbook/book-data.js (navigation data).
 """
 import html
+import glob
 import os
 import re
-import shutil
 
 SRC = "/home/cerie/Documents/coralc/coral-docs/textbook"
 SITE = "/home/cerie/Documents/coral-docs"
@@ -263,15 +263,15 @@ def render_elements(elements):
         elif kind == "hr":
             parts.append("<hr />")
         elif kind == "table":
-            head = "".join(f"<th>{inline(c)}</th>" for c in el[1]["head"])
+            head_cells = el[1]["head"]
+            head = ""
+            if any(c.strip() for c in head_cells):
+                head = "<thead><tr>" + "".join(f"<th>{inline(c)}</th>" for c in head_cells) + "</tr></thead>"
             rows = "".join(
                 "<tr>" + "".join(f"<td>{inline(c)}</td>" for c in row) + "</tr>"
                 for row in el[1]["rows"]
             )
-            parts.append(
-                '<div class="table-wrap"><table>'
-                f"<thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table></div>"
-            )
+            parts.append(f'<div class="table-wrap"><table>{head}<tbody>{rows}</tbody></table></div>')
         elif kind == "blockquote":
             inner = "".join(f"<p>{inline(p)}</p>" for p in el[1])
             parts.append(f"<blockquote>{inner}</blockquote>")
@@ -404,25 +404,25 @@ def parse_markdown(path, fallback_title, num_prefix=None):
     return title, None, els, topics
 
 
-def shell(title_tag, page_title, kicker_html, lead_html, body_html, prev, nxt):
-    prev_html = f'<a href="../{prev}">← Previous</a>' if prev else "<span></span>"
-    next_html = f'<a href="../{nxt}">Next →</a>' if nxt else "<span></span>"
+def shell(root, title_tag, page_title, kicker_html, lead_html, body_html, prev, nxt):
+    prev_html = f'<a href="{root}textbook/{prev}">← Previous</a>' if prev else "<span></span>"
+    next_html = f'<a href="{root}textbook/{nxt}">Next →</a>' if nxt else "<span></span>"
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{html.escape(title_tag)}</title>
-  <link rel="stylesheet" href="../book.css" />
-  <script src="../../assets/js/script.js" defer></script>
+  <link rel="stylesheet" href="{root}textbook/book.css" />
+  <script src="{root}assets/js/script.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+    <a class="brand-wrap" href="{root}coral-docs/index.html" style="color:inherit;text-decoration:none">
       <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
     </a>
     <nav class="topnav" aria-label="Main navigation">
-      <a href="../index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
+      <a href="{root}textbook/index.html">Book contents</a><a href="{root}coral-docs/index.html">Coral Docs</a>
     </nav>
   </header>
   <main class="content">
@@ -476,23 +476,6 @@ def main():
             "is_md": True,
         }
 
-    # ---- back up old stub chapters ----
-    backup = os.path.join(SITE, "tools", "_old_stubs")
-    os.makedirs(backup, exist_ok=True)
-    old_stub_names = [
-        "01-foundation", "02-core-syntax", "03-operators", "04-control-flow",
-        "05-functions", "06-data-structures", "07-type-system", "08-extensions",
-        "09-memory", "10-concurrency", "11-modules", "12-attributes-comptime",
-        "13-standard-library", "14-ffi-build", "15-tooling",
-    ]
-    for d in old_stub_names:
-        full = os.path.join(OUT, d)
-        if os.path.isdir(full):
-            dest = os.path.join(backup, d)
-            if os.path.isdir(dest):
-                shutil.rmtree(dest)
-            shutil.move(full, dest)
-
     # ---- parse + render chapters ----
     for num in sorted(CH):
         info = CH[num]
@@ -511,6 +494,7 @@ def main():
         kicker = f'<p class="chapter-kicker">Chapter {int(num)}</p>'
         lead = f'<p class="lead">{inline(info["subtitle"])}</p>' if info["subtitle"] else ""
         page = shell(
+            "../../",
             f"Chapter {num} · {info['title']} | The Coral Book",
             info["title"], kicker, lead, render_elements(info["els"]), prev, nxt,
         )
@@ -528,10 +512,25 @@ def main():
         nxt = chain[idx + 1] if idx + 1 < len(chain) else None
         kicker = '<p class="chapter-kicker">Reference</p>'
         page = shell(
+            "../../",
             f"{a['title']} | The Coral Book",
             a["title"], kicker, "", render_elements(a["els"]), prev, nxt,
         )
         write(os.path.join(OUT, slug, "index.html"), page)
+
+    # ---- reference markdown -> standalone pages ----
+    for md in sorted(glob.glob(os.path.join(SITE, "reference", "**", "*.md"), recursive=True)):
+        rel = os.path.relpath(md, SITE)
+        out_rel = os.path.join(os.path.dirname(rel), os.path.splitext(os.path.basename(md))[0])
+        root = "../" * (out_rel.count(os.sep) + 1)
+        ref_title, _sub, ref_els, _topics = parse_markdown(md, out_rel)
+        page = shell(
+            root,
+            f"{ref_title} | Coral Docs",
+            ref_title, '<p class="chapter-kicker">Reference</p>', "",
+            render_elements(ref_els), None, None,
+        )
+        write(os.path.join(SITE, out_rel, "index.html"), page)
 
     # ---- book-data.js ----
     def nav_chapter(num):

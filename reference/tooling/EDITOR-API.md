@@ -8,7 +8,7 @@ Source of truth: `coralc/coral-docs/PROTOCOL.md` and
 
 ---
 
-## `coral.wasm` — Coral grammar for the browser
+## `coral.wasm`, Coral grammar for the browser
 
 A tree-sitter language module for use with
 [`web-tree-sitter`](https://github.com/tree-sitter/tree-sitter/tree/master/lib/binding_web).
@@ -30,7 +30,7 @@ web-tree-sitter:
 Incompatible language version 15. Compatibility range 13 through 14.
 ```
 
-Both files are side modules and look structurally identical — the difference is
+Both files are side modules and look structurally identical, the difference is
 only the generated parser ABI. Regenerate with:
 
 ```sh
@@ -89,14 +89,14 @@ A few node names worth knowing, because they do not match Rust or C:
 | --- | --- |
 | `struct_declaration`, `union_declaration`, `variant_declaration`, `enum_declaration` | the type declarations |
 | `trait_declaration`, `extend_declaration` | traits and extensions |
-| `c_string` | a `C"…"` literal — distinct from `string_literal` |
+| `c_string` | a `C"…"` literal, distinct from `string_literal` |
 | `base_type` wrapping `primitive_type` | `u32`, `bool`, … |
 | `asm_statement` → `asm_template` / `asm_section` / `asm_operand` | inline assembly, broken out of the template strings and `:`-separated operand lists |
 | `call_expression`, `path_expression`, `cast_expression` | ordinary calls, paths, casts |
 | `attribute` | `#[[…]]` |
 | `tuple_type` | `struct(A, B)` |
 
-There is **no `fn` keyword** — functions are declared type-first, e.g.
+There is **no `fn` keyword**, functions are declared type-first, e.g.
 `usize count() { return N; }` inside a struct body.
 
 ### Highlighting
@@ -116,8 +116,8 @@ for (const m of query.captures(tree.rootNode)) {
 Capture names are the usual TextMate-style ones (`keyword`, `type`,
 `function.method`, `string.special`, `punctuation.special`, …).
 
-> **Ordering matters.** In this grammar the generic fallbacks — identifiers
-> coloured by leading capitalisation, e.g. `^[A-Z]` → `@type` — must come
+> **Ordering matters.** In this grammar the generic fallbacks, identifiers
+> coloured by leading capitalisation, e.g. `^[A-Z]` → `@type`, must come
 > **first** in the query file. Tree-sitter returns overlapping captures and the
 > consumer keeps the last one, so a catch-all placed last swallows every
 > specific rule. This is the single most common way a highlights query silently
@@ -128,12 +128,12 @@ Capture names are the usual TextMate-style ones (`keyword`, `type`,
 The grammar parses **384 of 406** real `.crl` files in the compiler tree
 (94%). The remainder are concentrated in `wallvm` and involve qualified casts
 such as `(a::B*)x` and multi-declarator `const` lists. It will not throw on
-them — `rootNode.hasError` will be `true` — but do not assume a clean parse for
+them, `rootNode.hasError` will be `true`, but do not assume a clean parse for
 arbitrary Coral source yet.
 
 ---
 
-## `coralc --serve` — the language server
+## `coralc --serve`, the language server
 
 JSON-RPC 2.0 over stdio with **standard LSP `Content-Length` framing** (not
 newline-delimited). One object per frame, length in **bytes**.

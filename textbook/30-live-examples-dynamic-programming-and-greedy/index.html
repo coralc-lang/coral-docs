@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chapter 30 · Live Examples: Dynamic Programming and Greedy | The Coral Book</title>
-  <link rel="stylesheet" href="../book.css" />
+  <link rel="stylesheet" href="../../textbook/book.css" />
   <script src="../../assets/js/script.js" defer></script>
 </head>
 <body>
@@ -13,7 +13,7 @@
       <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
     </a>
     <nav class="topnav" aria-label="Main navigation">
-      <a href="../index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
+      <a href="../../textbook/index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
     </nav>
   </header>
   <main class="content">
@@ -28,8 +28,8 @@
 <p>The growable list is <code>import(lib) std::vec { Vec };</code>, the min-heap behind Huffman coding is <code>import(lib) std::collections::priorityqueue { PriorityQueue };</code>, tree nodes are allocated with <code>import(lib) std::mman { alloc, dealloc };</code>, and sorting uses <code>sortI32</code> from <code>import(lib) std::collections::sort { sortI32 };</code>. The string type <code>str</code> is built in. Each code block assumes those imports are present and is otherwise complete.</p>
 <section><h2 id="s30-1">The Two Ingredients of Dynamic Programming</h2></section>
 <p>Before any code, name the two things a problem must have for DP to apply.</p>
-<p>The first is overlapping subproblems. If the recursion solves each subproblem at most once — as in factorial, where n! calls (n−1)! which calls (n−2)! and no subproblem is ever needed twice — then there is nothing to remember, and DP adds only overhead. If the recursion asks the same question over and over — as Fibonacci did, computing F(3) many times — then remembering pays.</p>
-<p>The second is optimal substructure: the best answer to the whole problem can be assembled from the best answers to its parts. This is subtle and worth a concrete statement. In shortest-path problems, the shortest route from A to C through B is the shortest route from A to B plus the shortest route from B to C; the pieces do not have to be compromised to make the whole better. When that is true, you can build large answers out of optimal small ones. When it is false — a problem where a locally great choice makes the overall answer worse — DP does not apply directly.</p>
+<p>The first is overlapping subproblems. If the recursion solves each subproblem at most once, as in factorial, where n! calls (n−1)! which calls (n−2)! and no subproblem is ever needed twice, then there is nothing to remember, and DP adds only overhead. If the recursion asks the same question over and over, as Fibonacci did, computing F(3) many times, then remembering pays.</p>
+<p>The second is optimal substructure: the best answer to the whole problem can be assembled from the best answers to its parts. This is subtle and worth a concrete statement. In shortest-path problems, the shortest route from A to C through B is the shortest route from A to B plus the shortest route from B to C; the pieces do not have to be compromised to make the whole better. When that is true, you can build large answers out of optimal small ones. When it is false, a problem where a locally great choice makes the overall answer worse, DP does not apply directly.</p>
 <p>There are two ways to drive a DP, and they are the same computation written in opposite directions. Top-down, or memoization, is <a href="../28-live-examples-recursion-backtracking-and-trees/index.html">Chapter 28</a>'s approach: write the natural recursion and add a table that caches results, so a repeated call returns a stored answer. Bottom-up, or tabulation, fills a table in order from the smallest subproblems up, so that when a bigger entry needs a smaller one, it is already computed. The top-down version is easier to derive from the recursion; the bottom-up version usually has a smaller constant factor and no recursion stack. Most of this chapter shows the bottom-up form, because its table is a picture of the subproblem structure you can read off the code.</p>
 <section><h2 id="s30-2">Climbing Stairs: The Smallest Useful DP</h2></section>
 <p class="step-label">The problem</p>
@@ -55,9 +55,9 @@
 }</code></pre>
 <p>The table <code>ways</code> holds one entry per step, and each entry is the sum of the two before it. The first two entries are the base cases read directly off the problem; every later entry is computed from entries that already exist, which is what "bottom-up" means. Read backwards from the top, this table is a proof: the number of ways to reach step i is the sum of the ways to reach the two steps you could have come from.</p>
 <p class="step-label">Time and space</p>
-<p>The loop runs n−1 times, doing constant work per step, so it is Θ(n) time. The table is n+1 entries, so it is Θ(n) space — but note that each entry uses only the two before it, so we could keep just two variables and drop to O(1) space, exactly as the iterative Fibonacci did in 27.2. The full table is shown because most DP problems genuinely need it, and seeing the general form before optimising the special case is the right order of learning.</p>
+<p>The loop runs n−1 times, doing constant work per step, so it is Θ(n) time. The table is n+1 entries, so it is Θ(n) space, but note that each entry uses only the two before it, so we could keep just two variables and drop to O(1) space, exactly as the iterative Fibonacci did in 27.2. The full table is shown because most DP problems genuinely need it, and seeing the general form before optimising the special case is the right order of learning.</p>
 <p class="step-label">Edge cases</p>
-<p>n = 0 returns 1 (one way to already be there — do nothing). n = 1 returns 1. n = 2 returns 2 (1+1 or 2). The values grow like Fibonacci, so u64 overflows at the same place, around n = 93.</p>
+<p>n = 0 returns 1 (one way to already be there, do nothing). n = 1 returns 1. n = 2 returns 2 (1+1 or 2). The values grow like Fibonacci, so u64 overflows at the same place, around n = 93.</p>
 <p class="step-label">A variation</p>
 <p>If the allowed moves are 1, 2, or 3 steps at a time, the recurrence becomes ways[i] = ways[i−1] + ways[i−2] + ways[i−3] and the base cases are ways[0] = 1, ways[1] = 1, ways[2] = 2. The shape of the DP does not change at all; only the number of predecessors summed changes. Recognising "the last move could have come from here" is the general trick for reaching-a-target counting problems.</p>
 <section><h2 id="s30-3">Coin Change: The Minimum Number of Coins</h2></section>
@@ -101,12 +101,12 @@
 <p class="step-label">Edge cases</p>
 <p>amount = 0 returns 0 (no coins needed), which the initial <code>dp.push(0)</code> handles. If no coin is ≤ amount, every entry stays impossible and the answer is −1. Denominations must be positive; a zero or negative coin would break the <code>a - coin</code> index. And note this computes the minimum count, not the combination itself; to recover which coins were used you would also store, per amount, which coin produced the best value, then walk that back from amount to 0.</p>
 <p class="step-label">A variation</p>
-<p>If you want the number of distinct combinations rather than the minimum count — "how many ways to make this amount" — change the DP from "minimise" to "sum": <code>dp[a] += dp[a - coin]</code>, and iterate the coins in the outer loop and the amounts in the inner loop. The direction of the loops is what distinguishes counting combinations (order of coins does not matter) from counting sequences (order matters), a distinction that trips up almost everyone the first time.</p>
+<p>If you want the number of distinct combinations rather than the minimum count, "how many ways to make this amount", change the DP from "minimise" to "sum": <code>dp[a] += dp[a - coin]</code>, and iterate the coins in the outer loop and the amounts in the inner loop. The direction of the loops is what distinguishes counting combinations (order of coins does not matter) from counting sequences (order matters), a distinction that trips up almost everyone the first time.</p>
 <section><h2 id="s30-4">0/1 Knapsack: Take It or Leave It, Once</h2></section>
 <p class="step-label">The problem</p>
 <p>Given n items, each with a weight and a value, and a knapsack with a maximum weight capacity, choose a subset of items to maximise total value without exceeding the capacity. Each item may be taken at most once.</p>
 <p class="step-label">Picture this</p>
-<p>You are robbing a museum with a single duffel bag of fixed capacity. Each loot has a weight and a value. You walk past the exhibits one by one; for each, you either take it (if it fits in what is left) or leave it. Unlike the coin problem, you cannot take a copy of an item later — there is only one of each — and that "once" is what makes this problem different from coin change.</p>
+<p>You are robbing a museum with a single duffel bag of fixed capacity. Each loot has a weight and a value. You walk past the exhibits one by one; for each, you either take it (if it fits in what is left) or leave it. Unlike the coin problem, you cannot take a copy of an item later, there is only one of each, and that "once" is what makes this problem different from coin change.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force enumerates all 2^n subsets and checks each for weight, which is exponential. DP processes the items one at a time, maintaining a table of the best value achievable at every capacity using only the items seen so far:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 knapsack(Vec&lt;i32&gt;* weights, Vec&lt;i32&gt;* values, i32 capacity) {
@@ -131,18 +131,18 @@
     }
     return dp.at((usize)capacity);
 }</code></pre>
-<p>The single <code>dp</code> vector is reused as the items stream past: after processing item i, <code>dp[c]</code> is the best value possible with capacity c using items 0 through i. The inner loop runs downward from <code>capacity</code> to <code>w</code>. That downward direction is the whole trick for the "at most once" rule: when we read <code>dp[c - w]</code>, we must read a value from the previous item's row, not one already updated with the current item, and going downward guarantees that entry has not been touched yet this pass. If you iterate upward instead, an item can be taken multiple times — which is a different problem (unbounded knapsack) and a bug in this one.</p>
+<p>The single <code>dp</code> vector is reused as the items stream past: after processing item i, <code>dp[c]</code> is the best value possible with capacity c using items 0 through i. The inner loop runs downward from <code>capacity</code> to <code>w</code>. That downward direction is the whole trick for the "at most once" rule: when we read <code>dp[c - w]</code>, we must read a value from the previous item's row, not one already updated with the current item, and going downward guarantees that entry has not been touched yet this pass. If you iterate upward instead, an item can be taken multiple times, which is a different problem (unbounded knapsack) and a bug in this one.</p>
 <p class="step-label">Time and space</p>
-<p>There are n items and capacity+1 capacities, so the time is Θ(n × capacity). The space is Θ(capacity), because the second dimension is collapsed — we keep only the current row, not all n of them. This collapsing is a real optimisation over the textbook (n+1) × (capacity+1) table; the downward loop is the price of it.</p>
+<p>There are n items and capacity+1 capacities, so the time is Θ(n × capacity). The space is Θ(capacity), because the second dimension is collapsed, we keep only the current row, not all n of them. This collapsing is a real optimisation over the textbook (n+1) × (capacity+1) table; the downward loop is the price of it.</p>
 <p class="step-label">Edge cases</p>
-<p>No items or zero capacity yields 0. An item heavier than the whole capacity is skipped by the loop bound <code>c &gt;= w</code>. All weights and values should be non-negative; negative values would make the problem weird (you would not take them, but the recurrence would still add them). Fractional knapsack, where you may take part of an item (a handful of gold dust rather than a whole statue), is a different problem and is solved greedily by value density — see 29.10.</p>
+<p>No items or zero capacity yields 0. An item heavier than the whole capacity is skipped by the loop bound <code>c &gt;= w</code>. All weights and values should be non-negative; negative values would make the problem weird (you would not take them, but the recurrence would still add them). Fractional knapsack, where you may take part of an item (a handful of gold dust rather than a whole statue), is a different problem and is solved greedily by value density, see 29.10.</p>
 <p class="step-label">A variation</p>
 <p>To recover which items were chosen, keep a second boolean table <code>taken[i][c]</code> recording whether item i was included at capacity c, then walk from <code>taken[n][capacity]</code> backwards. The recovery step is where many DP solutions live or die in interviews: the value is only half the answer if the question was "which items."</p>
 <section><h2 id="s30-5">Longest Common Subsequence</h2></section>
 <p class="step-label">The problem</p>
-<p>Given two strings, find the length of their longest common subsequence — the longest sequence of characters that appears in both, in the same order, but not necessarily consecutively. For "ABCBDAB" and "BDCABA" the length is 4.</p>
+<p>Given two strings, find the length of their longest common subsequence, the longest sequence of characters that appears in both, in the same order, but not necessarily consecutively. For "ABCBDAB" and "BDCABA" the length is 4.</p>
 <p class="step-label">Picture this</p>
-<p>Two editors have versions of the same document, and you want to know how much text they share in order. You line the two up and walk them together. If the current characters match, that character is part of the common subsequence and you advance both. If they do not match, one of the two characters must be skipped, so the answer is the better of skipping one or skipping the other. That decision — match, or skip one side — is the recurrence.</p>
+<p>Two editors have versions of the same document, and you want to know how much text they share in order. You line the two up and walk them together. If the current characters match, that character is part of the common subsequence and you advance both. If they do not match, one of the two characters must be skipped, so the answer is the better of skipping one or skipping the other. That decision, match, or skip one side, is the recurrence.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force generates every subsequence of the first string and checks membership in the second, which is exponential. DP builds a table indexed by (i, j), the prefixes of the two strings, where each cell is the LCS length of those prefixes:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 lcs(str a, str b) {
@@ -171,9 +171,9 @@
     }
     return dp.at(m * width + n);
 }</code></pre>
-<p>The table is two-dimensional but stored in one flat vector: the cell for (i, j) lives at index <code>i * width + j</code> where <code>width = n + 1</code>. When the characters at the current positions match, the answer is one plus the best answer for the two prefixes with that character removed (<code>i−1, j−1</code>). When they do not, the answer is the larger of dropping a character from either string. The first row and first column are all zeros — an empty prefix has no common subsequence — which the initial fill establishes.</p>
+<p>The table is two-dimensional but stored in one flat vector: the cell for (i, j) lives at index <code>i * width + j</code> where <code>width = n + 1</code>. When the characters at the current positions match, the answer is one plus the best answer for the two prefixes with that character removed (<code>i−1, j−1</code>). When they do not, the answer is the larger of dropping a character from either string. The first row and first column are all zeros, an empty prefix has no common subsequence, which the initial fill establishes.</p>
 <p class="step-label">Time and space</p>
-<p>Both loops run over the two lengths, so the time is Θ(m × n). The flat table has (m+1)(n+1) entries, so the space is Θ(m × n). The full table is not always necessary — only the previous row is needed to compute the next, so a two-row version reduces the space to Θ(min(m, n)) — but the full table is kept when you also want to reconstruct the actual subsequence by walking backward through it.</p>
+<p>Both loops run over the two lengths, so the time is Θ(m × n). The flat table has (m+1)(n+1) entries, so the space is Θ(m × n). The full table is not always necessary, only the previous row is needed to compute the next, so a two-row version reduces the space to Θ(min(m, n)), but the full table is kept when you also want to reconstruct the actual subsequence by walking backward through it.</p>
 <p class="step-label">Edge cases</p>
 <p>If either string is empty, the answer is 0 and the loops simply do not execute. Identical strings return their common length. Duplicate characters are handled naturally because the recurrence looks only at positions, not at values elsewhere. The distinction between a subsequence (characters in order, gaps allowed) and a substring (characters contiguous) matters: the longest common substring is a different, also-DP problem with a different recurrence.</p>
 <p class="step-label">A variation</p>
@@ -262,7 +262,7 @@
 }</code></pre>
 <p>Every position starts as a chain of length 1 (the element alone). For each position i, we look back at every earlier position j with a smaller value and extend that chain; <code>dp[i]</code> becomes the best such extension. The answer is the largest value anywhere in the table, not necessarily the last entry, because the longest chain can end anywhere. That "the answer is the table's maximum" is the detail people miss.</p>
 <p class="step-label">Time and space</p>
-<p>The two nested loops are Θ(n^2) time, and the table is Θ(n) space. That is fine for thousands of elements but too slow for millions, and there is a famous O(n log n) version: maintain a <code>tails</code> array where <code>tails[k]</code> is the smallest possible tail of an increasing subsequence of length k+1, and use binary search to place each new element. If you have just read 28.7 on binary search, that improvement is a beautiful application of it — the DP's inner scan is exactly what the binary search replaces.</p>
+<p>The two nested loops are Θ(n^2) time, and the table is Θ(n) space. That is fine for thousands of elements but too slow for millions, and there is a famous O(n log n) version: maintain a <code>tails</code> array where <code>tails[k]</code> is the smallest possible tail of an increasing subsequence of length k+1, and use binary search to place each new element. If you have just read 28.7 on binary search, that improvement is a beautiful application of it, the DP's inner scan is exactly what the binary search replaces.</p>
 <p class="step-label">Edge cases</p>
 <p>An empty list returns 0, and a single element returns 1, both before the loop. Strictly increasing means duplicates do not extend a chain; if you want non-decreasing, change <code>&lt;</code> to <code>&lt;=</code>, and the problem changes subtly. Negative numbers are fine; only relative order matters.</p>
 <p class="step-label">A variation</p>
@@ -273,7 +273,7 @@
 <p class="step-label">Picture this</p>
 <p>You are walking through a city laid out as a grid, and each cell charges a toll. You start at the top-left corner and may only move right or down, so you can never go back. The cheapest cost to reach any cell is the cell's own toll plus the cheaper of the costs to reach the cell above it and the cell to its left. That sentence is the recurrence, and it is the two-dimensional cousin of climbing stairs.</p>
 <p class="step-label">Brute force, then better</p>
-<p>The brute force tries all paths, which number C(rows+cols, rows) — exponential. DP fills a table of cheapest costs cell by cell:</p>
+<p>The brute force tries all paths, which number C(rows+cols, rows), exponential. DP fills a table of cheapest costs cell by cell:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 minPathSum(Vec&lt;Vec&lt;i32&gt;&gt;* grid) {
     usize rows = grid-&gt;count();
     if (rows == 0) return 0;
@@ -314,9 +314,9 @@
 <p class="step-label">Time and space</p>
 <p>Every cell is computed once, so the time is Θ(rows × cols). The space is Θ(cols) because only one row of the table is kept, not the whole grid of DP values. As with knapsack, the row-collapsing is a genuine optimisation; the naive DP would use the full grid.</p>
 <p class="step-label">Edge cases</p>
-<p>A 1×1 grid returns the single cell's cost. A single row or single column has exactly one path, and the boundary branches walk it. All-zero weights return 0. Negative weights are not handled by this greedy-looking "min of the two predecessors" reasoning in general — if negative values were allowed, the optimal path could loop to exploit them, and the problem would need a different algorithm. The non-negativity is a real precondition, not a formality.</p>
+<p>A 1×1 grid returns the single cell's cost. A single row or single column has exactly one path, and the boundary branches walk it. All-zero weights return 0. Negative weights are not handled by this greedy-looking "min of the two predecessors" reasoning in general, if negative values were allowed, the optimal path could loop to exploit them, and the problem would need a different algorithm. The non-negativity is a real precondition, not a formality.</p>
 <p class="step-label">A variation</p>
-<p>If the question is the number of distinct paths rather than the cheapest one, <code>dp[j]</code> becomes a count and the recurrence is <code>dp[j] = dp[j] (from above) + dp[j-1] (from left)</code>, with the whole first row and column set to 1. This is the "unique paths" problem, and it is the same grid walk with addition instead of minimisation — the same table, a different operation.</p>
+<p>If the question is the number of distinct paths rather than the cheapest one, <code>dp[j]</code> becomes a count and the recurrence is <code>dp[j] = dp[j] (from above) + dp[j-1] (from left)</code>, with the whole first row and column set to 1. This is the "unique paths" problem, and it is the same grid walk with addition instead of minimisation, the same table, a different operation.</p>
 <section><h2 id="s30-9">Greedy: Interval Scheduling</h2></section>
 <p class="step-label">The problem</p>
 <p>Given a set of intervals, each with a start and an end, select the largest possible subset of intervals that do not overlap. This is the classic activity-selection problem: one room, many meetings, schedule as many as possible.</p>
@@ -360,10 +360,10 @@ i32 maxNonOverlapping(Vec&lt;Interval&gt;* intervals) {
 <p class="step-label">Edge cases</p>
 <p>An empty list returns 0. Meetings that touch end-to-start are allowed by the <code>&gt;=</code> comparison (a meeting ending at 10 and one starting at 10 do not conflict); use <code>&gt;</code> instead if touching is forbidden. Intervals of zero length are accepted and count. Intervals with start greater than end are malformed input and are not handled here.</p>
 <p class="step-label">A variation</p>
-<p>If each interval has a weight (profit) and you want the maximum total weight of non-overlapping intervals, greedy by end time fails, and you need DP: sort by end and binary-search the latest compatible prior interval for each. That problem — weighted interval scheduling — is the standard bridge between the greedy and DP halves of this chapter, and it is worth working as an exercise.</p>
+<p>If each interval has a weight (profit) and you want the maximum total weight of non-overlapping intervals, greedy by end time fails, and you need DP: sort by end and binary-search the latest compatible prior interval for each. That problem, weighted interval scheduling, is the standard bridge between the greedy and DP halves of this chapter, and it is worth working as an exercise.</p>
 <section><h2 id="s30-10">Greedy: Huffman Coding, with a Priority Queue</h2></section>
 <p class="step-label">The problem</p>
-<p>Given the frequencies of symbols in a text, build an optimal prefix code — a way to encode each symbol as a bit string so that no code is a prefix of another, and the total encoded length is minimised.</p>
+<p>Given the frequencies of symbols in a text, build an optimal prefix code, a way to encode each symbol as a bit string so that no code is a prefix of another, and the total encoded length is minimised.</p>
 <p class="step-label">Picture this</p>
 <p>Some letters in English are common (e, t, a) and some are rare (z, q). You want the common ones to have short codes and the rare ones long codes, so the total text is shorter. Huffman's insight is to build a tree from the bottom up: repeatedly take the two least frequent symbols and merge them into a new symbol whose frequency is their sum, until everything is one tree. The rarer a symbol is, the deeper it ends up, and the deeper it is, the longer its code. No prefix of a code is another code, because every symbol is a leaf and no leaf is on the path to another.</p>
 <p class="step-label">Brute force, then better</p>
@@ -420,20 +420,20 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
     codeLengths(root-&gt;left, depth + 1, lengths);
     codeLengths(root-&gt;right, depth + 1, lengths);
 }</code></pre>
-<p>The queue starts holding one leaf per symbol, ordered by frequency. Each pass pops the two lightest nodes and pushes a new internal node that is their parent, with their combined frequency. When one node remains, it is the root of the code tree. The distance from the root to a leaf is that symbol's code length, which <code>codeLengths</code> records by walking the tree and incrementing a depth counter. The total weighted path length — the objective being minimised — is the sum of <code>freq[s] * lengths[s]</code> over all symbols.</p>
+<p>The queue starts holding one leaf per symbol, ordered by frequency. Each pass pops the two lightest nodes and pushes a new internal node that is their parent, with their combined frequency. When one node remains, it is the root of the code tree. The distance from the root to a leaf is that symbol's code length, which <code>codeLengths</code> records by walking the tree and incrementing a depth counter. The total weighted path length, the objective being minimised, is the sum of <code>freq[s] * lengths[s]</code> over all symbols.</p>
 <p class="step-label">Time and space</p>
 <p>There are at most n pushes plus n−1 merges, and every heap operation is O(log n), so the time is Θ(n log n), where n is the number of distinct symbols. The tree has at most 2n−1 nodes, so the space is Θ(n). A full sort would also be O(n log n); the heap is used because the merges keep creating new frequencies that must be re-ordered, which a one-time sort cannot anticipate.</p>
 <p class="step-label">Why greedy works here</p>
-<p>The exchange argument: in an optimal tree, the two least frequent symbols must be siblings at the deepest level. If they are not, swap them with a deepest-level pair — this does not increase the weighted path length — so there is an optimal tree in which the greedy first merge is valid. Removing that sibling pair and treating their parent as a new symbol reduces the problem by one, and induction finishes it. The two-lightest-siblings property is the invariant the algorithm relies on.</p>
+<p>The exchange argument: in an optimal tree, the two least frequent symbols must be siblings at the deepest level. If they are not, swap them with a deepest-level pair, this does not increase the weighted path length, so there is an optimal tree in which the greedy first merge is valid. Removing that sibling pair and treating their parent as a new symbol reduces the problem by one, and induction finishes it. The two-lightest-siblings property is the invariant the algorithm relies on.</p>
 <p class="step-label">Edge cases</p>
 <p>One distinct symbol produces a single-node tree with code length 0 (the symbol needs no bits if it is the only thing ever encoded; some conventions give it length 1, which is what most encoders do because a zero-bit code cannot be represented). Zero distinct symbols returns null. Ties in frequency may produce different trees with the same optimal total length, because Huffman codes are not unique. Negative frequencies are nonsense and are not guarded against.</p>
 <p class="step-label">A variation</p>
 <p>Real compressors use adaptive Huffman or arithmetic coding, which update the frequencies as the data streams past instead of assuming a fixed distribution known in advance. Arithmetic coding pushes the idea further by encoding messages as a single fraction rather than a tree of bits, and it gets closer to the theoretical entropy limit at the cost of more arithmetic. Huffman remains the classic because it is optimal among prefix codes and it fits in your head.</p>
 <section><h2 id="s30-11">When Greedy Fails: Coin Change, Revisited</h2></section>
 <p class="step-label">The problem</p>
-<p>Take the coin-change problem of 29.3 — fewest coins to make an amount — and solve it greedily, always taking the largest coin that fits. Sometimes that works. When it does not, understand exactly why.</p>
+<p>Take the coin-change problem of 29.3, fewest coins to make an amount, and solve it greedily, always taking the largest coin that fits. Sometimes that works. When it does not, understand exactly why.</p>
 <p class="step-label">Picture this</p>
-<p>Your denominations are 1, 5, 10, and 25 cents — the US coins. Greedy gives the right answer for every amount, which is why cashiers make change in their heads. Now your denominations are 1, 3, and 4, and the amount is 6. Greedy grabs 4, then 1, then 1: three coins. But 3 + 3 is two coins. Greedy is wrong, and it is wrong because taking the largest coin now forecloses the better combination later.</p>
+<p>Your denominations are 1, 5, 10, and 25 cents, the US coins. Greedy gives the right answer for every amount, which is why cashiers make change in their heads. Now your denominations are 1, 3, and 4, and the amount is 6. Greedy grabs 4, then 1, then 1: three coins. But 3 + 3 is two coins. Greedy is wrong, and it is wrong because taking the largest coin now forecloses the better combination later.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The greedy version is short and tempting:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 coinChangeGreedy(Vec&lt;i32&gt;* coins, i32 amount) {
@@ -492,7 +492,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
 <p class="step-label">The problem</p>
 <p>A robot starts in the top-left cell of an m × n grid and may move only right or down. How many distinct paths reach the bottom-right cell?</p>
 <p class="step-label">Picture this</p>
-<p>You are walking a street grid, and at each intersection you may go right or down. The number of ways to reach a cell is the number of ways to reach the cell above it plus the number of ways to reach the cell to its left, because those are the only two cells you could have come from. The first row and first column each have exactly one path — all rights, or all downs — and those seed the count.</p>
+<p>You are walking a street grid, and at each intersection you may go right or down. The number of ways to reach a cell is the number of ways to reach the cell above it plus the number of ways to reach the cell to its left, because those are the only two cells you could have come from. The first row and first column each have exactly one path, all rights, or all downs, and those seed the count.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force walks every path, and the number of paths is the binomial coefficient C(m+n−2, m−1), which is already enormous for modest grids before the search itself becomes slow. The DP fills the counts in a single pass, and because each cell needs only the cell above and the cell to its left, one row of the table is enough.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 uniquePaths(i32 m, i32 n) {
@@ -512,7 +512,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
 }</code></pre>
 <p>The vector holds the current row of the table. After the first row is initialised to all ones, each later row is computed in place: <code>dp[j]</code> still holds the count from the cell above, while <code>dp[j-1]</code> has just been overwritten with the count from the cell to the left, so adding them yields the new <code>dp[j]</code>. This is the row-collapsing of 29.8's minimum path sum, with addition instead of minimisation and the first row and column seeded to one instead of handled by branches.</p>
 <p class="step-label">Time and space</p>
-<p>Every cell is computed once, so Θ(m × n) time. The table is one row, so Θ(n) space — or Θ(min(m, n)) if you iterate along the shorter dimension. The answers are binomial coefficients and grow quickly, so i64 is used rather than i32 to delay the overflow point.</p>
+<p>Every cell is computed once, so Θ(m × n) time. The table is one row, so Θ(n) space, or Θ(min(m, n)) if you iterate along the shorter dimension. The answers are binomial coefficients and grow quickly, so i64 is used rather than i32 to delay the overflow point.</p>
 <p class="step-label">Edge cases</p>
 <p>m = 1 or n = 1 gives exactly one path, which falls out of the initialisation and the loops not running. A zero or negative dimension has no paths and returns 0. The count overflows i64 for large grids (around 34 × 34), at which point big integers or modular arithmetic are required, and no cleverness avoids that.</p>
 <p class="step-label">A variation</p>
@@ -584,7 +584,7 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
     }
     return dp.at(n);
 }</code></pre>
-<p><code>dp[i]</code> answers "can the first i characters be segmented?". From <code>dp[0] = true</code> — the empty string segments into no words — the outer loop extends the reachable frontier one character at a time. For each endpoint, the inner loop offers every dictionary word; a word is usable only if it fits (<code>w.len &lt;= i</code>), if the prefix just before it is reachable (<code>dp[i - w.len]</code>), and if its bytes actually match ending at <code>i</code>. The helper does that byte comparison. As soon as one word completes a segmentable prefix, the endpoint is marked and the inner loop can stop early.</p>
+<p><code>dp[i]</code> answers "can the first i characters be segmented?". From <code>dp[0] = true</code>, the empty string segments into no words, the outer loop extends the reachable frontier one character at a time. For each endpoint, the inner loop offers every dictionary word; a word is usable only if it fits (<code>w.len &lt;= i</code>), if the prefix just before it is reachable (<code>dp[i - w.len]</code>), and if its bytes actually match ending at <code>i</code>. The helper does that byte comparison. As soon as one word completes a segmentable prefix, the endpoint is marked and the inner loop can stop early.</p>
 <p class="step-label">Time and space</p>
 <p>The outer loop runs n times and the inner loop once per dictionary word, with a byte comparison of up to the word's length, so the time is O(n × d × L) for d words of maximum length L. The table is n + 1 booleans, so O(n) space, against the exponential recursion it replaces.</p>
 <p class="step-label">Edge cases</p>
@@ -623,13 +623,13 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
     }
     return reachable.at((usize)target);
 }</code></pre>
-<p>The parity check rejects the impossible cases straight away. The boolean vector then marks which sums are achievable, with sum 0 achieved by taking nothing. Each number is offered once, and the inner loop runs from the target down to the number, so that when it reads <code>reachable[s - x]</code> it reads the state from before this number was considered. Running the loop upward instead would let a single number be reused, which is the unbounded version of the problem — the same direction rule that separates 0/1 knapsack from its cousins.</p>
+<p>The parity check rejects the impossible cases straight away. The boolean vector then marks which sums are achievable, with sum 0 achieved by taking nothing. Each number is offered once, and the inner loop runs from the target down to the number, so that when it reads <code>reachable[s - x]</code> it reads the state from before this number was considered. Running the loop upward instead would let a single number be reused, which is the unbounded version of the problem, the same direction rule that separates 0/1 knapsack from its cousins.</p>
 <p class="step-label">Time and space</p>
 <p>The time is O(n × total), and the space is O(total). This is the pseudo-polynomial cost of subset-sum: polynomial in the numeric value of the total rather than in the count of items, which is fine for small totals and hopeless for huge ones.</p>
 <p class="step-label">Edge cases</p>
 <p>An empty list has total 0, which is even with target 0, so it returns true, since the empty subset sums to zero. A single non-zero number has no partner and returns false. An odd total returns false immediately. A number larger than the target can never be used, and the loop bound <code>s &gt;= x</code> skips it. Numbers should be positive; a zero would be a harmless no-op.</p>
 <p class="step-label">A variation</p>
-<p>To recover the two groups, store a "this item achieved this sum" mark and walk back from the target. To allow a number to be used repeatedly, run the inner loop upward; that answers a different question — can the total be formed from unlimited copies — and shows once more how one direction change alters the meaning.</p>
+<p>To recover the two groups, store a "this item achieved this sum" mark and walk back from the target. To allow a number to be used repeatedly, run the inner loop upward; that answers a different question, can the total be formed from unlimited copies, and shows once more how one direction change alters the meaning.</p>
 <section><h2 id="s30-17">Longest Palindromic Subsequence</h2></section>
 <p class="step-label">The problem</p>
 <p>Given a string, find the length of its longest palindromic subsequence: the longest subsequence that reads the same forwards and backwards, characters not necessarily contiguous. For "bbbab" the answer is 4 ("bbbb").</p>
@@ -679,7 +679,7 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
 <p class="step-label">Picture this</p>
 <p>You are crossing a line of stepping stones, and from each stone you may leap up to a stated distance. You do not need to plan the jumps in advance; you only need to know how far the furthest reachable stone is. Starting from the first stone, that frontier is its jump range, and as you advance through stones you can actually stand on, you extend the frontier by their jump ranges. If the frontier ever reaches the last stone, the answer is yes.</p>
 <p class="step-label">Brute force, then better</p>
-<p>The brute force explores every sequence of jumps, exponential because the same position is reached by many routes. The greedy scan keeps a single number — the furthest index reachable so far — and sweeps left to right. At each position it checks that the position is reachable (it is at or before the frontier) and extends the frontier if that stone can throw you further. One pass settles the question.</p>
+<p>The brute force explores every sequence of jumps, exponential because the same position is reached by many routes. The greedy scan keeps a single number, the furthest index reachable so far, and sweeps left to right. At each position it checks that the position is reachable (it is at or before the frontier) and extends the frontier if that stone can throw you further. One pass settles the question.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool canJump(Vec&lt;i32&gt;* nums) {
     usize n = nums-&gt;count();
     if (n == 0) return true;
@@ -707,7 +707,7 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
 <p>"Jump Game II" asks for the minimum number of jumps rather than a yes/no, and it is the same frontier sweep with one extra variable: count a jump each time the frontier must be pushed forward, tracking the end of the current jump's range separately from the overall frontier. The greedy spirit is identical; only the bookkeeping grows by one number.</p>
 <section><h2 id="s30-19">Exercises</h2></section>
 <ol><li>Comprehension. State the two ingredients a problem needs for dynamic programming, and give one problem from this chapter that has each, and one everyday problem that has neither.</li><li>Comprehension. What is the difference between top-down memoization and bottom-up tabulation? For the coin-change problem, write out in words what the table's rows and columns mean.</li><li>Trace. For climbing stairs, write the contents of the <code>ways</code> table for n = 6 by hand, one entry per line. At which point do the numbers exceed the number of ways to shuffle a deck?</li><li>Implementation. Section30.12 solves the house robber with two variables and no table. Extend it to also report which houses were robbed, then explain why the answer is <code>prev1</code>, the running best over the whole street, rather than the value of any single house.</li><li>Knapsack. Modify 29.4 to also return which items were chosen. What extra storage do you need, and where do you walk to recover the answer?</li><li>Strings. Explain, with the LCS table, why the answer is in the bottom-right cell while the LIS answer is the maximum anywhere in its table. What does that difference tell you about the two recurrences?</li><li>Complexity. The naive edit-distance recursion is exponential and the DP is Θ(m × n). Compute both for m = n = 20 and compare, assuming one operation per nanosecond. Which is usable and which is not?</li><li>Greedy. Solve weighted interval scheduling (see the variation in 29.9) with DP and with a greedy-by-profit rule, and find an input where the greedy rule gives a smaller total profit than the DP.</li><li>Greedy. Prove, with an exchange argument, that always taking the earliest-ending interval is optimal for unweighted interval scheduling. Where exactly does the proof use the fact that intervals are unweighted?</li><li>Meta. Huffman coding, interval scheduling, and coin change with canonical denominations are all correct greedy algorithms. Pick two and write a paragraph each on what structural property of the problem makes the greedy choice safe. Then write one sentence explaining what single test would have caught the coin-change failure before writing any code.</li></ol>
-      <nav class="chapter-nav"><a href="../29-live-examples-sorting-searching-and-complexity/index.html">← Previous</a><a href="../31-live-examples-graphs/index.html">Next →</a></nav>
+      <nav class="chapter-nav"><a href="../../textbook/29-live-examples-sorting-searching-and-complexity/index.html">← Previous</a><a href="../../textbook/31-live-examples-graphs/index.html">Next →</a></nav>
     </article>
   </main>
 </body>

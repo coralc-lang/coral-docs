@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Appendix D · Prelude, Core, and Platform | The Coral Book</title>
-  <link rel="stylesheet" href="../book.css" />
+  <link rel="stylesheet" href="../../textbook/book.css" />
   <script src="../../assets/js/script.js" defer></script>
 </head>
 <body>
@@ -13,7 +13,7 @@
       <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
     </a>
     <nav class="topnav" aria-label="Main navigation">
-      <a href="../index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
+      <a href="../../textbook/index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
     </nav>
   </header>
   <main class="content">
@@ -21,8 +21,8 @@
       <p class="chapter-kicker">Reference</p>
       <h1>Appendix D · Prelude, Core, and Platform</h1>
       
-      <p>Appendix D — Prelude, Core, and Platform</p>
-<p>This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A — A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.</p>
+      <p>Appendix D, Prelude, Core, and Platform</p>
+<p>This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A, A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.</p>
 <hr />
 <p>This document catalogues every <code>pub</code> export of the Coral standard library and the core/platform support modules it builds on. It is generated from the actual source tree under <code>lib/</code> and reflects the current dialect.</p>
 <ul><li><strong>Sources of truth:</strong> <code>lib/core/<strong></code>, <code>lib/platform/</strong></code>, and the per-target <code>lib/std/x86_64/&lt;target&gt;/<strong></code> trees. The primary target documented here is </strong><code>x86_64/linux</code><strong>; <code>lib/std/x86_64/windows/</strong></code> mirrors it with platform differences (noted where relevant).</li><li><strong>Top-level manifest:</strong> <code>lib/std/lib.crl</code> re-exports the submodules; the per-target manifest is <code>lib/std/x86_64/linux/lib.crl</code>.</li><li><strong>Signature syntax:</strong> <code>RetType name(params)</code>. Tuple <em>types</em> are spelled <code>struct(T, T)</code> (never <code>(T, T)</code>). Generics are <code>&lt;T&gt;</code>, <code>&lt;T, U&gt;</code>, <code>&lt;T, usize N&gt;</code>, or <code>&lt;comptime N&gt;</code>; there are no generic bounds and no trait composition.</li><li><strong>Visibility:</strong> the dialect has no per-method <code>pub</code>; every member declared in a <code>pub struct</code>/<code>pub variant</code>/<code>pub enum</code>/<code>pub extend</code> is public. Members named with a leading <code>_</code> are internal helpers, listed here for completeness but not intended for direct use.</li><li><strong><code>@drop</code>:</strong> <code>@drop</code> is an inbuilt trait. Types that own heap memory provide an <code>extend &lt;T&gt; : @drop { void drop() }</code> block wiring their <code>dispose()</code> into the language's automatic cleanup.</li></ul>
@@ -30,7 +30,7 @@
 <section><h2 id="0-prelude-and-module-layout">0. Prelude and module layout</h2></section>
 <h3 id="prelude">Prelude</h3>
 <p>The following are merged into every translation unit automatically:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">std::io::ios          // print / println / eprint / eprintln / readLine / ...
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">std::io::ios          // print / println / eprint / eprintln / readLine / ...
 std::text::string     // String
 std::option           // Option&lt;T&gt;
 std::result           // Result&lt;T, E&gt;
@@ -38,7 +38,7 @@ std::vec              // Vec&lt;T&gt;
 std::collections::arr // Arr&lt;T, N&gt;
 core::str             // `str` methods</code></pre>
 <h3 id="module-tree-lib-std-lib-crl">Module tree (<code>lib/std/lib.crl</code>)</h3>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub mod collections = import collections;
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">pub mod collections = import collections;
 pub mod concurrent  = import concurrent;
 pub mod crypto      = import crypto;
 pub mod data        = import data;
@@ -58,7 +58,7 @@ pub mod arr       = import collections::arr;
 pub mod mman      = import memory::mman;
 pub mod allocator = import memory::allocators;</code></pre>
 <h3 id="per-target-manifest-lib-std-x86-64-linux">Per-target manifest (<code>lib/std/x86_64/linux/lib.crl</code>)</h3>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub mod memory    = import memory;
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">pub mod memory    = import memory;
 pub mod mman      = import memory::mman;
 pub mod allocator = import memory::allocators;
 pub mod io        = import io;
@@ -74,17 +74,17 @@ pub mod intrinsics = import memory::intrinsics;</code></pre>
 <p>Submodule manifests: ``` collections/lib.crl : arr vec bitset cache deque hashmap iter linkedlist map</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">                  priorityqueue queue ringbuf set sort tree trie unordered_map</code></pre>
 <p>text/lib.crl        : ascii crlb regex string strutil uri utf8 data/lib.crl        : option result math/lib.crl        : complex math matrix random vector io/lib.crl          : bio cmd env fios fs ios log net path process temp term memory/lib.crl      : mman allocators intrinsics pool shared_ptr smart_ptr memory/allocators/lib.crl : allocator tlsf mimalloc concurrent/lib.crl  : async mutex rwlock semaphore signal thread threadpool crypto/lib.crl      : aes base64 bloom crc hash hex hmac sha256 parser/lib.crl      : csv ini json toml uuid xml fmt/lib.crl         : fmt misc/lib.crl        : erased cast testing/lib.crl     : test core/lib.crl        : cchar limits char_util platform/lib.crl    : libc win32 ```</p>
-<p>&gt; <strong>Known inconsistencies in the manifests (not fixed here):</strong> &gt; - <code>text/lib.crl</code> declares <code>pub mod crlb = import crlb;</code>, but no &gt;   <code>text/crlb.crl</code> exists — this import is dangling. &gt; - <code>parser/crlb.crl</code> exists but is <strong>not</strong> re-exported by <code>parser/lib.crl</code>. &gt; - <code>std/lib.crl</code> does <strong>not</strong> re-export <code>misc</code> or <code>testing</code>; import those paths &gt;   directly.</p>
+<blockquote><p><strong>Known inconsistencies in the manifests (not fixed here):</strong> - <code>text/lib.crl</code> declares <code>pub mod crlb = import crlb;</code>, but no <code>text/crlb.crl</code> exists, this import is dangling. - <code>parser/crlb.crl</code> exists but is <strong>not</strong> re-exported by <code>parser/lib.crl</code>. - <code>std/lib.crl</code> does <strong>not</strong> re-export <code>misc</code> or <code>testing</code>; import those paths directly.</p></blockquote>
 <hr />
 <section><h2 id="core">core</h2></section>
-<h3 id="1-core-cchar-c-character-type">1. <code>core::cchar</code> — C character type</h3>
+<h3 id="1-core-cchar-c-character-type">1. <code>core::cchar</code>, C character type</h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct cchar = flag (arch)
 {
     x86_64 =&gt; { i8 },
     else   =&gt; { u8 }
 }</code></pre>
 <p>A <code>cchar</code> is a <code>char</code>-like C character whose signedness depends on the target architecture (signed <code>i8</code> on x86_64, unsigned <code>u8</code> elsewhere).</p>
-<h3 id="2-core-limits-integer-and-float-limits">2. <code>core::limits</code> — Integer and float limits</h3>
+<h3 id="2-core-limits-integer-and-float-limits">2. <code>core::limits</code>, Integer and float limits</h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub const INT64_MIN = -9223372036854775808;
 pub const INT64_MAX =  9223372036854775807;
 pub const INT32_MIN = -2147483648;
@@ -101,7 +101,7 @@ pub const F64_MAX = 1.7976931348623157e+308;
 pub const F64_MIN = 2.2250738585072014e-308;
 pub const F32_MAX = 3.40282347e+38;
 pub const F32_MIN = 1.17549435e-38;</code></pre>
-<h3 id="3-core-char-util-byte-and-character-clas">3. <code>core::char_util</code> — Byte and character classification</h3>
+<h3 id="3-core-char-util-byte-and-character-clas">3. <code>core::char_util</code>, Byte and character classification</h3>
 <p>All <code>u8</code>-taking predicates operate on a single byte; the <code>char*</code> variants operate on a Coral <code>char</code> (Unicode scalar value).</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// byte predicates / transforms (u8)
 pub bool isDigit(u8 c)
@@ -161,7 +161,7 @@ pub u8 const tab            = &#x27;\t&#x27;;
 pub u8 const space          = &#x27; &#x27;;
 pub u8 const nullu8         = &#x27;\0&#x27;;
 pub u8 const carriageReturn = &#x27;\r&#x27;;</code></pre>
-<h3 id="4-core-str-methods-on-the-builtin-str">4. <code>core::str</code> — Methods on the builtin <code>str</code></h3>
+<h3 id="4-core-str-methods-on-the-builtin-str">4. <code>core::str</code>, Methods on the builtin <code>str</code></h3>
 <p><code>str</code> is a builtin view type: ``<code>coral struct str { const u8* ptr; usize len; } </code>`<code> Extended (imports </code>platform::libc<code> and </code>std::text::string`):</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend str
 {
@@ -194,7 +194,7 @@ pub u8 const carriageReturn = &#x27;\r&#x27;;</code></pre>
 }</code></pre>
 <hr />
 <section><h2 id="platform">platform</h2></section>
-<h3 id="5-platform-libc-libc-pthread-posix-exter">5. <code>platform::libc</code> — Libc / pthread / POSIX externs</h3>
+<h3 id="5-platform-libc-libc-pthread-posix-exter">5. <code>platform::libc</code>, Libc / pthread / POSIX externs</h3>
 <p>All declarations are <code>pub extern</code>. Grouped by area.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// stdio / errno
 i32*  __errno_location()
@@ -327,7 +327,7 @@ i64   sendto(i32 fd, const u8* buf, u64 len, i32 flags, const rawptr dstAddr, i3
 i64   recvfrom(i32 fd, u8* buf, u64 len, i32 flags, rawptr srcAddr, i32* addrLen)
 u32   htonl(u32 hostlong)
 u16   htons(u16 hostshort)</code></pre>
-<h3 id="6-platform-win32-win32-winsock-crt-exter">6. <code>platform::win32</code> — Win32 / Winsock / CRT externs</h3>
+<h3 id="6-platform-win32-win32-winsock-crt-exter">6. <code>platform::win32</code>, Win32 / Winsock / CRT externs</h3>
 <p>All <code>pub extern</code>. This is the Windows counterpart of <code>platform::libc</code>.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// console / handles / files
 rawptr GetStdHandle(u32 nStdHandle)
@@ -507,7 +507,7 @@ f64    atan2(f64 y, f64 x) sinh(f64 x) cosh(f64 x) tanh(f64 x) cbrt(f64 x)
 f64    exp(f64 x) log(f64 x) log2(f64 x) log10(f64 x) round(f64 x)
 f64    fmod(f64 x, f64 y) hypot(f64 x, f64 y) erf(f64 x) erfc(f64 x)
 f64    tgamma(f64 x) lgamma(f64 x)</code></pre>
-      <nav class="chapter-nav"><a href="../appendix-b-built-in-functions/index.html">← Previous</a><a href="../appendix-e-collections/index.html">Next →</a></nav>
+      <nav class="chapter-nav"><a href="../../textbook/appendix-b-built-in-functions/index.html">← Previous</a><a href="../../textbook/appendix-e-collections/index.html">Next →</a></nav>
     </article>
   </main>
 </body>

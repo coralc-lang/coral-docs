@@ -68,10 +68,10 @@ Hard requirements, per LSP 3.18:
 
 - `initialize` **must** carry `protocolVersion`, `processId`, `rootUri`, and
   `capabilities`. `rootUri` may be `null` (single-file session); the server
-  then anchors analysis to the opened document's own directory — see
+  then anchors analysis to the opened document's own directory, see
   [§3b Standalone files](#3b-standalone-files).
 - Before responding to `initialize`, the server must not send any request or
-  notification — with one exception: `window/showMessage`,
+  notification, with one exception: `window/showMessage`,
   `window/logMessage`, `window/showMessageRequest`, `telemetry/event`, and
   `$/progress` are permitted while `initialize` is in flight.
 - A request received before `initialize` must be answered with error
@@ -84,7 +84,7 @@ Hard requirements, per LSP 3.18:
 - Exit code **0** if `shutdown` was received, **1** otherwise. On stdin EOF the
   server should exit cleanly.
 
-### `initialize` — client → server
+### `initialize`, client → server
 
 ```jsonc
 {
@@ -102,7 +102,7 @@ Hard requirements, per LSP 3.18:
 }
 ```
 
-### `initialize` — server → client
+### `initialize`, server → client
 
 ```jsonc
 {
@@ -124,7 +124,7 @@ neither implements incremental sync.
 
 Resolution order, first hit wins. Both extensions implement this identically.
 
-1. **Explicit setting** — `coral.languageServer.path` (VS Code) or
+1. **Explicit setting**, `coral.languageServer.path` (VS Code) or
    `language_servers.coral.path` (Zed). Absolute or `~`-prefixed.
 2. **`CORALC`** environment variable.
 3. **`CORAL_HOME`** → `$CORAL_HOME/coralc[.exe]`.
@@ -174,7 +174,7 @@ whole files anyway.
 // textDocument/didOpen
 {"textDocument":{"uri":"file:///p/x.crl","languageId":"coral","version":1,"text":"…"}}
 
-// textDocument/didChange — one full-content change
+// textDocument/didChange, one full-content change
 {"textDocument":{"uri":"file:///p/x.crl","version":2},"contentChanges":[{"text":"…"}]}
 
 // textDocument/didClose
@@ -245,7 +245,7 @@ Rules:
 - `source` is `"coral"`.
 - Lines and characters are **zero-based UTF-16 code units**, not bytes.
 - The server must publish a **full set per document after every change**,
-  including an **empty array** when a document becomes clean — an empty array
+  including an **empty array** when a document becomes clean, an empty array
   is what clears the file in the editor. Silence is not "no errors".
 - Parse failures are diagnostics too. They must not abort the rest of the file;
   recover and keep going so one syntax error does not cascade.
@@ -262,7 +262,7 @@ Request:
            "position":{"line":4,"character":6}}}
 ```
 
-Response — `Hover | null`:
+Response, `Hover | null`:
 
 ```jsonc
 {
@@ -305,7 +305,7 @@ type-first this is what makes an outline readable: `T at(usize i)`, not `at`.
 
 ## 9. Coral-specific methods
 
-`coral/attributes` — every attribute understood at a position, so the editor
+`coral/attributes`, every attribute understood at a position, so the editor
 can complete inside `#[[…]]`:
 
 ```jsonc
@@ -317,7 +317,7 @@ can complete inside `#[[…]]`:
 ]}
 ```
 
-`coral/typeInfo` — the node under the cursor for the scopes/inspect
+`coral/typeInfo`, the node under the cursor for the scopes/inspect
 affordances:
 
 ```jsonc
@@ -333,7 +333,7 @@ affordances:
 This is the core of what makes Coral pleasant to edit, and it is three
 separate mechanisms. None of them work today.
 
-### Hover — the type and signature under the cursor
+### Hover, the type and signature under the cursor
 
 `Hover | null`. `null` is valid; an unimplemented feature must be `-32601`
 instead, otherwise editors will keep offering a hover that yields nothing.
@@ -351,14 +351,14 @@ Array element access. Returns `self.data[i]`.
 Contents is `MarkupContent` or an array mixing `MarkedString` and markdown.
 Both clients advertise `hover.contentFormat: ["markdown"]`.
 
-### Semantic tokens — colour by meaning, not by syntax
+### Semantic tokens, colour by meaning, not by syntax
 
 Tree-sitter knows the *shape* of `T at(usize i)`; only the compiler knows `T`
 is a type parameter and `i` is a parameter. Semantic tokens close that gap.
 This is what makes types visually distinct from values.
 
 ```jsonc
-// result: { "data": [ ... ] } — flat u32 array, 5 ints per token
+// result: { "data": [ ... ] }, flat u32 array, 5 ints per token
 {"data": [0, 0, 4, 2, 0, 5, 0, 2, 0, 5, 0, 5, 2, 0, 0]}
 ```
 
@@ -376,7 +376,7 @@ Token types and modifiers are declared in the server's initialize result:
 ```
 
 Encoding: `deltaLine`, `deltaStartChar`, `length`, `tokenType`, `tokenModifiers`
-— all relative to the previous token, sorted, non-overlapping, never spanning
+, all relative to the previous token, sorted, non-overlapping, never spanning
 lines.
 
 > **Correction.** An earlier revision said the editor never asks for semantic
@@ -386,7 +386,7 @@ lines.
 > of tree-sitter) and `"full"`. VS Code enables this automatically when the
 > server advertises the capability.
 
-### Inlay hints — inferred types inline
+### Inlay hints, inferred types inline
 
 ```jsonc
 {"label": ": T", "position": {"line": 8, "character": 20},
@@ -430,16 +430,16 @@ because declarations are type-first and the return type sits in the middle:
 
 ### Occurrences, navigation, quick fixes
 
-- `textDocument/documentHighlight` — every other occurrence of the symbol
+- `textDocument/documentHighlight`, every other occurrence of the symbol
   under the cursor (`Read`/`Write`/`Text` document highlight kinds). Cheap, and
   the most visible quality-of-life win after hover.
 - `textDocument/definition` returns `Location | Location[] | LocationLink[] | null`.
   Both clients advertise `definition.linkSupport`, which is preferred: it
   carries `originSelectionRange` so the editor can highlight the declaration
   site without a second round trip.
-- `textDocument/typeDefinition` — for Coral this is often the more useful jump:
+- `textDocument/typeDefinition`, for Coral this is often the more useful jump:
   from a `T` use to the `struct` or `variant` that defines it.
-- `textDocument/codeAction` — quick fixes for diagnostics. Coral is a good fit
+- `textDocument/codeAction`, quick fixes for diagnostics. Coral is a good fit
   because most diagnostics are mechanical (`P0002` array size, unused import).
   A fix is returned as a `WorkspaceEdit`; apply it with
   `workspace/applyEdit`, which both clients advertise support for.
@@ -495,7 +495,7 @@ advertise UTF-16 only.
 | --- | --- | --- |
 | `-32700` | ParseError | Malformed JSON on the wire |
 | `-32600` | InvalidRequest | Valid JSON, invalid JSON-RPC shape |
-| `-32601` | **MethodNotFound** | Unsupported method — **the normal "not implemented" answer** |
+| `-32601` | **MethodNotFound** | Unsupported method, **the normal "not implemented" answer** |
 | `-32602` | InvalidParams | Bad params for a known method |
 | `-32603` | InternalError | Server bug |
 | `-32002` | ServerNotInitialized | Request before `initialize` |
@@ -533,7 +533,7 @@ mature Coral server should grow into. Phases 3+ are optional refinements.
 | `textDocument/diagnostic` | pull diagnostics (3.17) | 3 | `-32601` |
 | `workspace/diagnostic` | workspace pull (3.18) | 3 | `-32601` |
 | `textDocument/selectionRange` | expand selection | 3 | `-32601` |
-| `textDocument/codeLens`, `textDocument/formatting` | not wanted | — | `-32601` by design |
+| `textDocument/codeLens`, `textDocument/formatting` | not wanted |, | `-32601` by design |
 
 `textDocument/colorProvider`, `documentLink`, and `inlineValue` are
 deliberately out of scope for Coral.
@@ -549,9 +549,9 @@ learns a feature is absent and hides the affordance. Silence is worse than
 Probed against `coralc 0.1.0` with all 51 standard requests plus 12
 notifications. The server answered every one and stayed alive, returning
 `-32601` for all 50 it does not implement. **Rejecting correctly is half the
-job** — an editor hides the affordance rather than waiting forever.
+job**, an editor hides the affordance rather than waiting forever.
 
-### Build first — the server is not usable without these
+### Build first, the server is not usable without these
 
 | Method | Why it matters for Coral |
 | --- | --- |
@@ -562,7 +562,7 @@ job** — an editor hides the affordance rather than waiting forever.
 | `textDocument/completion` + `completionItem/resolve` | The single biggest daily-use feature. |
 | `textDocument/signatureHelp` | Type-first declarations put the return type mid-signature. |
 
-### Build next — what makes it feel like a real language
+### Build next, what makes it feel like a real language
 
 | Method | Why |
 | --- | --- |
@@ -576,7 +576,7 @@ job** — an editor hides the affordance rather than waiting forever.
 | `textDocument/prepareTypeHierarchy`, `typeHierarchy/supertypes`, `typeHierarchy/subtypes` | **Coral-specific value**: `trait` and `extend` make a real type hierarchy. Cheap once resolution exists. |
 | `workspace/executeCommand` | Needed to back code actions and any command the editor surfaces. |
 | `window/workDoneProgress/create` + `$/progress` | Whole-project indexing takes real time; progress beats a frozen editor. |
-| `languageStatus` (3.18) | Compiler status in the editor status bar — "indexing", "5 errors", "no build.crlb". |
+| `languageStatus` (3.18) | Compiler status in the editor status bar, "indexing", "5 errors", "no build.crlb". |
 | `window/showMessage` / `window/logMessage` | Report fatal setup problems instead of exiting silently. |
 
 ### Build if you want the full story
@@ -585,7 +585,7 @@ job** — an editor hides the affordance rather than waiting forever.
 | --- | --- |
 | `textDocument/declaration` | Distinct from `definition`: where a symbol is *declared* vs *defined*. Coral has both. |
 | `textDocument/prepareRename` + `rename` | Safe rename with shadowing checks. |
-| `textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `outgoingCalls` | Callers/callees — valuable in a systems language. |
+| `textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `outgoingCalls` | Callers/callees, valuable in a systems language. |
 | `workspace/symbol` + `workspaceSymbol/resolve` | Project-wide symbol search. |
 | `textDocument/diagnostic` + `workspace/diagnostic` | Pull diagnostics (3.17/3.18): versioned results, `relatedInformation`, workspace-wide. |
 | `textDocument/selectionRange` | Expand selection structurally. |
@@ -637,14 +637,14 @@ live handshake (`tools/test-live-server.js`, 9/9) and the compiler-side suite
   publishes an empty set, clearing the document's markers.
 - `textDocument/publishDiagnostics` with `source: "coral"`, stable `P####` /
   `T####` codes, UTF-16 `character` offsets, and an **empty array** whenever a
-  document becomes clean — silence is not "no errors".
+  document becomes clean, silence is not "no errors".
 - **Whole-project error report**: opening any file analyzes the build entry
   (`coral.crlb`) and publishes diagnostics for every file in the import
   closure, so errors in files the open buffer never imports appear too. Files
   that stop having records are cleared on the next report.
 - `textDocument/hover` returns the markdown-typed declaration of the
   expression or symbol under the cursor. Verified for structs, fields,
-  locals, generics, `self`, imports and libc — e.g. `self` → `Arr<T, N>*`,
+  locals, generics, `self`, imports and libc, e.g. `self` → `Arr<T, N>*`,
   `data` → `T`, `val` → `T val`, `printf` → `i32 printf(const cchar* fmt, ? )`.
 - `textDocument/definition` resolves; 32 of 64 identifier positions in
   `arr.crl`.
@@ -654,7 +654,7 @@ live handshake (`tools/test-live-server.js`, 9/9) and the compiler-side suite
 
 | Gap | Detail |
 | --- | --- |
-| **Methods absent from the symbol table** | Hover **and** definition return nothing for every member declaration — `at`, `count`, `ptr`, `constPtr`, `atPtr`, `isEmpty`, `set`, `front`, `back`, `fill`, `copyTo`, `copyFrom`, `new`. Fields, locals, types and free functions all resolve, so member declarations are evidently collected separately and never registered. **Highest-leverage fix remaining:** one table unblocks hover, definition, references, documentSymbol and rename. |
+| **Methods absent from the symbol table** | Hover **and** definition return nothing for every member declaration, `at`, `count`, `ptr`, `constPtr`, `atPtr`, `isEmpty`, `set`, `front`, `back`, `fill`, `copyTo`, `copyFrom`, `new`. Fields, locals, types and free functions all resolve, so member declarations are evidently collected separately and never registered. **Highest-leverage fix remaining:** one table unblocks hover, definition, references, documentSymbol and rename. |
 | `pub` declarations unresolved | `pub void main()` returns nothing from hover; plain `fn main()` works. |
 | No `documentSymbol` | `method not found`. Outline is empty. |
 | No `references`, `completion`, `signatureHelp` | `method not found`. |
@@ -688,5 +688,5 @@ is how the method-table gap was identified. Run it after each server change.
 
 Hover does not send the optional `range` field yet. Type spellings come from
 the compiler's own type printer, so diagnostics and hover follow real
-semantics rather than a parallel grammar — there is no separate parser to
+semantics rather than a parallel grammar, there is no separate parser to
 drift.
