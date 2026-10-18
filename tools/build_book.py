@@ -304,13 +304,32 @@ def render_elements(elements):
 
 
 def render_chapter(els):
-    """Render a chapter body, wrapping the Exercises block in its own section."""
-    ex = next((i for i, e in enumerate(els) if e[0] == "h2" and e[1] == "exercises"), None)
+    """Render a chapter body, wrapping the Exercises block in its own styled section."""
+    ex = next(
+        (i for i, e in enumerate(els) if e[0] == "h2" and e[2] == "Exercises"),
+        None,
+    )
     if ex is None:
         return render_elements(els)
-    head = render_elements(els[: ex + 1])
-    body = render_elements(els[ex + 1:])
-    return f'{head}\n<section class="exercises">{body}</section>'
+    parts = [render_elements(els[: ex + 1])]
+    body = []
+    for e in els[ex + 1:]:
+        if e[0] == "ol":
+            lis = []
+            for item in e[1]:
+                m = re.match(r"^([A-Z][A-Za-z-]+)\.\s+(.*)$", item)
+                if m:
+                    lis.append(
+                        f'<li><span class="ex-label">{html.escape(m.group(1))}</span>'
+                        f'{inline(m.group(2))}</li>'
+                    )
+                else:
+                    lis.append(f"<li>{inline(item)}</li>")
+            body.append('<ol class="exercise-list">' + "".join(lis) + "</ol>")
+        else:
+            body.append(render_elements([e]))
+    parts.append('<section class="exercises">' + "".join(body) + "</section>")
+    return "\n".join(parts)
 
 
 def parse_manuscript(path, num):
