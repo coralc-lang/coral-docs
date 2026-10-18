@@ -6,72 +6,47 @@ const escapeHtml = (value) =>
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
 
-const SCRIPT_SRC = document.currentScript && document.currentScript.src;
-const TREE_SITTER_BASE = SCRIPT_SRC ? new URL("../tree-sitter/", SCRIPT_SRC).href : null;
+function tokenizeCode(raw) {
+  const patterns = [
+    ["comment", /\/\/[^\n]*|\/\*[\s\S]*?\*\//],
+    ["string", /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/],
+    ["number", /\b(?:0x[0-9a-fA-F]+|\d+\.\d+|\d+)\b/],
+    [
+      "keyword",
+      /\b(?:var|struct|enum|variant|extend|pub|static|return|fn|import|mod|new|if|else|while|for|loop|switch|def|defer|break|continue|true|false|null|println|printf|self|const|extern|trait|union|volatile|comptime|any|where|match|case)\b/,
+    ],
+    [
+      "type",
+      /\b(?:i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|f32|f64|bool|void|usize|isize|str|char|rawptr|String|Vec|Option|Result)\b/,
+    ],
+    ["function", /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\()/],
+    ["operator", /->|::|\.\.\.|[+\-*/%=<>!&|^~?:@#]/],
+    ["punctuation", /[{}()\[\];,.]/],
+  ];
 
-function captureClass(name) {
-  if (name.startsWith("comment")) return "comment";
-  if (name.startsWith("string")) return "string";
-  if (name.startsWith("number")) return "number";
-  if (name === "keyword" || name.startsWith("keyword.")) return "keyword";
-  if (name === "type" || name.startsWith("type.")) return "type";
-  if (name.startsWith("function")) return "function";
-  if (name.startsWith("operator")) return "operator";
-  return null;
+  const master = new RegExp(
+    patterns.map(([, re]) => `(${re.source})`).join("|"),
+    "gm"
+  );
+
+  let result = "";
+  let last = 0;
+  let match;
+  while ((match = master.exec(raw)) !== null) {
+    if (match.index > last) result += escapeHtml(raw.slice(last, match.index));
+    const idx = match.slice(1).findIndex((value) => value !== undefined);
+    const cls = idx >= 0 ? patterns[idx][0] : "plain";
+    result += `<span class="token ${cls}">${escapeHtml(match[0])}</span>`;
+    last = match.index + match[0].length;
+    if (match[0].length === 0) master.lastIndex += 1;
+  }
+  if (last < raw.length) result += escapeHtml(raw.slice(last));
+  return result;
 }
 
-function highlightWithTreeSitter(sitter, codeEls) {
-  codeEls.forEach((code) => {
-    const source = code.textContent || "";
-    const tree = sitter.parser.parse(source);
-    if (!tree) return;
-    const spans = [];
-    for (const capture of sitter.query.captures(tree.rootNode)) {
-      const cls = captureClass(capture.name);
-      if (!cls) continue;
-      spans.push({ start: capture.node.startIndex, end: capture.node.endIndex, cls });
-    }
-    spans.sort((a, b) => a.start - b.start || b.end - a.end);
-    let result = "";
-    let cursor = 0;
-    for (const span of spans) {
-      if (span.start < cursor) continue;
-      result += escapeHtml(source.slice(cursor, span.start));
-      result += `<span class="token ${span.cls}">${escapeHtml(source.slice(span.start, span.end))}</span>`;
-      cursor = span.end;
-    }
-    result += escapeHtml(source.slice(cursor));
-    code.innerHTML = result;
-  });
-}
-
-function loadTreeSitter() {
-  if (!TREE_SITTER_BASE) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    const runtime = document.createElement("script");
-    runtime.src = `${TREE_SITTER_BASE}tree-sitter.js`;
-    runtime.onload = () => resolve(window.TreeSitter || window.Parser || null);
-    runtime.onerror = () => resolve(null);
-    document.head.append(runtime);
-  }).then(async (Parser) => {
-    if (!Parser || typeof Parser.init !== "function") {
-      console.warn("[coral] tree-sitter runtime could not be loaded");
-      return null;
-    }
-    try {
-      await Parser.init({ locateFile: (file) => `${TREE_SITTER_BASE}${file}` });
-      const [wasm, scm] = await Promise.all([
-        fetch(`${TREE_SITTER_BASE}coral.wasm`).then((r) => r.arrayBuffer()),
-        fetch(`${TREE_SITTER_BASE}highlights.scm`).then((r) => r.text()),
-      ]);
-      const Coral = await Parser.Language.load(new Uint8Array(wasm));
-      const parser = new Parser();
-      parser.setLanguage(Coral);
-      return { parser, query: Coral.query(scm) };
-    } catch (error) {
-      console.warn("[coral] tree-sitter highlighting failed", error);
-      return null;
-    }
+function highlightCodeBlocks() {
+  document.querySelectorAll("code.language-coral").forEach((code) => {
+    code.innerHTML = tokenizeCode(code.textContent || "");
   });
 }
 
@@ -135,11 +110,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.body.append(dataScript);
   }
 
-  const codeEls = document.querySelectorAll("code.language-coral");
-  if (codeEls.length) {
-    const sitter = await loadTreeSitter();
-    if (sitter) highlightWithTreeSitter(sitter, codeEls);
-  }
+  highlightCodeBlocks();
   bindCopyButtons();
   bindSearch();
 });
