@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>7.1 · Aggregate types | The Coral Book</title>
+  <link rel="stylesheet" href="../../book.css" />
+  <script src="../../../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span>
+      <span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Chapter navigation">
+      <a href="../../index.html">Chapter 7</a>
+      <a href="../../../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Chapter 07 · Section 7.1</p>
+      <h1>Aggregate types: named and positional fields</h1>
+      <p class="lead">An aggregate puts several values together and treats them as one value. Coral has named aggregates such as structs, and the current source also demonstrates tuples, whose fields are selected by position.</p>
+      <div class="chapter-status">Tuple syntax and positional access shown in current source</div>
+
+      <section>
+        <h2>What does “aggregate” mean?</h2>
+        <p>Suppose a function needs to return two related numbers. One approach is to return them as two separate results, but a function call usually produces one result value. An aggregate solves this by packaging multiple component values together. The components keep their own types, and the aggregate gives the group one type of its own.</p>
+        <p>There are two useful ways to identify a component. A named aggregate identifies it by a field name. A tuple identifies it by its position in the sequence. Coral provides both forms in the current code sample.</p>
+      </section>
+
+      <section>
+        <h2>Struct fields have names</h2>
+        <p>In a struct, the declaration gives each component a name. The name tells a reader what the value means, and code can refer to the field by that name.</p>
+        <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Point {
+    i32 x;
+    i32 y;
+}</code></pre>
+        <p>This is a simple illustration of the familiar named-field idea: one field is <code>x</code>, and another is <code>y</code>. The names carry the meaning. The tuple equivalent below has two values in an order, but it does not give those positions semantic labels such as <code>x</code> and <code>y</code>.</p>
+      </section>
+
+      <section>
+        <h2>A tuple type lists component types in order</h2>
+        <p>The current Coral source declares a function with this return type:</p>
+        <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(i32, i32) foooo()
+{
+    return (2, 3);
+}</code></pre>
+        <p>Read <code>struct(i32, i32)</code> from left to right. It describes an aggregate with an <code>i32</code> in its first position and an <code>i32</code> in its second position. The function named <code>foooo</code> returns a value of that tuple type. Its returned value is written <code>(2, 3)</code>: first comes <code>2</code>, then <code>3</code>.</p>
+        <p>The word <code>struct</code> in this tuple-type spelling can be surprising if you expect a tuple to have a completely separate keyword. Here it introduces the tuple type form. It does not mean the parentheses contain field names; they contain component types in positional order.</p>
+      </section>
+
+      <section>
+        <h2>Tuple fields are positional</h2>
+        <p>The current program stores the returned tuple in <code>a</code> and reads its components like this:</p>
+        <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var a = foooo();
+println("({}, {})", a.1, a.2);</code></pre>
+        <p><code>a.1</code> means the first positional field of <code>a</code>; <code>a.2</code> means its second positional field. The number identifies a position, not a field that the programmer named <code>1</code> or <code>2</code>. Keep the order straight: first component, then second component.</p>
+        <p>This is useful when the order itself is small and obvious. It can also make a longer expression harder to understand: <code>result.2</code> does not explain what that component represents. When the values have domain-specific meanings that need to be clear at every use, named struct fields communicate those meanings directly.</p>
+      </section>
+
+      <section>
+        <h2>One-based positions in the shown syntax</h2>
+        <p>The source example uses <code>.1</code> and <code>.2</code> for the first and second tuple fields. That is the concrete syntax demonstrated here. Do not silently rewrite it as <code>.0</code> and <code>.1</code> based on another language's indexing convention.</p>
+        <p>The example establishes those two accesses. The complete range of tuple positions, behavior for an out-of-range position, and rules for nested tuples should each be checked against the compiler before this lesson promises them.</p>
+      </section>
+
+      <section>
+        <h2>Tuples and structs are both product-shaped</h2>
+        <p>Both forms can combine more than one component into a value. Their important difference for readers is how components are identified:</p>
+        <ul class="chapter-outline">
+          <li><strong>Struct:</strong> fields have declared names; read the name to understand the component.</li>
+          <li><strong>Tuple:</strong> fields have positions; read the order and numeric field selector.</li>
+        </ul>
+        <p>This is why neither form makes the other pointless. A short pair returned together can be convenient as a tuple. A value with durable meaning is often easier to read when its components have explicit names.</p>
+      </section>
+
+      <section>
+        <h2>How the example connects to <code>var</code></h2>
+        <p>The line <code>var a = foooo();</code> declares a local and asks the compiler to infer its type from the function result. The function signature already states that result type: <code>struct(i32, i32)</code>. So the reader can follow the type without a separate annotation at the call site.</p>
+        <p>Inference does not erase the tuple's positions. Once the value is named <code>a</code>, the sample still selects its first and second components with <code>a.1</code> and <code>a.2</code>.</p>
+      </section>
+
+      <section>
+        <h2>What changed from the old manuscript</h2>
+        <p>An older textbook passage says that Coral has no tuple types. That statement is stale: the current source sample uses a tuple return type, a tuple value, and positional field access. This lesson follows the current syntax instead of repeating that outdated sentence.</p>
+        <p>The source sample is the basis for the syntax taught here. Broader rules about tuple layout, equality, assignment, nesting, or maximum arity still need direct compiler tests before they are added as guarantees.</p>
+      </section>
+
+      <nav class="chapter-nav">
+        <a href="../../index.html">← Chapter 7</a>
+        <a href="../../../08-extensions/index.html">Chapter 8: Methods and abstraction →</a>
+      </nav>
+    </article>
+  </main>
+</body>
+</html>

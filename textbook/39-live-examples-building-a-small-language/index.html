@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 39 · Live Examples: Building a Small Language | The Coral Book</title>
+  <link rel="stylesheet" href="../book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Chapter 39</p>
+      <h1>Live Examples: Building a Small Language</h1>
+      <p class="lead">A Tokenizer, a Parser, and an Interpreter You Can Read</p>
+      <p>Every program that reads a program — a compiler, an interpreter, a linter, a config loader, the query planner inside a database — is built from the same three parts: a lexer that turns text into tokens, a parser that turns tokens into a tree, and an evaluator that walks the tree and produces a result. The parts sound like folklore, and most courses present them as a single terrifying monolith. They are not. Each is a page of code, and the whole pipeline fits in a chapter you can read in an afternoon.</p>
+<p>The language we build here is deliberately tiny. It has integer values, arithmetic, comparison, variables, <code>if</code>, <code>while</code>, <code>print</code>, and nothing else — no types, no functions, no strings, no garbage collector. That is not a limitation of the technique; it is the point. Every real language adds features to these nine sections, but it does not replace them, and the shape of a production parser is the shape of the one below with more cases in the switches. The grammar is small enough to hold in your head, which means you can trace every decision and see why it is there.</p>
+<p>The pipeline is a one-way street, and that shape is the lesson. Bytes become tokens (39.1); tokens become an abstract syntax tree (39.2, 39.3); the tree is either walked directly (39.5, 39.6, 39.7) or lowered to a flat instruction stream for a stack machine (39.8). Errors are values that ride along the whole way, carrying the source position that produced them (39.4), and at the end a read-eval-print loop wires the stages together against a real terminal (39.9). Each stage knows nothing about the ones after it: the tokenizer has never heard of a tree, and the evaluator has never seen a byte of source. That decoupling is why each stage can be tested alone.</p>
+<p>The section headings are a build order, not a menu. Read them in order the first time. The tokenizer defines the <code>TokenKind</code> enum that every later switch reuses; the AST defines the <code>Expr</code> variant that the parser constructs and the evaluator matches; the environment that variables need (39.6) is the same hash map introduced in <a href="../26-live-examples-hashing-and-sets/index.html">Chapter 26</a>. Where a section builds on an earlier declaration, the text says so, and only the new code is shown, so you are never reading the same hundred lines twice. If you want the whole thing at once, the REPL in 39.9 is the union of the parts, and its code block lays out the final assembly.</p>
+<p>A word on values. Everything in this language is an <code>i64</code>. Booleans are integers too: a comparison yields <code>1</code> for true and <code>0</code> for false, and a condition is true exactly when it is nonzero. That single decision removes the entire type-checking pass from the interpreter, because there is nothing to check. It also means division by zero has to be given a meaning by hand — we define it as <code>0</code> — rather than being caught by a checker that does not exist. The warts are worth naming because they are the same warts every hand-rolled language starts with, and the exercise is to see precisely which chapter of this book you would turn to in order to remove each one.</p>
+<p class="step-label">A note on the imports</p>
+<p>The programs use <code>import(lib) std::vec { Vec };</code> for growable arrays, <code>import(lib) std::text::string { String };</code> for owned mutable text, <code>import(lib) std::io::ios { println, print };</code> for output, <code>import(lib) std::mman { alloc, dealloc };</code> for the heap nodes of the tree, and <code>import(lib) std::collections::hashmap { HashMap };</code> for the environment of 39.6. <code>Option</code> and <code>Result</code> are in the prelude, as are <code>str</code> and the integer types. Each code block repeats the imports it needs. A <code>str</code> is a borrowed read-only view; a <code>String</code> is owned and mutable, and the REPL is careful about which one survives a line of input.</p>
+<section><h2 id="s39-1">The Tokenizer</h2></section>
+<p class="step-label">The problem</p>
+<p>Turn a string of source text into a sequence of tokens: a small tagged record per number, name, operator, or delimiter, with the source position of each so that errors can point at it later.</p>
+<p class="step-label">The idea</p>
+<p>Walk the bytes exactly once. Whitespace is skipped because it only separates tokens; a run of digits is a number; a run of letters, digits, and underscores is a name, which becomes a keyword if it happens to spell one; and every remaining byte is a one-character operator or delimiter. The output ends with a single sentinel token so the parser can always look one position ahead without checking whether it has run off the end. That sentinel is the one design decision that makes every later stage shorter.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::io::ios { println };
+
+enum TokenKind {
+    Number, Ident,
+    Plus, Minus, Star, Slash, Less, Greater,
+    LParen, RParen, LBrace, RBrace,
+    Semi, Assign,
+    If, Else, While, Print,
+    Eof,
+}
+
+// a token is a tag, a source offset, a value, and its spelling
+struct Token {
+    TokenKind kind;
+    usize pos;
+    i64 value;
+    str text;
+}
+
+// byte classifiers keep the scanner&#x27;s branches short
+bool isDigit(u8 c) { return c &gt;= &#x27;0&#x27; &amp;&amp; c &lt;= &#x27;9&#x27;; }
+
+bool isAlpha(u8 c) {
+    return (c &gt;= &#x27;a&#x27; &amp;&amp; c &lt;= &#x27;z&#x27;) || (c &gt;= &#x27;A&#x27; &amp;&amp; c &lt;= &#x27;Z&#x27;) || c == &#x27;_&#x27;;
+}
+
+bool isAlnum(u8 c) { return isAlpha(c) || isDigit(c); }
+
+void pushToken(Vec&lt;Token&gt;* out, TokenKind kind, usize pos, i64 value, str text) {
+    // text is a view into the source; nothing is copied
+    out-&gt;push(Token { .kind = kind, .pos = pos, .value = value, .text = text });
+}
+
+Vec&lt;Token&gt; tokenize(str src) {
+    Vec&lt;Token&gt; out = Vec&lt;Token&gt;::new();
+    // i is the cursor over the source bytes
+    usize i = 0;
+    // one pass of the loop produces exactly one token
+    while (i &lt; src.len) {
+        u8 c = src.at(i);
+        // whitespace separates tokens but carries no meaning of its own
+        if (c == &#x27; &#x27; || c == &#x27;\t&#x27; || c == &#x27;\n&#x27; || c == &#x27;\r&#x27;) { i += 1; continue; }
+        // a number: fold digits with Horner&#x27;s rule
+        if (isDigit(c)) {
+            usize start = i;
+            i64 value = 0;
+            // consume the whole run of digits, not just the first
+            while (i &lt; src.len &amp;&amp; isDigit(src.at(i))) {
+                value = value * 10 + (i64)(src.at(i) - &#x27;0&#x27;);
+                i += 1;
+            }
+            pushToken(&amp;out, TokenKind::Number, start, value, src.slice(start, i));
+            continue;
+        }
+        // a name, or a keyword that looks exactly like one
+        if (isAlpha(c)) {
+            usize start = i;
+            // a name runs until a byte that cannot be part of one
+            while (i &lt; src.len &amp;&amp; isAlnum(src.at(i))) i += 1;
+            str word = src.slice(start, i);
+            TokenKind kind = TokenKind::Ident;
+            // the four reserved words are recognized by spelling alone
+            if (word.equals(&quot;if&quot;)) kind = TokenKind::If;
+            else if (word.equals(&quot;else&quot;)) kind = TokenKind::Else;
+            else if (word.equals(&quot;while&quot;)) kind = TokenKind::While;
+            else if (word.equals(&quot;print&quot;)) kind = TokenKind::Print;
+            pushToken(&amp;out, kind, start, 0, word);
+            continue;
+        }
+        // every other byte is a one-character operator or delimiter
+        // the default is overwritten by whichever case matches below
+        TokenKind kind = TokenKind::Eof;
+        switch (c) {
+            &#x27;+&#x27; =&gt; kind = TokenKind::Plus,
+            &#x27;-&#x27; =&gt; kind = TokenKind::Minus,
+            &#x27;*&#x27; =&gt; kind = TokenKind::Star,
+            &#x27;/&#x27; =&gt; kind = TokenKind::Slash,
+            &#x27;&lt;&#x27; =&gt; kind = TokenKind::Less,
+            &#x27;&gt;&#x27; =&gt; kind = TokenKind::Greater,
+            &#x27;(&#x27; =&gt; kind = TokenKind::LParen,
+            &#x27;)&#x27; =&gt; kind = TokenKind::RParen,
+            &#x27;{&#x27; =&gt; kind = TokenKind::LBrace,
+            &#x27;}&#x27; =&gt; kind = TokenKind::RBrace,
+            &#x27;;&#x27; =&gt; kind = TokenKind::Semi,
+            &#x27;=&#x27; =&gt; kind = TokenKind::Assign,
+            // an unknown byte is skipped: this is a tokenizer, not a checker
+            else =&gt; { i += 1; continue; },
+        }
+        // record the operator at its own byte, then step past it
+        pushToken(&amp;out, kind, i, 0, src.slice(i, i + 1));
+        i += 1;
+    }
+    // the End Of File sentinel never has a real position past the source
+    pushToken(&amp;out, TokenKind::Eof, src.len, 0, &quot;&quot;);
+    return out;
+}
+
+str kindName(TokenKind k) {
+    // a printable name, used for diagnostics and for this demo
+    switch (k) {
+        TokenKind::Number  =&gt; return &quot;Number&quot;,
+        TokenKind::Ident   =&gt; return &quot;Ident&quot;,
+        TokenKind::Plus    =&gt; return &quot;Plus&quot;,
+        TokenKind::Minus   =&gt; return &quot;Minus&quot;,
+        TokenKind::Star    =&gt; return &quot;Star&quot;,
+        TokenKind::Slash   =&gt; return &quot;Slash&quot;,
+        TokenKind::Less    =&gt; return &quot;Less&quot;,
+        TokenKind::Greater =&gt; return &quot;Greater&quot;,
+        TokenKind::LParen  =&gt; return &quot;LParen&quot;,
+        TokenKind::RParen  =&gt; return &quot;RParen&quot;,
+        TokenKind::LBrace  =&gt; return &quot;LBrace&quot;,
+        TokenKind::RBrace  =&gt; return &quot;RBrace&quot;,
+        TokenKind::Semi    =&gt; return &quot;Semi&quot;,
+        TokenKind::Assign  =&gt; return &quot;Assign&quot;,
+        TokenKind::If      =&gt; return &quot;If&quot;,
+        TokenKind::Else    =&gt; return &quot;Else&quot;,
+        TokenKind::While   =&gt; return &quot;While&quot;,
+        TokenKind::Print   =&gt; return &quot;Print&quot;,
+        TokenKind::Eof     =&gt; return &quot;Eof&quot;,
+    }
+}
+
+void main() {
+    str src = &quot;x = 1 + 2*3; if x &lt; 10 { print x; }&quot;;
+    Vec&lt;Token&gt; toks = tokenize(src);
+    for (usize i = 0; i &lt; toks.count(); i += 1) {
+        Token t = toks.at(i);
+        // the text column is the exact slice the token covers
+        println(&quot;{} {}&quot;, kindName(t.kind), t.text);
+    }
+}</code></pre>
+<p>Every token keeps a <code>str</code> rather than a copied <code>String</code>, because the source outlives the parsing of it and copying each lexeme would be pure waste; the parser reads <code>t.text</code> as long as it still holds the source, which is exactly the lifetime rule from <a href="../10-object-oriented-programming/index.html">Chapter 10</a>. The <code>pos</code> is the offset of the token's first byte, and it is what an error message will print as a column. The <code>Eof</code> sentinel is appended unconditionally, so an empty source produces a one-token vector and the parser's lookahead is total.</p>
+<p class="step-label">Cost and notes</p>
+<p>Time is O(n): each byte is consumed by exactly one branch, and no byte is ever examined twice. Space is O(t) for the tokens plus the source, which is not copied. The class of tokenizer that reads one character and then decides is called a single-pass scanner, and it is why compilers are fast at this stage — lexing a megabyte is a memory-bandwidth problem, not a compute problem. A production lexer adds maximal-munch for multi-character operators (<code>==</code>, <code>&lt;=</code>, <code>&amp;&amp;</code>), number literals in several bases, and string literals with escapes; each is one more <code>while</code> loop at the top, not a new architecture.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>An empty source yields exactly one token, the sentinel, and <code>main</code>'s loop prints it as <code>Eof</code> with empty text, which is correct. A number too large for <code>i64</code> wraps silently in the <code>value * 10 + digit</code> step; a real lexer checks for overflow and reports it, which is the same overflow discipline as <a href="../03-operators-and-expressions/index.html">Chapter 3</a>. An unknown byte such as <code>@</code> is skipped rather than diagnosed, so the tokenizer can never fail — that is a deliberate simplification, and 39.4 puts the diagnosis where it belongs, in the parser, which is the first stage that knows the grammar. The variation worth trying is maximal munch: before falling back to single characters, peek at the next byte and, if the pair spells <code>&lt;=</code> or <code>==</code>, emit one two-character token instead of two single ones.</p>
+<section><h2 id="s39-2">The AST as a Variant</h2></section>
+<p class="step-label">The problem</p>
+<p>Represent a parsed expression as data the evaluator can walk: numbers, variable references, negation, and binary operations, where each operation holds two sub-expressions that may themselves be operations.</p>
+<p class="step-label">The idea</p>
+<p>This is a variant from <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>, and the self-reference is the whole story. An expression is one of four cases, and two of those cases point back at more expressions. The pointers are not an optimization; they are what makes the type finite, because a variant that contained whole <code>Expr</code> values inside <code>Expr</code> would be asking the compiler to size a box in terms of itself. Heap pointers break the circle, and the <code>alloc</code>/<code>dealloc</code> pair from <a href="../28-live-examples-recursion-backtracking-and-trees/index.html">Chapter 28</a>'s trees frees it again.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println, print };
+
+enum Op { Add, Sub, Mul, Div, Less, Greater }
+
+variant Expr {
+    Num { i64 value; }
+    Var { str name; }
+    Neg { Expr* operand; }
+    Bin { Op op; Expr* left; Expr* right; }
+}
+
+Expr* mkNum(i64 value) {
+    // one node per allocation; the tag records which case is live
+    Expr* e = alloc&lt;Expr&gt;(1);
+    *e = Expr::Num { .value = value };
+    return e;
+}
+
+Expr* mkVar(str name) {
+    // the name is a view into the source, not a copy
+    Expr* e = alloc&lt;Expr&gt;(1);
+    *e = Expr::Var { .name = name };
+    return e;
+}
+
+Expr* mkNeg(Expr* operand) {
+    // negation holds a single child pointer
+    Expr* e = alloc&lt;Expr&gt;(1);
+    *e = Expr::Neg { .operand = operand };
+    return e;
+}
+
+Expr* mkBin(Op op, Expr* left, Expr* right) {
+    // a binary node is the only case with two children
+    Expr* e = alloc&lt;Expr&gt;(1);
+    *e = Expr::Bin { .op = op, .left = left, .right = right };
+    return e;
+}
+
+str opName(Op op) {
+    // the symbol, for printing a tree back out
+    switch (op) {
+        Op::Add =&gt; return &quot;+&quot;,
+        Op::Sub =&gt; return &quot;-&quot;,
+        Op::Mul =&gt; return &quot;*&quot;,
+        Op::Div =&gt; return &quot;/&quot;,
+        Op::Less =&gt; return &quot;&lt;&quot;,
+        Op::Greater =&gt; return &quot;&gt;&quot;,
+    }
+}
+
+void show(Expr* e) {
+    // copy the variant out so its fields are bound by the switch
+    Expr node = *e;
+    switch (node) {
+        Expr::Num { value } =&gt; print(&quot;{}&quot;, value),
+        Expr::Var { name } =&gt; print(&quot;{}&quot;, name),
+        Expr::Neg { operand } =&gt; { print(&quot;(- &quot;); show(operand); print(&quot;)&quot;); },
+        Expr::Bin { op, left, right } =&gt; {
+            // fully parenthesized so grouping is unambiguous
+            print(&quot;(&quot;);
+            show(left);
+            print(&quot; {} &quot;, opName(op));
+            show(right);
+            print(&quot;)&quot;);
+        },
+    }
+}
+
+// deallocate bottom-up: children before the parent that points at them
+void freeExpr(Expr* e) {
+    Expr node = *e;
+    switch (node) {
+        // leaves own nothing beneath them
+        Expr::Num | Expr::Var =&gt; {},
+        Expr::Neg { operand } =&gt; freeExpr(operand),
+        Expr::Bin { left, right } =&gt; { freeExpr(left); freeExpr(right); },
+    }
+    // children are freed first, so the parent&#x27;s pointers are dead here
+    dealloc&lt;Expr&gt;(e);
+}
+
+void main() {
+    // 1 + 2 * 3, built by hand for now; the parser comes next
+    Expr* e = mkBin(Op::Add, mkNum(1), mkBin(Op::Mul, mkNum(2), mkNum(3)));
+    // the printed form should read (+ 1 (* 2 3))
+    show(e);
+    println(&quot;&quot;);
+    freeExpr(e);
+}</code></pre>
+<p>The <code>show</code> function is the tree printed back in fully parenthesized form, and reading its output is how you confirm that later parsing produced the tree you meant: <code>(+ 1 (<em> 2 3))</code> is different from <code>(</em> (+ 1 2) 3)</code>, and the parentheses make the difference visible. <code>freeExpr</code> is a postorder deallocation, exactly the <code>freeTree</code> from <a href="../28-live-examples-recursion-backtracking-and-trees/index.html">Chapter 28</a>, because a parent's pointers are the only route to its children and they must be followed before the parent's own storage is returned.</p>
+<p class="step-label">Cost and notes</p>
+<p>Construction is O(1) per node. <code>show</code> and <code>freeExpr</code> are both O(n) in the number of nodes, because each visits every node once. A tree of n nodes uses O(n) heap and O(h) stack, where h is the depth, so a right-leaning chain of a million additions would recurse a million frames deep — the same stack-depth warning as every recursive tree walk in this book. There is no sharing and no cycle: every node is allocated once and freed once.</p>
+<p class="step-label">Edge cases and variations</p>
+<p><code>freeExpr</code> on a <code>Num</code> or <code>Var</code> frees only the node, because the leaf holds no owned storage — the <code>str</code> name is a view, not an allocation, so there is nothing else to release. Freeing <code>null</code> is not supported and never happens, because constructors never return null. The variation that matters for the next section is to add cases: a <code>Call { str name; Vec&lt;Expr*&gt; args; }</code> for functions, or <code>Index</code> for arrays. Each new case makes the switches in <code>show</code>, <code>freeExpr</code>, and the evaluator stop compiling until they handle it, which is the exhaustiveness guarantee of <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> doing real work.</p>
+<section><h2 id="s39-3">A Recursive-Descent Parser with Precedence</h2></section>
+<p class="step-label">The problem</p>
+<p>Turn the flat token vector into a tree that respects operator precedence: <code>1 + 2 <em> 3</code> must group as <code>1 + (2 </em> 3)</code>, and subtraction must be left-associative so <code>1 - 2 - 3</code> is <code>(1 - 2) - 3</code>.</p>
+<p class="step-label">The idea</p>
+<p>Write one function per precedence level, and have each level call the tighter level for its operands. The loosest level is comparison, which calls addition, which calls multiplication, which calls unary negation, which calls the atoms. Multiplication loops while it sees <code><em></code> or <code>/</code>, so it swallows all the <code></em></code>s before returning to addition — that is where precedence comes from. The loop, not recursion, is what makes each level left-associative. This is recursive descent, and the grammar and the code have the same shape.</p>
+<p class="step-label">The implementation</p>
+<p>This builds on the <code>Token</code>/<code>TokenKind</code> definitions of 39.1 and the <code>Expr</code>, <code>Op</code>, and <code>mk*</code> constructors of 39.2. Only the parser is new.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::io::ios { println };
+
+struct Parser {
+    Vec&lt;Token&gt; toks;
+    usize pos;
+}
+
+// peek never advances; every level looks before it consumes
+Token peek(Parser* p) { return p-&gt;toks.at(p-&gt;pos); }
+
+Token advance(Parser* p) {
+    Token t = p-&gt;toks.at(p-&gt;pos);
+    // the Eof sentinel guarantees advance can never run off the end
+    if (p-&gt;pos + 1 &lt; p-&gt;toks.count()) p-&gt;pos += 1;
+    return t;
+}
+
+// check combines peek and a comparison; it never consumes
+bool check(Parser* p, TokenKind k) { return peek(p).kind == k; }
+
+// operator tokens become the tree operators of the AST
+Op toOp(TokenKind k) {
+    switch (k) {
+        TokenKind::Plus =&gt; return Op::Add,
+        TokenKind::Minus =&gt; return Op::Sub,
+        TokenKind::Star =&gt; return Op::Mul,
+        TokenKind::Slash =&gt; return Op::Div,
+        TokenKind::Less =&gt; return Op::Less,
+        TokenKind::Greater =&gt; return Op::Greater,
+        // reached only for tokens each level has already accepted
+        else =&gt; return Op::Add,
+    }
+}
+
+// the precedence chain: loosest at the top, atoms at the bottom
+Expr* parseExpr(Parser* p) { return parseComparison(p); }
+
+Expr* parseComparison(Parser* p) {
+    Expr* left = parseAddSub(p);
+    // comparison is the loosest level, so it is parsed first
+    while (check(p, TokenKind::Less) || check(p, TokenKind::Greater)) {
+        Token opTok = advance(p);
+        Expr* right = parseAddSub(p);
+        left = mkBin(toOp(opTok.kind), left, right);
+    }
+    return left;
+}
+
+Expr* parseAddSub(Parser* p) {
+    Expr* left = parseMulDiv(p);
+    // the loop folds left, which is what makes a - b - c group left
+    while (check(p, TokenKind::Plus) || check(p, TokenKind::Minus)) {
+        Token opTok = advance(p);
+        Expr* right = parseMulDiv(p);
+        left = mkBin(toOp(opTok.kind), left, right);
+    }
+    return left;
+}
+
+Expr* parseMulDiv(Parser* p) {
+    Expr* left = parseUnary(p);
+    // multiplying binds tighter than adding, so this level runs first
+    while (check(p, TokenKind::Star) || check(p, TokenKind::Slash)) {
+        Token opTok = advance(p);
+        Expr* right = parseUnary(p);
+        left = mkBin(toOp(opTok.kind), left, right);
+    }
+    return left;
+}
+
+Expr* parseUnary(Parser* p) {
+    // unary minus binds tighter than any binary operator
+    if (check(p, TokenKind::Minus)) {
+        advance(p);
+        // recursion makes --x and -x both legal, unlike the loop levels
+        return mkNeg(parseUnary(p));
+    }
+    return parsePrimary(p);
+}
+
+Expr* parsePrimary(Parser* p) {
+    Token t = peek(p);
+    switch (t.kind) {
+        TokenKind::Number =&gt; { advance(p); return mkNum(t.value); },
+        TokenKind::Ident =&gt; { advance(p); return mkVar(t.text); },
+        TokenKind::LParen =&gt; {
+            // parentheses re-enter at the loosest level
+            advance(p);
+            Expr* inner = parseExpr(p);
+            if (check(p, TokenKind::RParen)) advance(p);
+            return inner;
+        },
+        // an unexpected token becomes a zero, for now
+        else =&gt; { advance(p); return mkNum(0); },
+    }
+}
+
+void main() {
+    str src = &quot;1 + 2 * 3 - 4 &lt; 2 * -5&quot;;
+    Parser p = Parser { .toks = tokenize(src), .pos = 0 };
+    Expr* e = parseExpr(&amp;p);
+    // the tree prints with precedence made explicit
+    show(e);
+    println(&quot;&quot;);
+    freeExpr(e);
+}</code></pre>
+<p>The one non-obvious move is that <code>parseComparison</code> calls <code>parseAddSub</code> for both sides, not <code>parseComparison</code>. That asymmetry — operands always come from a strictly tighter level, never the same level — is what stops left recursion, the infinite regress a grammar like <code>expr := expr '+' expr</code> would cause. The <code>while</code> loops then handle repetition without recursion. Read the four levels as one idea repeated with different operators, and the precedence table of <a href="../03-operators-and-expressions/index.html">Chapter 3</a> is suddenly a stack of functions.</p>
+<p class="step-label">Cost and notes</p>
+<p>Parsing is O(t) in the number of tokens: every token is consumed by exactly one <code>advance</code>, and the lookahead never backtracks. The recursion depth is bounded by the nesting depth of the expression, not its length, because each level returns before the next token is consumed. Recursive descent is the parser you write when the grammar is small; for larger grammars the same code grows to dozens of levels or gives way to a table-driven parser, but the shape — a function per precedence, a loop per repetition operator — never goes away.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>The input <code>1 + 2 <em> 3 - 4 &lt; 2 </em> -5</code> parses as <code>((1 + (2 <em> 3)) - 4) &lt; (2 </em> (-5))</code>, and printing it is the proof. A missing closing parenthesis is silently accepted: <code>(1 + 2</code> returns the tree for <code>1 + 2</code> because of the <code>if (check(...)) advance(p)</code> guard, which is a bug we fix properly in 39.4. An unexpected token yields a zero node rather than an error, so the parser always returns a tree and never fails — convenient here, wrong in production, and the reason errors need their own section. The variation to try is a precedence table: a single <code>parseBinary(minPrec)</code> that loops while <code>precedence(peek.kind) &gt; minPrec</code>, which collapses four functions into one and is the version real parsers use.</p>
+<section><h2 id="s39-4">Errors That Carry a Position</h2></section>
+<p class="step-label">The problem</p>
+<p>When the input is not a valid program, report where and why, instead of silently substituting a zero or dropping a token. The report must point at a byte offset in the original source.</p>
+<p class="step-label">The idea</p>
+<p>Make the error a value, not an exception: a <code>ParseError</code> variant that carries a message and a position, stored in the parser. Every parse function keeps going after it records an error, so a single run can report the first problem without the code being littered with early returns. The first error wins, because later errors are usually consequences of the first. At the top, a <code>Result</code> carries either the tree or the error out to the caller, following the explicit propagation discipline of <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>.</p>
+<p class="step-label">The implementation</p>
+<p>This adds error state to the parser of 39.3 and changes the entry point; the tokenizer and tree are unchanged.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::result { Result };
+import(lib) std::io::ios { println };
+
+// errors are values, not exceptions: each one carries where it happened
+variant ParseError {
+    Unexpected { str what; usize pos; }
+    TrailingTokens { usize pos; }
+}
+
+struct Parser {
+    Vec&lt;Token&gt; toks;
+    usize pos;
+    // failed latches once, so parse can report and still keep going
+    bool failed;
+    ParseError err;
+}
+
+void fail(Parser* p, str what, usize pos) {
+    // keep the first error; later ones are consequences of it
+    if (p-&gt;failed) return;
+    p-&gt;failed = true;
+    p-&gt;err = ParseError::Unexpected { .what = what, .pos = pos };
+}
+
+// expect consumes the wanted token, or reports and keeps going
+Token expect(Parser* p, TokenKind k, str what) {
+    if (check(p, k)) return advance(p);
+    Token t = peek(p);
+    fail(p, what, t.pos);
+    // return the offending token so callers can keep making progress
+    return t;
+}
+
+Expr* parsePrimary(Parser* p) {
+    Token t = peek(p);
+    switch (t.kind) {
+        // a number&#x27;s digits were already folded to i64 by the lexer
+        TokenKind::Number =&gt; { advance(p); return mkNum(t.value); },
+        TokenKind::Ident =&gt; { advance(p); return mkVar(t.text); },
+        TokenKind::LParen =&gt; {
+            advance(p);
+            Expr* inner = parseExpr(p);
+            expect(p, TokenKind::RParen, &quot;expected &#x27;)&#x27;&quot;);
+            return inner;
+        },
+        else =&gt; { fail(p, &quot;expected an expression&quot;, t.pos); advance(p); return mkNum(0); },
+    }
+}
+
+Result&lt;Expr*, ParseError&gt; parse(str src) {
+    // err is initialized to a harmless value; failed gates its use
+    Parser p = Parser {
+        .toks = tokenize(src), .pos = 0, .failed = false,
+        .err = ParseError::TrailingTokens { .pos = 0 }
+    };
+    Expr* e = parseExpr(&amp;p);
+    // any token left before the sentinel is input the grammar did not use
+    if (!p.failed &amp;&amp; !check(&amp;p, TokenKind::Eof)) {
+        p.failed = true;
+        p.err = ParseError::TrailingTokens { .pos = peek(&amp;p).pos };
+    }
+    if (p.failed) return Result&lt;Expr*, ParseError&gt;::Err { .error = p.err };
+    return Result&lt;Expr*, ParseError&gt;::Ok { .value = e };
+}
+
+void report(ParseError e) {
+    // one arm per failure case, so nothing is forgotten
+    switch (e) {
+        ParseError::Unexpected { what, pos } =&gt; println(&quot;error at {}: {}&quot;, pos, what),
+        ParseError::TrailingTokens { pos } =&gt; println(&quot;error at {}: unexpected extra tokens&quot;, pos),
+    }
+}
+
+void main() {
+    str src = &quot;1 + * 3&quot;;
+    Result&lt;Expr*, ParseError&gt; r = parse(src);
+    // explicit propagation: handle the Err before unwrapping
+    if (r.isErr()) {
+        report(r.unwrapErr());
+        return;
+    }
+    Expr* e = r.unwrap();
+    show(e);
+    println(&quot;&quot;);
+    freeExpr(e);
+}</code></pre>
+<p>The design decision worth naming is that <code>fail</code> records only the first error and then ignores every later one. Without that guard, a parser that recovers and continues can pile up dozens of cascading messages, all of them symptoms of the one real mistake. With it, the message points at the first thing that was wrong, which is almost always the thing the programmer needs to see. The <code>Result&lt;Expr*, ParseError&gt;</code> never holds a null tree and an error at once; the two cases are mutually exclusive by construction.</p>
+<p class="step-label">Cost and notes</p>
+<p>Error handling adds constant work per token and does not change the O(t) bound, because <code>fail</code> is O(1) and <code>expect</code> replaces the checks the parser already made. The error value is small — a tag, a view, and an offset — so returning it by value through <code>Result</code> costs nothing meaningful. The pattern of "record the first failure, keep going, check at the top" is exactly how production parsers batch diagnostics, though the good ones keep a list of errors rather than just the first, and resume at a synchronization point such as the next semicolon.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>An empty source parses to <code>Err TrailingTokens</code> rather than a tree, because the first token is the sentinel and <code>parsePrimary</code> reports "expected an expression" at position zero. A stray closing parenthesis or a trailing operator is caught by <code>TrailingTokens</code> at the position of the leftover token. The <code>else</code> arm of <code>toOp</code> returning <code>Op::Add</code> is now defensible in a new way: it is only reachable if the precedence chain already accepted the token, so it never fires. The variation is error recovery with a synchronization token: on a failure, skip tokens until the next <code>;</code>, discard the partial statement, and continue, so one run reports every avoidable mistake instead of only the first.</p>
+<section><h2 id="s39-5">A Tree-Walking Evaluator</h2></section>
+<p class="step-label">The problem</p>
+<p>Given a tree from 39.2, compute its integer value by walking it, handling arithmetic, comparison, and negation.</p>
+<p class="step-label">The idea</p>
+<p>The evaluator is a recursion whose structure mirrors the tree's. A number evaluates to itself; a negation evaluates its operand and negates; a binary node evaluates both children and applies the operator. Comparisons yield <code>1</code> or <code>0</code>, so the entire language has one value type and no coercion rules. This is the smallest possible interpreter — a handful of lines — and the interesting choices are all about what to do at the boundaries, such as division by zero.</p>
+<p class="step-label">The implementation</p>
+<p>The tree and constructors come from 39.2; only <code>eval</code> and <code>main</code> are new.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println };
+
+i64 eval(Expr* e) {
+    // bind the variant so its fields are visible to the arms
+    Expr node = *e;
+    switch (node) {
+        Expr::Num { value } =&gt; return value,
+        // no environment yet: every name is zero
+        Expr::Var { name } =&gt; return 0,
+        Expr::Neg { operand } =&gt; return -eval(operand),
+        Expr::Bin { op, left, right } =&gt; {
+            // evaluate children first: this is a postorder walk
+            i64 l = eval(left);
+            i64 r = eval(right);
+            switch (op) {
+                // each arm turns two integers into one
+                Op::Add =&gt; return l + r,
+                Op::Sub =&gt; return l - r,
+                Op::Mul =&gt; return l * r,
+                // division by zero has no integer answer; define it as 0
+                Op::Div =&gt; return r == 0 ? 0 : l / r,
+                Op::Less =&gt; return l &lt; r ? 1 : 0,
+                Op::Greater =&gt; return l &gt; r ? 1 : 0,
+            }
+        },
+    }
+}
+
+void main() {
+    // (1 + 2) * (3 - 4) is 3 * -1, which is -3
+    Expr* e = mkBin(Op::Mul,
+        mkBin(Op::Add, mkNum(1), mkNum(2)),
+        mkBin(Op::Sub, mkNum(3), mkNum(4)));
+    // show the tree, then its value, on one line
+    show(e);
+    println(&quot; = {}&quot;, eval(e));
+    freeExpr(e);
+}</code></pre>
+<p>The tree-walking interpreter is the reference implementation every faster engine is measured against. It is slow for a reason worth understanding: the recursion touches the heap once per node, and the same operator is rediscovered by a switch at runtime that a compiler would have resolved at build time. That gap — between interpreting a tree and compiling it once to instructions — is exactly what 39.8 closes, and seeing the two forms side by side is the clearest possible statement of what compilation buys.</p>
+<p class="step-label">Cost and notes</p>
+<p>Time is O(n) in the nodes, and each <code>eval</code> call is a function call plus a tag switch. Space is O(h) for the recursion, where h is the depth, again bounded by nesting rather than length. Because every node is visited exactly once and no node is evaluated twice, a tree of additions is linear even though it looks recursive; the exponential blowups people fear come from re-evaluating shared sub-trees, which this representation cannot express, because there is no sharing.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>Division by zero returns <code>0</code> rather than trapping, which is a choice, not a truth: a real language either faults, returns an <code>Option</code>, or moves to floating point, and <a href="../03-operators-and-expressions/index.html">Chapter 3</a> discusses all three. Integer overflow in <code>l + r</code> wraps silently, the same wart as the tokenizer's number folding. Deeply left-nested input recurses proportionally to depth and can overflow the stack. The variation worth writing is to have <code>eval</code> return <code>Result&lt;i64, EvalError&gt;</code> with a <code>DivisionByZero</code> case, which turns the undefined divide from a silent zero into a value the caller must confront — the discipline of 39.4 applied to runtime rather than parse-time errors.</p>
+<section><h2 id="s39-6">Variables and an Environment</h2></section>
+<p class="step-label">The problem</p>
+<p>Make names meaningful: an assignment <code>x = expr</code> must store a value under a name, and a later <code>x</code> must read it back. This also needs statements, because assignment is not an expression you can nest arbitrarily.</p>
+<p class="step-label">The idea</p>
+<p>Keep a hash map from name to value — the environment — and give the language a second tree, the statement tree, beside the expression tree. A program is a sequence of statements; <code>runStmt</code> walks them, evaluating expressions with the environment in hand. The map is <code>HashMap&lt;str, i64&gt;</code> from <a href="../26-live-examples-hashing-and-sets/index.html">Chapter 26</a>, and the key is the name as a view into the source, which is safe because the source outlives the run.</p>
+<p class="step-label">The implementation</p>
+<p>This adds the <code>Stmt</code> variant and an environment parameter threaded through evaluation; the expression tree and constructors are unchanged from 39.2.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::collections.hashmap { HashMap };
+import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println };
+
+// a program is a list of these; a statement has an effect, not a value
+variant Stmt {
+    Assign { str name; Expr* value; }
+    Print { Expr* value; }
+    ExprStmt { Expr* value; }
+}
+
+// djb2, the same hash Chapter26 uses for str keys
+usize hashStr(str s) {
+    // 5381 is the djb2 seed; any odd constant would do
+    usize h = 5381;
+    for (usize i = 0; i &lt; s.len; i += 1) {
+        h = h * 33 + (usize)s.at(i);
+    }
+    return h;
+}
+
+// equality is what disambiguates a hash collision
+bool eqStr(str a, str b) { return a.equals(b); }
+
+Stmt* mkAssign(str name, Expr* value) {
+    // the name stays a view; the source outlives the environment here
+    Stmt* s = alloc&lt;Stmt&gt;(1);
+    *s = Stmt::Assign { .name = name, .value = value };
+    return s;
+}
+
+Stmt* mkPrint(Expr* value) {
+    Stmt* s = alloc&lt;Stmt&gt;(1);
+    // printing is a statement because it is an effect
+    *s = Stmt::Print { .value = value };
+    return s;
+}
+
+Stmt* mkExprStmt(Expr* value) {
+    // an expression used only for its own value
+    Stmt* s = alloc&lt;Stmt&gt;(1);
+    *s = Stmt::ExprStmt { .value = value };
+    return s;
+}
+
+// evaluation now threads the environment through every call
+i64 eval(Expr* e, HashMap&lt;str, i64&gt;* env) {
+    Expr node = *e;
+    switch (node) {
+        Expr::Num { value } =&gt; return value,
+        // an unbound name reads as zero, so evaluation is total
+        Expr::Var { name } =&gt; return env-&gt;get(name).unwrapOr(0),
+        Expr::Neg { operand } =&gt; return -eval(operand, env),
+        Expr::Bin { op, left, right } =&gt; {
+            i64 l = eval(left, env);
+            i64 r = eval(right, env);
+            switch (op) {
+                Op::Add =&gt; return l + r,
+                Op::Sub =&gt; return l - r,
+                Op::Mul =&gt; return l * r,
+                Op::Div =&gt; return r == 0 ? 0 : l / r,
+                Op::Less =&gt; return l &lt; r ? 1 : 0,
+                Op::Greater =&gt; return l &gt; r ? 1 : 0,
+            }
+        },
+    }
+}
+
+// statements perform effects; they do not return a value
+void runStmt(Stmt* s, HashMap&lt;str, i64&gt;* env) {
+    Stmt st = *s;
+    switch (st) {
+        Stmt::Assign { name, value } =&gt; {
+            // the insert result is ignored: i64 values cannot fail to store
+            env-&gt;insert(name, eval(value, env));
+        },
+        Stmt::Print { value } =&gt; println(&quot;{}&quot;, eval(value, env)),
+        Stmt::ExprStmt { value } =&gt; eval(value, env),
+    }
+}
+
+void main() {
+    HashMap&lt;str, i64&gt; env = HashMap&lt;str, i64&gt;::new(hashStr, eqStr);
+    // the backing store is a plain vector of statement pointers
+    Vec&lt;Stmt*&gt; program = Vec&lt;Stmt*&gt;::new();
+    // x = 10; y = x * x + 5; print y;
+    program.push(mkAssign(&quot;x&quot;, mkNum(10)));
+    program.push(mkAssign(&quot;y&quot;,
+        mkBin(Op::Add, mkBin(Op::Mul, mkVar(&quot;x&quot;), mkVar(&quot;x&quot;)), mkNum(5))));
+    program.push(mkPrint(mkVar(&quot;y&quot;)));
+    // run statements in order, all sharing one environment
+    for (usize i = 0; i &lt; program.count(); i += 1) {
+        runStmt(program.at(i), &amp;env);
+    }
+    println(&quot;x = {}&quot;, env.get(&quot;x&quot;).unwrapOr(0));
+    // the map owns heap storage that must be released by hand
+    env.dispose();
+}</code></pre>
+<p>The environment is threaded as a pointer because every statement shares the same map and mutates it; the map is the one piece of state that lives outside the tree. <code>runStmt</code> being separate from <code>eval</code> is a small but real design choice: it is the moment the language stops being an expression calculator and becomes a sequence of effects, and it is why the evaluator can no longer be a pure function of the tree alone. In the next section the same split lets control flow exist, because statements can decide which statements run.</p>
+<p class="step-label">Cost and notes</p>
+<p>Each assignment and each variable read is an O(1) average-time hash operation, so a program of length p is O(p) evaluations plus O(p) map work. The map grows with the number of distinct variables, not the number of assignments, because an overwrite reuses the slot. The <code>str</code> key is safe only because the source outlives the run; the moment the source could be freed or reused, the keys would dangle, which is exactly the problem 39.9 solves with owned <code>String</code> keys.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>Reading a name before it is assigned yields <code>0</code>, not an error, because <code>unwrapOr(0)</code> supplies the missing case; a stricter language returns <code>Result</code> and forces the caller to handle the unbound variable. Reassigning <code>x</code> replaces its value, since <code>insert</code> updates in place when the key exists. The environment is disposed by hand at the end, because <code>HashMap</code>'s backing storage is not returned automatically. The variation is scope: wrap nested environments in a stack, push on entering a block, pop on leaving, and look a name up the chain of maps from innermost to outermost, which is exactly how every block-structured language from <a href="../12-tuples-and-destructuring/index.html">Chapter 12</a> onward resolves names.</p>
+<section><h2 id="s39-7">Control Flow: if and while</h2></section>
+<p class="step-label">The problem</p>
+<p>Let statements decide what runs next: <code>if</code> chooses between two blocks, and <code>while</code> repeats a block while a condition holds.</p>
+<p class="step-label">The idea</p>
+<p>Add a <code>Block</code>, which is a sequence of statements, and two new statement cases whose fields point at blocks. The evaluator reproduces the semantics directly: an <code>if</code> evaluates its condition and runs one of two blocks; a <code>while</code> re-evaluates its condition before every pass and runs the body while the condition is nonzero. Because the body is itself a list of statements and <code>runStmt</code> is recursive, nesting falls out for free — a block can contain an <code>if</code> that contains a <code>while</code>.</p>
+<p class="step-label">The implementation</p>
+<p>This extends the <code>Stmt</code> variant and <code>runStmt</code> of 39.6; the environment and expression evaluator are unchanged.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::collections.hashmap { HashMap };
+import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println };
+
+// a block is just a sequence of statements, so nesting is free
+struct Block { Vec&lt;Stmt*&gt; stmts; }
+
+variant Stmt {
+    Assign { str name; Expr* value; }
+    Print { Expr* value; }
+    ExprStmt { Expr* value; }
+    If { Expr* cond; Block* thenBody; Block* elseBody; }
+    // while has no else: either the body runs or it does not
+    While { Expr* cond; Block* body; }
+}
+
+Block* mkBlock(Vec&lt;Stmt*&gt; stmts) {
+    Block* b = alloc&lt;Block&gt;(1);
+    // ownership of the vector moves into the block
+    b-&gt;stmts = stmts;
+    return b;
+}
+
+Stmt* mkIf(Expr* cond, Block* thenBody, Block* elseBody) {
+    // a null elseBody is the &quot;no else clause&quot; case
+    Stmt* s = alloc&lt;Stmt&gt;(1);
+    *s = Stmt::If { .cond = cond, .thenBody = thenBody, .elseBody = elseBody };
+    return s;
+}
+
+Stmt* mkWhile(Expr* cond, Block* body) {
+    Stmt* s = alloc&lt;Stmt&gt;(1);
+    *s = Stmt::While { .cond = cond, .body = body };
+    return s;
+}
+
+void runBlock(Block* b, HashMap&lt;str, i64&gt;* env) {
+    // statements run left to right, sharing the environment
+    for (usize i = 0; i &lt; b-&gt;stmts.count(); i += 1) {
+        runStmt(b-&gt;stmts.at(i), env);
+    }
+}
+
+// now five cases, two of which recurse into blocks
+void runStmt(Stmt* s, HashMap&lt;str, i64&gt;* env) {
+    Stmt st = *s;
+    switch (st) {
+        Stmt::Assign { name, value } =&gt; { env-&gt;insert(name, eval(value, env)); },
+        Stmt::Print { value } =&gt; println(&quot;{}&quot;, eval(value, env)),
+        Stmt::ExprStmt { value } =&gt; eval(value, env),
+        Stmt::If { cond, thenBody, elseBody } =&gt; {
+            // a null elseBody means there was no else clause
+            if (eval(cond, env) != 0) runBlock(thenBody, env);
+            else if (elseBody != null) runBlock(elseBody, env);
+        },
+        Stmt::While { cond, body } =&gt; {
+            // re-test before every pass, so the condition can change
+            while (eval(cond, env) != 0) runBlock(body, env);
+        },
+    }
+}
+
+void main() {
+    HashMap&lt;str, i64&gt; env = HashMap&lt;str, i64&gt;::new(hashStr, eqStr);
+    Vec&lt;Stmt*&gt; program = Vec&lt;Stmt*&gt;::new();
+    // sum = 0; i = 1; while (i &lt; 6) { sum = sum + i; i = i + 1; } print sum;
+    Vec&lt;Stmt*&gt; body = Vec&lt;Stmt*&gt;::new();
+    // the loop body adds i to sum, then advances i
+    body.push(mkAssign(&quot;sum&quot;, mkBin(Op::Add, mkVar(&quot;sum&quot;), mkVar(&quot;i&quot;))));
+    body.push(mkAssign(&quot;i&quot;, mkBin(Op::Add, mkVar(&quot;i&quot;), mkNum(1))));
+    program.push(mkAssign(&quot;sum&quot;, mkNum(0)));
+    program.push(mkAssign(&quot;i&quot;, mkNum(1)));
+    program.push(mkWhile(mkBin(Op::Less, mkVar(&quot;i&quot;), mkNum(6)), mkBlock(body)));
+    program.push(mkPrint(mkVar(&quot;sum&quot;)));
+    for (usize i = 0; i &lt; program.count(); i += 1) {
+        runStmt(program.at(i), &amp;env);
+    }
+    env.dispose();
+}</code></pre>
+<p><code>runStmt</code> and <code>runBlock</code> call each other, which is mutual recursion and would need a forward declaration in some languages. Here it is written so that <code>runStmt</code> inlines the block loop rather than calling <code>runBlock</code>, keeping the recursion single-function and the definition order valid. The <code>elseBody</code> pointer is <code>null</code> when there is no <code>else</code>, and the evaluator checks it explicitly; the alternative is to make the field an <code>Option&lt;Block*&gt;</code>, which the compiler would force you to unwrap and so make forgetting impossible.</p>
+<p class="step-label">Cost and notes</p>
+<p>The interpreter's cost is the cost of the program it runs: each loop iteration costs one condition evaluation plus one block execution, and there is no compilation step to amortize. The recursion depth is the nesting depth of blocks, not the loop count, because a <code>while</code> is a loop rather than a recursive call. This is the difference between a language whose loops are cheap and one whose loops are function calls — a real difference in performance and an invisible one in meaning.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>A <code>while</code> whose condition is initially zero runs its body zero times, which is the standard and the reason the condition is tested first. An <code>if</code> with no <code>else</code> and a false condition does nothing, because the <code>elseBody</code> is null and the branch is skipped. Because conditions are integers, <code>while 1 { ... }</code> is an infinite loop with no way to break in this language; adding <code>break</code> and <code>continue</code> means giving <code>runBlock</code> a signal return rather than <code>void</code>, which is the variation to attempt. The other variation is <code>for</code>: desugar it to a <code>while</code> with an initializer block before and an increment block at the end of the body, and the interpreter does not change at all — a small, clean example of a feature implemented entirely in the parser.</p>
+<section><h2 id="s39-8">A Tiny Stack-Based Bytecode VM</h2></section>
+<p class="step-label">The problem</p>
+<p>Walking a tree is simple but slow, because every node costs a recursive call and a runtime tag switch. Compile the tree once to a flat sequence of instructions and run those instead.</p>
+<p class="step-label">The idea</p>
+<p>A stack machine: instructions push values onto a stack, and operators pop their operands and push their result. Compiling an expression is a postorder walk — emit the left subtree, emit the right subtree, then emit the operator — so that by the time an operator instruction runs, its operands are already on the stack. The tree is read once at compile time; at run time there is a loop and an array, no recursion and no tags to interpret.</p>
+<p class="step-label">The implementation</p>
+<p>The tree and constructors come from 39.2; the evaluator is replaced by a compiler and a machine.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println };
+
+// one opcode per operation, plus Push and a Halt terminator
+enum OpCode { Push, Neg, Add, Sub, Mul, Div, Less, Greater, Halt }
+
+struct Instr {
+    // arg is used only by Push; every other opcode ignores it
+    OpCode op;
+    i64 arg;
+}
+
+struct Compiler {
+    Vec&lt;Instr&gt; code;
+}
+
+void emit(Compiler* c, OpCode op, i64 arg) {
+    // append one instruction to the growing program
+    c-&gt;code.push(Instr { .op = op, .arg = arg });
+}
+
+// a tree operator and a machine opcode are different types
+OpCode opToCode(Op op) {
+    switch (op) {
+        Op::Add =&gt; return OpCode::Add,
+        Op::Sub =&gt; return OpCode::Sub,
+        Op::Mul =&gt; return OpCode::Mul,
+        Op::Div =&gt; return OpCode::Div,
+        Op::Less =&gt; return OpCode::Less,
+        Op::Greater =&gt; return OpCode::Greater,
+    }
+}
+
+void compile(Compiler* c, Expr* e) {
+    Expr node = *e;
+    switch (node) {
+        // a literal becomes a push of its own value
+        Expr::Num { value } =&gt; emit(c, OpCode::Push, value),
+        // variables are not compiled yet: they push zero
+        Expr::Var { name } =&gt; emit(c, OpCode::Push, 0),
+        Expr::Neg { operand } =&gt; { compile(c, operand); emit(c, OpCode::Neg, 0); },
+        Expr::Bin { op, left, right } =&gt; {
+            // postorder: operands first, operator last
+            compile(c, left);
+            compile(c, right);
+            emit(c, opToCode(op), 0);
+        },
+    }
+}
+
+void apply(Vec&lt;i64&gt;* stack, OpCode op) {
+    // operands come off in reverse order of how they were pushed
+    // the right operand was pushed last, so it pops first
+    i64 r = stack-&gt;pop();
+    i64 l = stack-&gt;pop();
+    switch (op) {
+        OpCode::Add =&gt; stack-&gt;push(l + r),
+        OpCode::Sub =&gt; stack-&gt;push(l - r),
+        OpCode::Mul =&gt; stack-&gt;push(l * r),
+        OpCode::Div =&gt; stack-&gt;push(r == 0 ? 0 : l / r),
+        OpCode::Less =&gt; stack-&gt;push(l &lt; r ? 1 : 0),
+        OpCode::Greater =&gt; stack-&gt;push(l &gt; r ? 1 : 0),
+        // Push, Neg, and Halt are handled by the machine, not here
+        else =&gt; stack-&gt;push(0),
+    }
+}
+
+i64 run(const Vec&lt;Instr&gt;* code) {
+    Vec&lt;i64&gt; stack = Vec&lt;i64&gt;::new();
+    // the machine is a flat array, an index, and a value stack
+    for (usize i = 0; i &lt; code-&gt;count(); i += 1) {
+        Instr in = code-&gt;at(i);
+        switch (in.op) {
+            OpCode::Push =&gt; stack.push(in.arg),
+            // unary negate needs only the top of the stack
+            OpCode::Neg =&gt; stack.push(-stack.pop()),
+            OpCode::Add | OpCode::Sub | OpCode::Mul | OpCode::Div
+                | OpCode::Less | OpCode::Greater =&gt; apply(&amp;stack, in.op),
+            OpCode::Halt =&gt; break,
+        }
+    }
+    // a well-formed program leaves exactly one value on the stack
+    return stack.pop();
+}
+
+void main() {
+    // (1 + 2 * 3) - 4 compiles to five pushes and three operators
+    Expr* e = mkBin(Op::Sub,
+        mkBin(Op::Add, mkNum(1), mkBin(Op::Mul, mkNum(2), mkNum(3))),
+        mkNum(4));
+    // compilation happens once; the machine then replays the array
+    Compiler c = Compiler { .code = Vec&lt;Instr&gt;::new() };
+    compile(&amp;c, e);
+    println(&quot;{} instructions&quot;, c.code.count());
+    println(&quot;result {}&quot;, run(&amp;c.code));
+    freeExpr(e);
+}</code></pre>
+<p>The single multi-case arm — <code>Add | Sub | Mul | Div | Less | Greater =&gt; apply(...)</code> — is the payoff of flat opcodes: six operators dispatch through one call, and adding a seventh means one new <code>OpCode</code> case and one new line in <code>apply</code>, not a new recursion. The machine has no idea it is running a tree; it has an array and an index, and that is the entire state of the interpreter between instructions. This is the same split a real compiler makes twice, first from tree to bytecode and then from bytecode to machine code, and the reason the first split is easy is that the tree already encodes the evaluation order the stack machine replays.</p>
+<p class="step-label">Cost and notes</p>
+<p>Compilation is a single O(n) postorder pass. Execution is O(k) in the number of instructions, and each instruction is a constant-time stack operation plus one array access — no recursion, no heap per step. The bytecode is O(n) in size. The win over tree-walking is the absence of per-node function calls and per-node tag dispatch, which is why even a simple bytecode VM beats an interpreter by a constant factor that grows with expression size. The loop here is a switch inside a <code>for</code>; a production VM threads the next instruction through the end of each case, a technique called direct threading, to remove the loop overhead.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>An empty program, or one whose last instruction is not <code>Halt</code>, falls off the end of the loop and returns whatever is on top of the stack, which is why a real compiler always appends <code>Halt</code>. A <code>Div</code> by zero pushes <code>0</code> through the same guard as 39.5, so the machine and the tree-walker agree by construction. Popping from an empty stack is a bug the machine does not detect; a defensive version checks the depth before every <code>pop</code> and reports a mismatch, which is also how you would validate untrusted bytecode before running it. The variation to attempt is variables: add <code>Load { usize slot; }</code> and <code>Store { usize slot; }</code> opcodes, compile variable references to slot indices resolved by a scope pass at compile time, and the same machine runs whole programs — which is exactly the step from an expression compiler to a statement compiler.</p>
+<section><h2 id="s39-9">A REPL on stdin</h2></section>
+<p class="step-label">The problem</p>
+<p>Wire the whole pipeline into a read-eval-print loop that reads a line, parses it as a statement, runs it against a persistent environment, and prints the result — the smallest complete language front end.</p>
+<p class="step-label">The idea</p>
+<p>Everything is already written: the tokenizer of 39.1, the tree of 39.2, the error-carrying parser of 39.4 extended with statement parsing, the environment of 39.6, and the evaluator. The only new problem is ownership. A REPL reuses one input buffer for every line, so a name captured during parsing would dangle the moment the next line overwrites the buffer. The environment therefore owns its keys: it stores <code>String</code>, not <code>str</code>, copying each name the first time it is stored.</p>
+<p class="step-label">The implementation</p>
+<p>This is the full assembly. It parses three kinds of statement — <code>print</code>, assignment, and a bare expression, which a REPL echoes — and leaves <code>if</code>/<code>while</code> to 39.7 as an exercise.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::text::string { String };
+import(lib) std::collections.hashmap { HashMap };
+import(lib) std::mman { alloc, dealloc };
+import(lib) std::result { Result };
+import(lib) std::io::ios { println, readLine };
+
+// the tokenizer, tree, and parser helpers are as in 39.1 through 39.6
+variant ParseError {
+    Unexpected { str what; usize pos; }
+    TrailingTokens { usize pos; }
+}
+
+// a fresh parser per line; the environment persists across lines
+struct Parser {
+    Vec&lt;Token&gt; toks;
+    usize pos;
+    // failed latches once per line; the first error is kept
+    bool failed;
+    ParseError err;
+}
+
+void fail(Parser* p, str what, usize pos) {
+    // first error wins; later ones are usually downstream symptoms
+    if (p-&gt;failed) return;
+    p-&gt;failed = true;
+    p-&gt;err = ParseError::Unexpected { .what = what, .pos = pos };
+}
+
+// expect consumes the wanted token or records an error and moves on
+Token expect(Parser* p, TokenKind k, str what) {
+    if (check(p, k)) return advance(p);
+    Token t = peek(p);
+    fail(p, what, t.pos);
+    return t;
+}
+
+// the statement grammar is deliberately small: three forms
+Stmt* parseStatement(Parser* p) {
+    // print is a keyword, so it is recognized before names
+    if (check(p, TokenKind::Print)) {
+        advance(p);
+        Expr* value = parseExpr(p);
+        expect(p, TokenKind::Semi, &quot;expected &#x27;;&#x27; after print&quot;);
+        return mkPrint(value);
+    }
+    // a leading name followed by &#x27;=&#x27; is an assignment
+    if (check(p, TokenKind::Ident)) {
+        Token name = peek(p);
+        if (p-&gt;toks.at(p-&gt;pos + 1).kind == TokenKind::Assign) {
+            advance(p);
+            advance(p);
+            Expr* value = parseExpr(p);
+            expect(p, TokenKind::Semi, &quot;expected &#x27;;&#x27; after assignment&quot;);
+            return mkAssign(name.text, value);
+        }
+    }
+    // anything else is an expression statement, which a REPL echoes
+    Expr* value = parseExpr(p);
+    expect(p, TokenKind::Semi, &quot;expected &#x27;;&#x27;&quot;);
+    return mkExprStmt(value);
+}
+
+Result&lt;Stmt*, ParseError&gt; parseLine(str src) {
+    Parser p = Parser {
+        .toks = tokenize(src), .pos = 0, .failed = false,
+        .err = ParseError::TrailingTokens { .pos = 0 }
+    };
+    Stmt* s = parseStatement(&amp;p);
+    if (!p.failed &amp;&amp; !check(&amp;p, TokenKind::Eof)) {
+        p.failed = true;
+        p.err = ParseError::TrailingTokens { .pos = peek(&amp;p).pos };
+    }
+    if (p.failed) return Result&lt;Stmt*, ParseError&gt;::Err { .error = p.err };
+    return Result&lt;Stmt*, ParseError&gt;::Ok { .value = s };
+}
+
+// the environment owns its keys, because the input line is reused
+usize hashString(String key) {
+    // hash the bytes the String owns, via a borrowed view
+    str s = key.asView();
+    usize h = 5381;
+    for (usize i = 0; i &lt; s.len; i += 1) {
+        h = h * 33 + (usize)s.at(i);
+    }
+    return h;
+}
+
+// compare contents, not pointers: two copies of &quot;x&quot; are equal
+bool eqString(String a, String b) { return a.equalsView(b.asView()); }
+
+void assign(HashMap&lt;String, i64&gt;* env, str name, i64 value) {
+    // copy the name so it survives the next readLine
+    String key = String::from(name);
+    bool existed = env-&gt;get(key).isSome();
+    env-&gt;insert(key, value);
+    // on overwrite the map keeps its old key, so this copy is redundant
+    if (existed) key.free();
+}
+
+i64 lookup(HashMap&lt;String, i64&gt;* env, str name) {
+    // the map is keyed by owned String, so build a temporary key
+    String key = String::from(name);
+    i64 v = env-&gt;get(key).unwrapOr(0);
+    // the temporary key is freed as soon as the lookup finishes
+    key.free();
+    return v;
+}
+
+// the evaluator is identical to 39.6 except for the key type
+i64 eval(Expr* e, HashMap&lt;String, i64&gt;* env) {
+    Expr node = *e;
+    switch (node) {
+        Expr::Num { value } =&gt; return value,
+        Expr::Var { name } =&gt; return lookup(env, name),
+        Expr::Neg { operand } =&gt; return -eval(operand, env),
+        Expr::Bin { op, left, right } =&gt; {
+            i64 l = eval(left, env);
+            i64 r = eval(right, env);
+            switch (op) {
+                Op::Add =&gt; return l + r,
+                Op::Sub =&gt; return l - r,
+                Op::Mul =&gt; return l * r,
+                Op::Div =&gt; return r == 0 ? 0 : l / r,
+                Op::Less =&gt; return l &lt; r ? 1 : 0,
+                Op::Greater =&gt; return l &gt; r ? 1 : 0,
+            }
+        },
+    }
+}
+
+// three statement forms in the REPL
+void runStmt(Stmt* s, HashMap&lt;String, i64&gt;* env) {
+    Stmt st = *s;
+    switch (st) {
+        Stmt::Assign { name, value } =&gt; assign(env, name, eval(value, env)),
+        // at a terminal, a print and a bare expression both show a value
+        Stmt::Print { value } =&gt; println(&quot;{}&quot;, eval(value, env)),
+        Stmt::ExprStmt { value } =&gt; println(&quot;{}&quot;, eval(value, env)),
+    }
+}
+
+void report(ParseError e) {
+    // errors report a byte offset into the current line
+    switch (e) {
+        ParseError::Unexpected { what, pos } =&gt; println(&quot;error at {}: {}&quot;, pos, what),
+        ParseError::TrailingTokens { pos } =&gt; println(&quot;error at {}: trailing tokens&quot;, pos),
+    }
+}
+
+void main() {
+    HashMap&lt;String, i64&gt; env = HashMap&lt;String, i64&gt;::new(hashString, eqString);
+    // one reused buffer holds every line the user types
+    String line = String::new();
+    println(&quot;tiny repl; type statements, ctrl-d to quit&quot;);
+    // readLine returns false only at end of input
+    while (readLine(&amp;line)) {
+        // a blank line produces no statement and no output
+        if (line.isEmpty()) continue;
+        Result&lt;Stmt*, ParseError&gt; r = parseLine(line.asView());
+        // a bad line is reported and skipped; the session continues
+        if (r.isErr()) {
+            report(r.unwrapErr());
+            continue;
+        }
+        runStmt(r.unwrap(), &amp;env);
+    }
+    line.free();
+    env.dispose();
+}</code></pre>
+<p>The ownership decision is the heart of this section. The parse tree's names are <code>str</code> views into <code>line</code>, which is correct for as long as the statement runs, because that happens before the next read. But the environment outlives the line: a variable set on line one must still read back on line fifty. So <code>assign</code> copies the name into an owned <code>String</code> that the map keeps, while <code>lookup</code> builds a temporary owned key only to satisfy the map's <code>String</code>-keyed interface and frees it immediately after. This is the borrow-versus-own split of <a href="../10-object-oriented-programming/index.html">Chapter 10</a> made concrete: the tree borrows, the environment owns, and the boundary is exactly where one lifetime ends and the other begins.</p>
+<p class="step-label">Cost and notes</p>
+<p>Each line is lexed, parsed, and run in time proportional to its length, and the environment's cost is the usual O(1) average hash operation per statement. The only new cost is the <code>String</code> copy on each assignment and each lookup; assignments are rare and lookups are short, so the copy is negligible, and it buys correctness. The REPL holds no state between lines except the environment, which is what makes it a language rather than a calculator: the same line means different things depending on what came before it.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>A blank line is skipped before parsing, so an empty statement does not report an error. A line without a trailing newline at end of input is still processed, because <code>readLine</code> returns true when it has read any bytes before hitting the end. A parse error prints its position and does not disturb the environment, so the session continues. Freeing the <code>line</code> and disposing the <code>env</code> at the end releases everything the loop built. The obvious variations are to add <code>if</code> and <code>while</code> by reusing 39.7's <code>parseStatement</code> arms, to keep a history and re-run the last statement on an empty line, and to switch the evaluator from the tree-walker to the bytecode VM of 39.8, which changes only <code>runStmt</code> and leaves the parser, the tree, and the errors entirely untouched — a clear demonstration that the stages really are independent.</p>
+<section><h2 id="exercises">Exercises</h2></section>
+<ol><li>Comprehension. Trace <code>tokenize("a1 + 12")</code> by hand and write down every token's <code>kind</code>, <code>pos</code>, and <code>text</code>. Then explain why appending the <code>Eof</code> sentinel lets <code>advance</code> drop its bounds check, and what would break if the sentinel were removed.</li><li>Precedence. Add a <code>==</code> operator that binds looser than comparison. Decide whether it is left- or right-associative, add one function to the precedence chain, and explain why the choice changes the parse of <code>a == b &lt; c</code>.</li><li>Associativity. Change <code>parseAddSub</code>'s loop to a right-recursive form so that <code>1 - 2 - 3</code> parses as <code>1 - (2 - 3)</code>, then evaluate both forms and state the value each produces. Which one matches the arithmetic you were taught, and why?</li><li>Errors. Give <code>fail</code> a list instead of a single <code>ParseError</code>, record every error, and make <code>parse</code> return the first. Then add recovery: after a failure, skip tokens to the next <code>Semi</code> and parse the following statement, so <code>1 +; 2 *; 3</code> reports two errors rather than one.</li><li>Evaluation. Rewrite <code>eval</code> to return <code>Result&lt;i64, EvalError&gt;</code> with a <code>DivisionByZero</code> case, and update <code>runStmt</code> to print the error instead of the value. What does this force the caller to confront that the <code>0</code>-on-divide version let it ignore?</li><li>Environment. Add a <code>Block</code> environment stack so that a variable assigned inside an <code>if</code> block is visible only within it. Push a map on entering a block, pop on leaving, and search from innermost to outermost. Which programs change meaning, and is that the behavior you want?</li><li>Compiler. Add <code>Load</code> and <code>Store</code> opcodes to the VM of 39.8 and a scope pass that assigns each variable an integer slot. Then compile a small program with assignments and run it, and explain where the slot resolution happens and why it cannot happen at run time.</li><li>REPL. Wrap the REPL line in a <code>try</code>-like construct — or, since Coral has none, use the <code>Result</code> discipline of <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a> — so that an evaluation-time error such as an unknown variable is reported rather than defaulting to zero. What is the smallest change to the tree or the environment that makes "unknown variable" detectable?</li><li>Design. The language has no way to stop a <code>while</code> loop from outside. Design a <code>break</code> statement, describing exactly what <code>runStmt</code> and <code>runBlock</code> must return to propagate the signal up through nested blocks, and argue why a plain <code>void</code> return cannot express it.</li><li>Meta. Re-read 39.4's <code>fail</code>. It keeps the first error and drops the rest. Find one realistic input where that discards a more informative message in favor of a worse one, and describe the recovery strategy that would report the better message first.</li></ol>
+      <nav class="chapter-nav"><a href="../38-live-examples-computational-geometry-and-simulation/index.html">← Previous</a><a href="../40-live-examples-inline-assembly-and-clobbers/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

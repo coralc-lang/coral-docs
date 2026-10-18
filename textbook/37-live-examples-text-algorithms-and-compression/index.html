@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 37 · Live Examples: Text Algorithms and Compression | The Coral Book</title>
+  <link rel="stylesheet" href="../book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Chapter 37</p>
+      <h1>Live Examples: Text Algorithms and Compression</h1>
+      <p class="lead">The Algorithms That Shrink and Match Text</p>
+      <p>Text is a sequence of bytes, and almost every interesting thing you can do with text is a clever way of walking that sequence. Compression is the art of finding repetition and naming it once; string matching is the art of finding structure without looking at every alignment; and the transform algorithms in the middle of this chapter are the bridge between the two. Run-length encoding, LZ77, and LZW are the three ideas inside nearly every general-purpose compressor, and Huffman coding is the entropy coder that sits on top of all of them. Levenshtein distance, Knuth–Morris–Pratt, the Burrows–Wheeler transform, and the suffix array are the four tools you reach for when the question is "how similar are these strings" or "where does this pattern occur." None of them is long. Each is a loop, an array, and one non-obvious move, and the move is the lesson.</p>
+<p>There is a shared vocabulary of cost that makes the rest of the chapter easy to read. A single left-to-right pass is O(n). Sorting something is O(n log n). A dynamic-programming table over one string and another is O(m × n). Building all rotations and comparing them is O(n^2) or worse, which is why the real Burrows–Wheeler code sorts suffixes instead; this chapter builds the honest O(n^2) version first because you can see what it does, and names the fast one as the variation. The heap in the Huffman section is the same <code>PriorityQueue</code> from <a href="../31-live-examples-graphs/index.html">Chapter 31</a>; the arrays are the same <code>Vec</code> from <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>. Nothing here needs a new container.</p>
+<p>A word on the alphabet. Every program in this chapter treats text as bytes, <code>str.at(i)</code> returning a <code>u8</code>, and the algorithm is correct for ASCII. For real Unicode the same algorithms run over codepoints instead of bytes, and <a href="../17-text-unicode-formatting-and-parsing/index.html">Chapter 17</a> shows how to iterate them with <code>nextCodepoint</code>; the byte version is used here because it keeps the loops honest and the indexes simple. The compression algorithms work on arbitrary bytes in any case, so a byte model is not a restriction for them, only for the matching ones.</p>
+<p class="step-label">A note on the imports</p>
+<p>The programs use <code>import(lib) std::vec { Vec };</code> for the growable arrays and <code>import(lib) std::text::string { String };</code> for owned, mutable output buffers, with <code>import(lib) std::io::ios { println };</code> for printing. The Huffman coder additionally uses <code>import(lib) std::collections::priorityqueue { PriorityQueue };</code>. Each code block repeats the imports it needs so it can be read on its own. A <code>str</code> is a borrowed, read-only view; a <code>String</code> is owned and mutable, and the chapter uses an out-parameter <code>String*</code> when a function must append to a caller's buffer.</p>
+<section><h2 id="s37-1">Run-Length Encoding</h2></section>
+<p class="step-label">The problem</p>
+<p>Encode a byte string so that runs of the same byte become compact, and decode it back losslessly.</p>
+<p class="step-label">The idea</p>
+<p>Walk the input and, at each position, measure how many times the current byte repeats before it changes. Emit that count and the byte, then jump past the run. The decoder reads a count and a byte and writes the byte that many times. This is the oldest compression scheme there is, and it is the first half of the image formats PNG uses. It wins big on data with long runs and loses on data with none, because a run of length one still costs two bytes instead of one.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::text::string { String };
+import(lib) std::io::ios { println };
+
+Vec&lt;u8&gt; rleEncode(str input) {
+    // output is a flat stream of (count, byte) records
+    Vec&lt;u8&gt; out = Vec&lt;u8&gt;::new();
+    usize i = 0;
+    // outer loop consumes exactly one run per iteration
+    while (i &lt; input.len) {
+        u8 b = input.at(i);
+        // a run always contains at least the byte we are looking at
+        usize run = 1;
+        // extend the run while bytes match, capping at 255 so the count fits one byte
+        while (i + run &lt; input.len &amp;&amp; input.at(i + run) == b &amp;&amp; run &lt; 255) {
+            run += 1;
+        }
+        // emit the count first, then the byte it repeats
+        out.push((u8)run);
+        out.push(b);
+        // skip every byte this record described
+        i += run;
+    }
+    return out;
+}
+
+String rleDecode(const Vec&lt;u8&gt;* encoded) {
+    String out = String::new();
+    usize i = 0;
+    // require both a count and a byte; a trailing lone count is dropped
+    while (i + 1 &lt; encoded-&gt;count()) {
+        u8 run = encoded-&gt;at(i);
+        u8 b = encoded-&gt;at(i + 1);
+        // replay the run by writing the byte that many times
+        for (u8 k = 0; k &lt; run; k += 1) {
+            out.pushByte(b);
+        }
+        // step over the count and the byte
+        i += 2;
+    }
+    return out;
+}
+
+void main() {
+    str sample = &quot;aaabbbcccccccd&quot;;
+    Vec&lt;u8&gt; encoded = rleEncode(sample);
+    String decoded = rleDecode(&amp;encoded);
+    println(&quot;input   {} bytes&quot;, sample.len);
+    println(&quot;encoded {} bytes&quot;, encoded.count());
+    println(&quot;decoded {}&quot;, decoded.asView());
+    println(&quot;lossless {}&quot;, decoded.asView().equals(sample));
+}</code></pre>
+<p>The encoder stores each run as a count byte followed by the value byte, so the output is a <code>Vec&lt;u8&gt;</code> rather than human-readable text; that keeps the format unambiguous, which the "count as decimal digits" alternative is not. The <code>run &lt; 255</code> guard caps a run at what one byte can hold. A run longer than 255 is simply split into several records, and the decoder never notices because it just writes counts back to back. <code>i += run</code> is what makes the encode one pass: the inner loop measured the run, and the outer loop consumes exactly it.</p>
+<p class="step-label">Cost and notes</p>
+<p>Time is O(n): each byte is examined once by whichever run owns it. Space is O(r), where r is the number of runs, and the worst case is the best case for the encoder, a string of all-equal bytes, which becomes two output bytes per 255 input bytes. The worst case for the codec is a string with no repeats at all, where the output is twice the input. RLE is a filter, not a general compressor; it is what you run before an entropy coder (36.2) so that the entropy coder sees long stretches of one symbol.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>The empty string encodes to an empty vector, and the decoder returns an empty <code>String</code>; both loops simply do not run. A run of exactly 255 is emitted in one record and the next input byte starts a fresh record, which is correct but worth tracing. A malformed encoded vector with an odd length drops the trailing count, because the decoder requires <code>i + 1 &lt; count()</code>. The variation worth trying is to make runs longer than one worth encoding: emit a literal byte alone when the run is shorter than three, and a marked (count, byte) record otherwise. That threshold is exactly the design decision inside PNG, and it turns RLE from a loss on random data into a small win.</p>
+<section><h2 id="s37-2">Huffman Coding with a Min-Heap</h2></section>
+<p class="step-label">The problem</p>
+<p>Assign a variable-length bit code to each byte so that frequent bytes get short codes and rare bytes get long ones, then use the codes to compress and decompress a string. No code may be a prefix of another, or the stream could not be decoded unambiguously.</p>
+<p class="step-label">The idea</p>
+<p>Build a binary tree bottom-up. Start with one leaf per distinct symbol, weighted by its frequency, in a min-heap keyed by weight. Repeatedly remove the two lightest nodes and join them under a new internal node whose weight is their sum, then put the new node back. When one node remains it is the root, and the path from the root to a leaf — a zero for a left turn, a one for a right turn — is that symbol's code. The join rule is what makes the average code length minimal, and it is why a heap, not a sort, is the right tool.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::text::string { String };
+import(lib) std::io::ios { println };
+import(lib) std::collections::priorityqueue { PriorityQueue };
+
+struct HNode {
+    u32 freq;
+    i32 left;
+    i32 right;
+    i32 parent;
+    u8 bit;
+    u8 symbol;
+    bool leaf;
+}
+
+struct HeapItem {
+    u32 freq;
+    i32 node;
+}
+
+bool heapLess(HeapItem a, HeapItem b) {
+    return a.freq &lt; b.freq;
+}
+
+i32 huffmanBuild(str input, Vec&lt;HNode&gt;* pool, Vec&lt;i32&gt;* leafOf) {
+    Vec&lt;u32&gt; freq = Vec&lt;u32&gt;::new();
+    // one slot per possible byte value, all counts starting at zero
+    for (usize i = 0; i &lt; 256; i += 1) freq.push(0);
+    // tally each byte in a single pass
+    for (usize i = 0; i &lt; input.len; i += 1) {
+        u8 b = input.at(i);
+        // freq[byte] counts how many times that byte occurred
+        freq.set((usize)b, freq.at((usize)b) + 1);
+    }
+    // leafOf maps a symbol to its leaf node; -1 means the symbol is unused
+    for (usize i = 0; i &lt; 256; i += 1) leafOf-&gt;push(-1);
+
+    // min-heap ordered by frequency, so the two rarest nodes pop first
+    PriorityQueue&lt;HeapItem&gt; pq = PriorityQueue&lt;HeapItem&gt;::new(heapLess);
+    for (usize s = 0; s &lt; 256; s += 1) {
+        // only symbols that actually occur become leaves
+        if (freq.at(s) &gt; 0) {
+            // a new leaf&#x27;s index is the pool&#x27;s current size
+            i32 idx = (i32)pool-&gt;count();
+            // a leaf stores its symbol and weight and has no children
+            pool-&gt;push(HNode {
+                .freq = freq.at(s), .left = -1, .right = -1, .parent = -1,
+                .bit = 0, .symbol = (u8)s, .leaf = true
+            });
+            // remember where this symbol&#x27;s leaf lives for encoding
+            leafOf-&gt;set(s, idx);
+            // the leaf enters the merge queue
+            pq.push(HeapItem { .freq = freq.at(s), .node = idx });
+        }
+    }
+
+    // merge the two lightest nodes until a single tree remains
+    while (pq.count() &gt; 1) {
+        HeapItem a = pq.pop();
+        HeapItem b = pq.pop();
+        i32 idx = (i32)pool-&gt;count();
+        // internal node&#x27;s weight is the sum of its children
+        pool-&gt;push(HNode {
+            .freq = a.freq + b.freq, .left = a.node, .right = b.node,
+            .parent = -1, .bit = 0, .symbol = 0, .leaf = false
+        });
+        // link each child back to the new parent and record its path bit
+        pool-&gt;atPtr((usize)a.node)-&gt;parent = idx;
+        pool-&gt;atPtr((usize)a.node)-&gt;bit = 0;
+        pool-&gt;atPtr((usize)b.node)-&gt;parent = idx;
+        pool-&gt;atPtr((usize)b.node)-&gt;bit = 1;
+        // reinsert the merged node with its combined weight
+        pq.push(HeapItem { .freq = a.freq + b.freq, .node = idx });
+    }
+    // empty input: no leaves were ever created
+    if (pool-&gt;count() == 0) return -1;
+    // the single remaining node is the tree root
+    return pq.pop().node;
+}
+
+String huffmanEncode(str input, const Vec&lt;HNode&gt;* pool, const Vec&lt;i32&gt;* leafOf) {
+    String out = String::new();
+    // scratch buffer reused to collect each symbol&#x27;s bits
+    Vec&lt;u8&gt; path = Vec&lt;u8&gt;::new();
+    // a lone symbol has a root that is itself a leaf and needs a special case
+    bool single = pool-&gt;count() == 1;
+    for (usize i = 0; i &lt; input.len; i += 1) {
+        // one bit per character is enough when there is only one symbol
+        if (single) { out.pushByte((u8)&#x27;0&#x27;); continue; }
+        // start the walk at this symbol&#x27;s leaf
+        i32 cur = leafOf-&gt;at((usize)input.at(i));
+        path.clear();
+        // walk up to the root, gathering bits least-significant first
+        while (pool-&gt;at((usize)cur).parent != -1) {
+            HNode nd = pool-&gt;at((usize)cur);
+            path.push(nd.bit);
+            cur = nd.parent;
+        }
+        // emit the collected bits in reverse: root direction comes first
+        isize k = (isize)path.count() - 1;
+        while (k &gt;= 0) {
+            out.pushByte((u8)(&#x27;0&#x27; + path.at((usize)k)));
+            k -= 1;
+        }
+    }
+    return out;
+}
+
+String huffmanDecode(str bits, const Vec&lt;HNode&gt;* pool, i32 root) {
+    String out = String::new();
+    if (pool-&gt;count() == 0) return out;
+    // single-symbol tree: every bit stands for that one symbol
+    if (pool-&gt;at((usize)root).leaf) {
+        u8 sym = pool-&gt;at((usize)root).symbol;
+        for (usize i = 0; i &lt; bits.len; i += 1) out.pushByte(sym);
+        return out;
+    }
+    // start each code at the root and walk down
+    i32 cur = root;
+    for (usize i = 0; i &lt; bits.len; i += 1) {
+        HNode nd = pool-&gt;at((usize)cur);
+        // a &#x27;0&#x27; turns left, anything else turns right
+        if (bits.at(i) == (u8)&#x27;0&#x27;) cur = nd.left;
+        else cur = nd.right;
+        HNode c = pool-&gt;at((usize)cur);
+        // landing on a leaf completes a symbol; reset to the root
+        if (c.leaf) {
+            out.pushByte(c.symbol);
+            cur = root;
+        }
+    }
+    return out;
+}
+
+void main() {
+    str text = &quot;this is an example of a huffman tree&quot;;
+    Vec&lt;HNode&gt; pool = Vec&lt;HNode&gt;::new();
+    Vec&lt;i32&gt; leafOf = Vec&lt;i32&gt;::new();
+    i32 root = huffmanBuild(text, &amp;pool, &amp;leafOf);
+    if (root &lt; 0) return;
+    String bits = huffmanEncode(text, &amp;pool, &amp;leafOf);
+    String back = huffmanDecode(bits.asView(), &amp;pool, root);
+    println(&quot;input   {} bytes&quot;, text.len);
+    println(&quot;encoded {} bits&quot;, bits.len);
+    println(&quot;roundtrip {}&quot;, back.asView().equals(text));
+}</code></pre>
+<p>The <code>parent</code> and <code>bit</code> fields are the trick that removes the need to store the codes themselves. When a merge happens, both children are told who their parent is and which bit reaches them, so each leaf can walk up to the root on demand. Encoding a symbol is then a walk from its leaf to the root, collecting bits into <code>path</code>, then emitting them in reverse. Decoding ignores <code>path</code> entirely and walks down from the root, following the bits, emitting a symbol and resetting whenever it lands on a leaf. The <code>single</code> guard handles the one-distinct-symbol input, whose tree is a lone leaf with no path; the code is arbitrarily "0", and decoding repeats that symbol once per bit.</p>
+<p class="step-label">Cost and notes</p>
+<p>Counting frequencies is O(n). The heap holds one entry per distinct symbol, so at most 256, and the build is O(k log k) with k the alphabet size, which is effectively constant. Encoding is O(n × depth) and decoding is O(bits). The comparison against a fixed-width encoding is the point: if the byte frequencies are skewed, the average code length approaches the entropy of the distribution, which is the theoretical floor. A uniform distribution gets almost no gain, because every symbol already carries the same information.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>An empty input returns before building, so nothing asserts on an empty heap. The single-symbol case is the one that trips naive implementations, because the root is a leaf and the usual "walk two children" logic has nothing to walk. The <code>freq</code> type is <code>u32</code>, which overflows only for inputs above four billion bytes; a production coder uses <code>u64</code> or rescales frequencies. The heap tie-break is arbitrary, so several different trees produce equally optimal code lengths, and that is fine — the decoder uses whichever tree the encoder built. The variation is canonical Huffman: instead of shipping the tree, ship only each symbol's code length in a fixed order and rebuild the tree deterministically on both sides, which is what DEFLATE and zstd actually do.</p>
+<section><h2 id="s37-3">LZ77 Sliding-Window Compression</h2></section>
+<p class="step-label">The problem</p>
+<p>Compress a string by replacing repeated substrings with a backward reference: an (offset, length) pair pointing at text that already appeared, followed by the next literal byte.</p>
+<p class="step-label">The idea</p>
+<p>Keep a window of the last <code>w</code> bytes of input. At the current position, find the longest match in the window and emit a reference to it plus the literal that broke the match. If there is no match, emit an empty reference (offset zero, length zero) and the literal alone. The window slides forward as you consume input. LZ77 is the engine inside DEFLATE, gzip, and zlib; combine it with Huffman coding of the tokens and you have the format that compressed the web.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::text::string { String };
+import(lib) std::io::ios { println };
+
+struct LzToken {
+    usize offset;
+    usize length;
+    u8 literal;
+}
+
+Vec&lt;LzToken&gt; lz77Encode(str input, usize windowSize) {
+    Vec&lt;LzToken&gt; tokens = Vec&lt;LzToken&gt;::new();
+    usize n = input.len;
+    usize pos = 0;
+    // produce one token per position, advancing pos each time
+    while (pos &lt; n) {
+        // the search window begins windowSize bytes back, or at 0
+        usize start = pos &gt; windowSize ? pos - windowSize : 0;
+        // track the longest match seen so far and how far back it starts
+        usize bestLen = 0;
+        usize bestOff = 0;
+        // try every earlier position inside the window
+        for (usize s = start; s &lt; pos; s += 1) {
+            // measure how far the candidate and current position agree
+            usize l = 0;
+            // the guard keeps the read inside the input
+            while (pos + l &lt; n &amp;&amp; input.at(s + l) == input.at(pos + l)) {
+                l += 1;
+            }
+            // a longer match replaces the previous best
+            if (l &gt; bestLen) {
+                bestLen = l;
+                bestOff = pos - s;
+            }
+            // cannot beat matching to the end of input; stop early
+            if (bestLen == n - pos) break;
+        }
+        // the literal that follows the match, or 0 if the match reached the end
+        u8 lit = pos + bestLen &lt; n ? input.at(pos + bestLen) : 0;
+        tokens.push(LzToken {
+            .offset = bestOff, .length = bestLen, .literal = lit
+        });
+        // consume the match plus its terminating literal
+        pos += bestLen + 1;
+    }
+    return tokens;
+}
+
+String lz77Decode(const Vec&lt;LzToken&gt;* tokens) {
+    String out = String::new();
+    for (usize i = 0; i &lt; tokens-&gt;count(); i += 1) {
+        LzToken t = tokens-&gt;at(i);
+        // a zero-length token means the literal stands alone
+        if (t.length &gt; 0) {
+            // offset is measured back from the current output end
+            usize from = out.len - t.offset;
+            // copy byte by byte so an overlap can read bytes just written
+            for (usize k = 0; k &lt; t.length; k += 1) {
+                out.pushByte(out.at(from + k));
+            }
+        }
+        out.pushByte(t.literal);
+    }
+    return out;
+}
+
+void main() {
+    str text = &quot;abracadabra abracadabra abracadabra&quot;;
+    Vec&lt;LzToken&gt; toks = lz77Encode(text, 16);
+    String back = lz77Decode(&amp;toks);
+    println(&quot;input  {} bytes&quot;, text.len);
+    println(&quot;tokens {}&quot;, toks.count());
+    println(&quot;roundtrip {}&quot;, back.asView().equals(text));
+}</code></pre>
+<p>The inner <code>while</code> measures a match by walking forward from candidate <code>s</code> and from the current <code>pos</code> simultaneously; it never reads past the end because of the <code>pos + l &lt; n</code> guard. Overlapping matches are allowed and are what let a match reach into bytes the decoder has not written yet, which sounds impossible but is exactly how a run like "aaaa" is encoded in one token: the decoder copies byte by byte from <code>from</code>, and each byte it copies becomes a source for the next. The token always advances <code>pos</code> by <code>bestLen + 1</code>, the plus-one being the literal that terminated the match. The decoder's <code>from = out.len - t.offset</code> is the whole of the backward reference.</p>
+<p class="step-label">Cost and notes</p>
+<p>The straightforward search tries every window position and extends each match, so it is O(n × window) comparisons, and with long matches O(n × window × maxlength). Production encoders get to O(n) with hash chains or suffix structures, and that engineering is why DEFLATE is fast. The token stream is what buys the compression: a repeated 12-byte phrase becomes one 3-field token, and the longer the repetition and the smaller the window, the better the ratio. The decoder is strictly linear and is the part that must be fast, because every consumer runs it.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>A <code>windowSize</code> of zero makes <code>start == pos</code>, so no matches are found and every token is a single literal; that is correct and a useful way to check the loop. At the end of the input <code>bestLen</code> may run to the final byte, in which case the literal is unused; writing a harmless <code>0</code> and never reading it keeps the token struct uniform. A malformed token whose <code>offset</code> exceeds <code>out.len</code> underflows in <code>out.len - t.offset</code>; a decoder reading untrusted data must validate that first. The variation is to add the lazy-match heuristic of DEFLATE: peek at the next position, and if it has a strictly longer match, emit the current position as a literal and take the longer match next. It costs one extra search per position and typically buys several percent.</p>
+<section><h2 id="s37-4">LZW Dictionary Compression</h2></section>
+<p class="step-label">The problem</p>
+<p>Compress by building the dictionary as you go. There is no window and no literal stream: each output code refers to a dictionary entry, and new entries are created from combinations the decoder has just seen, so the dictionary never has to be transmitted.</p>
+<p class="step-label">The idea</p>
+<p>Both sides start with the 256 single-byte entries, codes 0 through 255, and the next free code is 256. The encoder keeps a current string, initially the first byte. For each following byte, if the concatenation is already in the dictionary, extend the current string; otherwise emit the current string's code, add the concatenation as a new code, and restart the current string at the new byte. At the end, emit the last code. The decoder reconstructs entries on the fly, and because it creates each new entry from the previous one, it stays in lock-step with the encoder. LZW is what <code>compress</code> and GIF use.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::text::string { String };
+import(lib) std::io::ios { println };
+
+Vec&lt;i32&gt; lzwEncode(str input) {
+    Vec&lt;i32&gt; out = Vec&lt;i32&gt;::new();
+    // no input, no codes
+    if (input.len == 0) return out;
+    Vec&lt;Vec&lt;i32&gt;&gt; dict = Vec&lt;Vec&lt;i32&gt;&gt;::new();
+    // seed the dictionary with the 256 single-byte codes
+    for (usize s = 0; s &lt; 256; s += 1) {
+        Vec&lt;i32&gt; row = Vec&lt;i32&gt;::new();
+        for (usize c = 0; c &lt; 256; c += 1) row.push(-1);
+        dict.push(row);
+    }
+    // next free code; new entries grow past the base alphabet
+    i32 next = 256;
+    // w is the longest prefix seen so far, tracked as a dictionary code
+    i32 w = (i32)input.at(0);
+    // i starts at 1 because the first byte already seeded w
+    for (usize i = 1; i &lt; input.len; i += 1) {
+        u8 c = input.at(i);
+        // does w followed by c already have a code?
+        i32 found = dict.atPtr((usize)w)-&gt;at((usize)c);
+        if (found != -1) {
+            // extend the current string without emitting anything yet
+            w = found;
+        } else {
+            // no extension: emit w and register w+c as a new code
+            out.push(w);
+            dict.atPtr((usize)w)-&gt;set((usize)c, next);
+            // grow the flat table by one all-(-1) row
+            Vec&lt;i32&gt; row = Vec&lt;i32&gt;::new();
+            for (usize k = 0; k &lt; 256; k += 1) row.push(-1);
+            dict.push(row);
+            next += 1;
+            w = (i32)c;
+        }
+    }
+    // flush the final pending string
+    out.push(w);
+    return out;
+}
+
+void lzwEmit(String* out, i32 code, const Vec&lt;i32&gt;* dprev, const Vec&lt;u8&gt;* dsuf) {
+    Vec&lt;i32&gt; stack = Vec&lt;i32&gt;::new();
+    i32 c = code;
+    // climb the prefix chain down to a base single-byte code
+    while (c &gt;= 256) {
+        stack.push(c);
+        c = dprev-&gt;at((usize)c);
+    }
+    // the base byte begins the expansion
+    out-&gt;pushByte((u8)c);
+    // replay the suffixes from the deepest prefix outward
+    isize k = (isize)stack.count() - 1;
+    while (k &gt;= 0) {
+        out-&gt;pushByte(dsuf-&gt;at((usize)stack.at((usize)k)));
+        k -= 1;
+    }
+}
+
+u8 lzwFirst(i32 code, const Vec&lt;i32&gt;* dprev) {
+    i32 c = code;
+    // walk to the base entry; that single byte is the string&#x27;s first
+    while (c &gt;= 256) c = dprev-&gt;at((usize)c);
+    return (u8)c;
+}
+
+String lzwDecode(const Vec&lt;i32&gt;* codes) {
+    String out = String::new();
+    if (codes-&gt;count() == 0) return out;
+    Vec&lt;i32&gt; dprev = Vec&lt;i32&gt;::new();
+    Vec&lt;u8&gt; dsuf = Vec&lt;u8&gt;::new();
+    // base entries: codes below 256 are single bytes with no prefix
+    for (usize i = 0; i &lt; 256; i += 1) {
+        dprev.push(-1);
+        dsuf.push(0);
+    }
+    i32 next = 256;
+    i32 prev = codes-&gt;at(0);
+    // the first code has no predecessor, so emit it directly
+    lzwEmit(&amp;out, prev, &amp;dprev, &amp;dsuf);
+    // each later code may refer to an entry not built yet (the KwKwK case)
+    for (usize i = 1; i &lt; codes-&gt;count(); i += 1) {
+        i32 code = codes-&gt;at(i);
+        if (code &lt; next) {
+            // known code: emit it, then add the entry the encoder made
+            lzwEmit(&amp;out, code, &amp;dprev, &amp;dsuf);
+            // the new entry&#x27;s prefix is the previous string
+            dprev.push(prev);
+            // and its trailing byte is the first byte of the code just emitted
+            dsuf.push(lzwFirst(code, &amp;dprev));
+            next += 1;
+        } else {
+            // code == next: it is prev plus prev&#x27;s own first byte
+            u8 fb = lzwFirst(prev, &amp;dprev);
+            lzwEmit(&amp;out, prev, &amp;dprev, &amp;dsuf);
+            // append that first byte to finish the new entry
+            out.pushByte(fb);
+            dprev.push(prev);
+            dsuf.push(fb);
+            next += 1;
+        }
+        // the current code becomes the prefix source for the next iteration
+        prev = code;
+    }
+    return out;
+}
+
+void main() {
+    str text = &quot;TOBEORNOTTOBEORTOBEORNOT&quot;;
+    Vec&lt;i32&gt; codes = lzwEncode(text);
+    String back = lzwDecode(&amp;codes);
+    println(&quot;input  {} bytes&quot;, text.len);
+    println(&quot;codes  {}&quot;, codes.count());
+    println(&quot;roundtrip {}&quot;, back.asView().equals(text));
+}</code></pre>
+<p>The encoder's dictionary is a flat <code>Vec&lt;Vec&lt;i32&gt;&gt;</code>: one 256-wide row per code, <code>dict[w][c]</code> holding the code for the string <code>w</code> followed by byte <code>c</code>, or −1 if absent. <code>atPtr</code> is deliberate — it gives a pointer to the row without copying an owning <code>Vec</code>, the same care <a href="../31-live-examples-graphs/index.html">Chapter 31</a> takes with a container of containers. The decoder cannot store strings; it stores <code>dprev</code> and <code>dsuf</code>, so each extended code remembers its prefix and its one new trailing byte, and <code>lzwEmit</code> walks the chain to a single byte and then replays the suffixes. That representation is what keeps the decoder linear.</p>
+<p class="step-label">Cost and notes</p>
+<p>Encoding is O(n) dictionary lookups; each is O(1) here because the table is flat, though a real implementation uses a hash map of (prefix, byte) pairs to avoid the 256-wide rows. Decoding is O(n × entryLength) in the worst case for <code>lzwEmit</code>, but the total over the whole stream is bounded because the dictionary grows and short paths are the common case. The compression comes from every phrase being named once: the repeated "TOBEOR" in the test string is emitted as a handful of codes the second time around. LZW's weakness is that its dictionary is unbounded and its codes grow in width, which is why GIF freezes the table at 4096 entries and resets.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>The decoder's <code>else</code> branch is the famous KwKwK case: a code that equals <code>next</code>, which the encoder may emit before the decoder has created it, because the encoder's just-added entry is the previous string followed by its own first byte. The handling is to emit <code>prev</code>, then append <code>prev</code>'s first byte manually, then add the same entry the encoder did. Getting this case wrong is the classic LZW bug and it shows up only on inputs like "aaaaa" and "TOBEOR...". An empty input and a single code are both handled by the early return and the initial <code>lzwEmit</code>. The variation is to make the alphabet 16 bits and feed it UTF-16, or to add the GIF-style dictionary reset at 4096 entries, both of which change only the initial <code>next</code> and a <code>while</code> condition.</p>
+<section><h2 id="s37-5">Levenshtein Edit Distance</h2></section>
+<p class="step-label">The problem</p>
+<p>Given two strings, compute the minimum number of single-character insertions, deletions, and substitutions needed to turn one into the other, and then recover an actual alignment that achieves it.</p>
+<p class="step-label">The idea</p>
+<p>Fill a table where <code>dp[i][j]</code> is the distance between the first <code>i</code> characters of <code>a</code> and the first <code>j</code> characters of <code>b</code>. The first row and column are just the index, because turning "abc" into "" costs three deletions. Each interior cell is the cheapest of three moves: delete a character (from the cell above, plus one), insert one (from the cell to the left, plus one), or substitute (from the diagonal, plus zero if the two characters match, one otherwise). The answer is the bottom-right cell, and the alignment is recovered by walking backward from it, retracing which move produced each value.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::text::string { String };
+import(lib) std::io::ios { println };
+
+i32 editDistance(str a, str b, Vec&lt;i32&gt;* table) {
+    usize m = a.len;
+    usize n = b.len;
+    // flat (m+1) x (n+1) table, stored row-major
+    table-&gt;clear();
+    // allocate the whole table up front
+    for (usize i = 0; i &lt;= m; i += 1) {
+        for (usize j = 0; j &lt;= n; j += 1) {
+            table-&gt;push(0);
+        }
+    }
+    // first column: i deletions reduce a&#x27;s prefix to empty
+    for (usize i = 0; i &lt;= m; i += 1) table-&gt;set(i * (n + 1), (i32)i);
+    // first row: j insertions build b&#x27;s prefix from empty
+    for (usize j = 0; j &lt;= n; j += 1) table-&gt;set(j, (i32)j);
+    for (usize i = 1; i &lt;= m; i += 1) {
+        for (usize j = 1; j &lt;= n; j += 1) {
+            // matching characters align for free
+            i32 subCost = a.at(i - 1) == b.at(j - 1) ? 0 : 1;
+            // candidate 1: delete a[i-1], taking the cell above
+            i32 best = table-&gt;at((i - 1) * (n + 1) + j) + 1;
+            // candidate 2: insert b[j-1], taking the cell to the left
+            i32 insert = table-&gt;at(i * (n + 1) + (j - 1)) + 1;
+            if (insert &lt; best) best = insert;
+            // candidate 3: align or substitute, taking the diagonal
+            i32 substitute = table-&gt;at((i - 1) * (n + 1) + (j - 1)) + subCost;
+            if (substitute &lt; best) best = substitute;
+            // keep the cheapest of the three moves
+            table-&gt;set(i * (n + 1) + j, best);
+        }
+    }
+    // the bottom-right corner is the full distance
+    return table-&gt;at(m * (n + 1) + n);
+}
+
+void printAlignment(const Vec&lt;i32&gt;* table, str a, str b) {
+    usize n = b.len;
+    String top = String::new();
+    String bot = String::new();
+    String op = String::new();
+    // start from the bottom-right cell, where the full distance lives
+    isize i = (isize)a.len;
+    isize j = (isize)n;
+    // walk back toward the origin, one cell at a time
+    while (i &gt; 0 || j &gt; 0) {
+        i32 here = table-&gt;at((usize)i * (n + 1) + (usize)j);
+        // matching characters sit on the optimal diagonal
+        if (i &gt; 0 &amp;&amp; j &gt; 0 &amp;&amp; a.at((usize)(i - 1)) == b.at((usize)(j - 1)) &amp;&amp;
+            here == table-&gt;at((usize)(i - 1) * (n + 1) + (usize)(j - 1))) {
+            op.pushByte((u8)&#x27;=&#x27;);
+            top.pushByte(a.at((usize)(i - 1)));
+            bot.pushByte(b.at((usize)(j - 1)));
+            i -= 1;
+            j -= 1;
+        } else if (i &gt; 0 &amp;&amp;
+            here == table-&gt;at((usize)(i - 1) * (n + 1) + (usize)j) + 1) {
+            // the value came from above: a deletion from a
+            op.pushByte((u8)&#x27;-&#x27;);
+            top.pushByte(a.at((usize)(i - 1)));
+            bot.pushByte((u8)&#x27;_&#x27;);
+            i -= 1;
+        } else if (j &gt; 0 &amp;&amp;
+            here == table-&gt;at((usize)i * (n + 1) + (usize)(j - 1)) + 1) {
+            // the value came from the left: an insertion from b
+            op.pushByte((u8)&#x27;+&#x27;);
+            top.pushByte((u8)&#x27;_&#x27;);
+            bot.pushByte(b.at((usize)(j - 1)));
+            j -= 1;
+        } else {
+            // otherwise the optimal path took a substitution
+            op.pushByte((u8)&#x27;*&#x27;);
+            top.pushByte(a.at((usize)(i - 1)));
+            bot.pushByte(b.at((usize)(j - 1)));
+            i -= 1;
+            j -= 1;
+        }
+    }
+    // built backward; reverse all three rows for display
+    top.reverse();
+    bot.reverse();
+    op.reverse();
+    println(&quot;{}&quot;, top.asView());
+    println(&quot;{}&quot;, bot.asView());
+    println(&quot;{}&quot;, op.asView());
+}
+
+void main() {
+    str a = &quot;kitten&quot;;
+    str b = &quot;sitting&quot;;
+    Vec&lt;i32&gt; table = Vec&lt;i32&gt;::new();
+    i32 d = editDistance(a, b, &amp;table);
+    println(&quot;edit distance {}&quot;, d);
+    printAlignment(&amp;table, a, b);
+}</code></pre>
+<p>The table is a single flat <code>Vec&lt;i32&gt;</code> indexed by <code>i <em> (n + 1) + j</code>, which is both faster and smaller than a vector of vectors. <code>editDistance</code> fills it and returns the last entry; <code>printAlignment</code> walks backward and uses the values to decide which move the optimal path took. The <code>op</code> row is a legend — <code>=</code> for match, <code></em></code> for substitution, <code>-</code> for a deletion from <code>a</code>, <code>+</code> for an insertion from <code>b</code> — and the three strings are built backward and reversed at the end, because that is the direction the backtrack runs.</p>
+<p class="step-label">Cost and notes</p>
+<p>Both time and space are O(m × n). The table is the price of the alignment: the distance alone can be computed with two rolling rows and O(n) space, but the backtrack needs the whole table to know which move was taken. For a spell-checker the O(n) version is enough; for a diff tool the alignment is the product, so the table is mandatory. The algorithm is the basis of <code>diff</code>, of fuzzy string matching, and of the error model in speech and OCR systems.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>An empty string against a non-empty one gives a distance equal to the other's length, and the table's first row and column make that fall out without a special case. The backtrack prefers a match when the characters are equal, which is safe because with equal characters the diagonal is always a minimizer. Ties between delete and insert are broken in a fixed order, so the alignment is deterministic but not unique; any of the optimal alignments is a correct answer. The operation signs are shown as ASCII so the output is readable; a Unicode-heavy UI would render arrows instead. The variation is the rolling-row distance (keep only the previous row, O(n) space), and beyond that the Myers diff algorithm, which computes the same alignment in O((m + n) × d) time where <code>d</code> is the distance, and is what <code>git diff</code> actually uses.</p>
+<section><h2 id="s37-6">Knuth–Morris–Pratt Substring Search</h2></section>
+<p class="step-label">The problem</p>
+<p>Find every occurrence of a pattern in a text without re-examining text characters, so the search is linear even for patterns like "aaaaab" that make the naive method quadratic.</p>
+<p class="step-label">The idea</p>
+<p>Before searching, precompute for the pattern a failure function: for each position, the length of the longest proper prefix of the pattern that is also a suffix of the pattern up to that position. When a mismatch occurs, the failure function says how far to fall back in the pattern without moving the text pointer back at all. Every text character is inspected exactly once, so the search is O(n + m) instead of O(n × m).</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::io::ios { println };
+
+Vec&lt;usize&gt; buildFailure(str pat) {
+    usize m = pat.len;
+    Vec&lt;usize&gt; fail = Vec&lt;usize&gt;::new();
+    for (usize i = 0; i &lt; m; i += 1) fail.push(0);
+    // k is the length of the longest prefix matching a suffix seen so far
+    usize k = 0;
+    // fill fail[i] for each prefix ending at i
+    for (usize i = 1; i &lt; m; i += 1) {
+        // on mismatch, fall back through the earlier failure links
+        while (k &gt; 0 &amp;&amp; pat.at(i) != pat.at(k)) k = fail.at(k - 1);
+        // characters agree, so the matched border grew by one
+        if (pat.at(i) == pat.at(k)) k += 1;
+        // record the border length for position i
+        fail.set(i, k);
+    }
+    return fail;
+}
+
+Vec&lt;usize&gt; kmpSearch(str text, str pat) {
+    Vec&lt;usize&gt; matches = Vec&lt;usize&gt;::new();
+    // an empty pattern has no meaningful position
+    if (pat.len == 0) return matches;
+    Vec&lt;usize&gt; fail = buildFailure(pat);
+    // k counts how many pattern characters match at the current text position
+    usize k = 0;
+    for (usize i = 0; i &lt; text.len; i += 1) {
+        // on mismatch, fall back without moving the text pointer
+        while (k &gt; 0 &amp;&amp; text.at(i) != pat.at(k)) k = fail.at(k - 1);
+        if (text.at(i) == pat.at(k)) k += 1;
+        // the whole pattern matched
+        if (k == pat.len) {
+            // start index of this occurrence
+            matches.push(i + 1 - pat.len);
+            // fall back so overlapping matches are still found
+            k = fail.at(k - 1);
+        }
+    }
+    return matches;
+}
+
+void main() {
+    str text = &quot;abababcabababcabababc&quot;;
+    str pat = &quot;ababc&quot;;
+    Vec&lt;usize&gt; hits = kmpSearch(text, pat);
+    for (usize i = 0; i &lt; hits.count(); i += 1) {
+        println(&quot;match at {}&quot;, hits.at(i));
+    }
+    println(&quot;total {}&quot;, hits.count());
+}</code></pre>
+<p><code>buildFailure</code> is the same scan as the search, run on the pattern against itself. <code>k</code> is the length of the current matched prefix; on a mismatch it falls back to <code>fail[k - 1]</code> and retries, and only when a character actually matches does <code>k</code> advance. The search loop never decrements <code>i</code>, which is the property that makes it linear: the text pointer only ever moves forward. After a full match, <code>k = fail[k - 1]</code> restarts the scan in a state that can find overlapping occurrences, so "aa" in "aaa" is reported at positions 0 and 1.</p>
+<p class="step-label">Cost and notes</p>
+<p>Both phases are O(n + m): each iteration either advances <code>i</code> or decreases <code>k</code>, and <code>k</code> cannot decrease more times than it increased, so the total number of fallbacks is bounded by the number of advances. That amortised argument is the whole reason KMP exists, and it is the same "shared budget" reasoning that made the two-pointer palindrome scan linear in <a href="../25-live-examples-arrays-strings-and-two-pointers/index.html">Chapter 25</a>. Space is O(m) for the failure table.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>An empty pattern is rejected up front, because matching everywhere is rarely what the caller meant and an empty <code>pat.at(0)</code> would assert. A pattern longer than the text simply never reaches <code>k == pat.len</code>, and the loop finishes with no matches. The failure function's first entry is always zero, and each value is at most the position, which is what guarantees the fallback makes progress. The variation is to precompute the failure table once and search many texts with it, which is exactly how a text editor's find-next stays fast; and beyond KMP there is the Z-algorithm and the Boyer–Moore family, which skip more on ordinary text but need the KMP-style table to bound their worst case.</p>
+<section><h2 id="s37-7">The Burrows–Wheeler Transform</h2></section>
+<p class="step-label">The problem</p>
+<p>Rearrange a string so that its characters cluster into runs, in a way that is perfectly reversible, then feed the result to a run-aware compressor. This is the front end of <code>bzip2</code>, and it is the reason BWT plus Huffman beats Huffman alone on real text.</p>
+<p class="step-label">The idea</p>
+<p>Write down every rotation of the string, sort them lexicographically, and take the last column. The last column tends to have long runs because equal characters end up adjacent. To reverse it you also need the row index of the original string; the inverse uses the last-to-first mapping, which is a stable count of each character's occurrences. No information is lost and no marker character is needed.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::text::string { String };
+import(lib) std::io::ios { println };
+
+bool rotationLess(str s, usize i, usize j) {
+    usize n = s.len;
+    // compare the two rotations character by character
+    for (usize k = 0; k &lt; n; k += 1) {
+        u8 a = s.at((i + k) % n);
+        u8 b = s.at((j + k) % n);
+        // the first differing character decides the order
+        if (a != b) return a &lt; b;
+    }
+    // identical rotations compare as equal
+    return false;
+}
+
+void sortRotations(str s, Vec&lt;usize&gt;* idx) {
+    // insertion sort; it is stable, which matters for equal rotations
+    for (usize i = 1; i &lt; idx-&gt;count(); i += 1) {
+        usize key = idx-&gt;at(i);
+        isize j = (isize)i - 1;
+        // shift larger rotations right to open a slot for key
+        while (j &gt;= 0 &amp;&amp; rotationLess(s, key, idx-&gt;at((usize)j))) {
+            idx-&gt;set((usize)(j + 1), idx-&gt;at((usize)j));
+            j -= 1;
+        }
+        // drop key into its sorted place
+        idx-&gt;set((usize)(j + 1), key);
+    }
+}
+
+String bwtEncode(str s, usize* primaryIndex) {
+    usize n = s.len;
+    String last = String::new();
+    *primaryIndex = 0;
+    if (n == 0) return last;
+    Vec&lt;usize&gt; idx = Vec&lt;usize&gt;::new();
+    // each rotation is identified by the index it starts at
+    for (usize i = 0; i &lt; n; i += 1) idx.push(i);
+    // sort the start indices by their rotation
+    sortRotations(s, &amp;idx);
+    // the last column holds the character just before each rotation&#x27;s start
+    for (usize i = 0; i &lt; n; i += 1) {
+        usize start = idx.at(i);
+        last.pushByte(s.at((start + n - 1) % n));
+    }
+    // find the row that is the unrotated string; the inverse needs it
+    for (usize i = 0; i &lt; n; i += 1) {
+        if (idx.at(i) == 0) {
+            *primaryIndex = i;
+            break;
+        }
+    }
+    return last;
+}
+
+String bwtDecode(str last, usize primary) {
+    usize n = last.len;
+    String out = String::new();
+    if (n == 0) return out;
+    Vec&lt;usize&gt; count = Vec&lt;usize&gt;::new();
+    for (usize i = 0; i &lt; 256; i += 1) count.push(0);
+    // count how often each byte appears in the last column
+    for (usize i = 0; i &lt; n; i += 1) {
+        u8 b = last.at(i);
+        count.set((usize)b, count.at((usize)b) + 1);
+    }
+    Vec&lt;usize&gt; C = Vec&lt;usize&gt;::new();
+    usize total = 0;
+    // C[b] is where byte b&#x27;s block begins in the first column
+    for (usize i = 0; i &lt; 256; i += 1) {
+        C.push(total);
+        total += count.at(i);
+    }
+    // occ tracks how many times each byte has been seen so far
+    Vec&lt;usize&gt; occ = Vec&lt;usize&gt;::new();
+    for (usize i = 0; i &lt; 256; i += 1) occ.push(0);
+    Vec&lt;usize&gt; lf = Vec&lt;usize&gt;::new();
+    // lf maps a last-column row to its row in the first column
+    for (usize i = 0; i &lt; n; i += 1) {
+        u8 b = last.at(i);
+        // rank within the byte&#x27;s block, plus the block&#x27;s start
+        lf.push(C.at((usize)b) + occ.at((usize)b));
+        occ.set((usize)b, occ.at((usize)b) + 1);
+    }
+    // start at the row holding the original string
+    usize row = primary;
+    // follow the last-to-first links, emitting one byte per step
+    for (usize k = 0; k &lt; n; k += 1) {
+        out.pushByte(last.at(row));
+        row = lf.at(row);
+    }
+    // the walk yields the string backward, so flip it
+    out.reverse();
+    return out;
+}
+
+void main() {
+    str text = &quot;banana&quot;;
+    usize primary = 0;
+    String last = bwtEncode(text, &amp;primary);
+    String back = bwtDecode(last.asView(), primary);
+    println(&quot;input     {}&quot;, text);
+    println(&quot;bwt       {}&quot;, last.asView());
+    println(&quot;primary   {}&quot;, primary);
+    println(&quot;roundtrip {}&quot;, back.asView().equals(text));
+}</code></pre>
+<p><code>rotationLess</code> compares rotations without materialising them: it reads <code>s</code> at <code>(i + k) % n</code> and <code>(j + k) % n</code>, so a rotation costs no memory, only a modular index. <code>sortRotations</code> is an insertion sort written inline precisely because a comparison function pointer cannot capture <code>s</code>; using <code>Vec::sortBy</code> here would need the string in a global, and keeping the comparison local is the cleaner trade. <code>bwtEncode</code> outputs the last column and records the sorted row of the original rotation. The inverse computes <code>C</code>, the cumulative starting rank of each byte in the first column, and <code>lf</code>, the mapping from a row to the row that begins with its last character. Then it walks from the primary row and emits one character per step; the walk produces the original string backwards, so a single <code>reverse</code> at the end fixes the direction.</p>
+<p class="step-label">Cost and notes</p>
+<p>The honest version here materialises nothing but pays for sorting: insertion sort is O(n^2) comparisons, each O(n), so O(n^3) for the comparison step, which is fine only for small strings. Real BWT implementations build a suffix array with a doubling algorithm in O(n log n) and take the transform from it. The inverse is linear once <code>C</code> and <code>lf</code> are built. The payoff is entirely in what comes next: run-length encoding the last column, then Huffman coding the runs, is the <code>bzip2</code> pipeline, and the run-length step is what the transform was for.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>An empty string transforms to an empty string and the primary index is zero. A periodic string like "abab" has equal rotations, and the stable insertion sort keeps original order, so the transform and its inverse still round-trip; the earlier box-tracing of "banana" and "abab" is worth doing by hand. The primary index is the row whose rotation starts at position zero, and getting it wrong yields a rotation of the original rather than the original itself, which is a subtle bug because the output still looks like text. The variation is the suffix-array build, and the natural follow-up is to pipe the last column through 36.1 to see the runs that are the entire point.</p>
+<section><h2 id="s37-8">Suffix-Array Substring Search</h2></section>
+<p class="step-label">The problem</p>
+<p>Index a text once, then answer many substring queries quickly, returning the location of an occurrence without rescanning the text each time.</p>
+<p class="step-label">The idea</p>
+<p>Sort every suffix of the text and store the start indices in an array. A pattern occurs in the text exactly when it is a prefix of some suffix, and because the suffixes are sorted, all suffixes beginning with the pattern form a contiguous block. Binary search over the suffix array finds that block in O(log n) comparisons, each of which costs at most the pattern length. Build once, query many times.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::io::ios { println };
+
+bool suffixLess(str text, usize i, usize j) {
+    usize n = text.len;
+    // compare two suffixes without materialising either of them
+    while (i &lt; n &amp;&amp; j &lt; n) {
+        u8 a = text.at(i);
+        u8 b = text.at(j);
+        // the first difference decides the order
+        if (a != b) return a &lt; b;
+        i += 1;
+        j += 1;
+    }
+    // the suffix that ended first is the smaller one
+    return i == n;
+}
+
+void buildSuffixArray(str text, Vec&lt;usize&gt;* sa) {
+    usize n = text.len;
+    // start with every suffix index in ascending order
+    for (usize i = 0; i &lt; n; i += 1) sa-&gt;push(i);
+    // insertion sort by suffix order
+    for (usize i = 1; i &lt; n; i += 1) {
+        usize key = sa-&gt;at(i);
+        isize j = (isize)i - 1;
+        // shift larger suffixes right to open a slot for key
+        while (j &gt;= 0 &amp;&amp; suffixLess(text, key, sa-&gt;at((usize)j))) {
+            sa-&gt;set((usize)(j + 1), sa-&gt;at((usize)j));
+            j -= 1;
+        }
+        // insert key at its sorted position
+        sa-&gt;set((usize)(j + 1), key);
+    }
+}
+
+i32 compareSuffixPattern(str text, usize start, str pat) {
+    usize n = text.len;
+    usize k = 0;
+    // compare the suffix to the pattern until one of them runs out
+    while (start + k &lt; n &amp;&amp; k &lt; pat.len) {
+        u8 a = text.at(start + k);
+        u8 b = pat.at(k);
+        // first difference gives a three-way result: -1, 0, or 1
+        if (a != b) return a &lt; b ? -1 : 1;
+        k += 1;
+    }
+    // pattern consumed first means it is a prefix, hence a match
+    if (k == pat.len) return 0;
+    // the suffix ended first, so the pattern is larger
+    return -1;
+}
+
+Option&lt;usize&gt; suffixSearch(str text, str pat, const Vec&lt;usize&gt;* sa) {
+    // an empty pattern is a prefix of every suffix
+    if (pat.len == 0) return Option&lt;usize&gt;::Some { .value = 0 };
+    isize lo = 0;
+    isize hi = (isize)sa-&gt;count() - 1;
+    // ordinary binary search over the sorted suffix array
+    while (lo &lt;= hi) {
+        isize mid = lo + (hi - lo) / 2;
+        i32 c = compareSuffixPattern(text, sa-&gt;at((usize)mid), pat);
+        // found: return the suffix&#x27;s start position in the text
+        if (c == 0) return Option&lt;usize&gt;::Some { .value = sa-&gt;at((usize)mid) };
+        // suffix is smaller; drop the left half
+        if (c &lt; 0) lo = mid + 1;
+        else hi = mid - 1;
+    }
+    // range exhausted without a match
+    return Option&lt;usize&gt;::None;
+}
+
+void main() {
+    str text = &quot;mississippi&quot;;
+    str pat = &quot;issi&quot;;
+    Vec&lt;usize&gt; sa = Vec&lt;usize&gt;::new();
+    buildSuffixArray(text, &amp;sa);
+    println(&quot;suffixes {}&quot;, sa.count());
+    switch (suffixSearch(text, pat, &amp;sa)) {
+        Option::Some { value } =&gt; println(&quot;found &#x27;{}&#x27; at {}&quot;, pat, value),
+        Option::None           =&gt; println(&quot;&#x27;{}&#x27; not found&quot;, pat),
+    }
+}</code></pre>
+<p>The suffix array is a <code>Vec&lt;usize&gt;</code> of start positions, sorted by suffix. <code>suffixLess</code> compares two suffixes directly, one byte at a time, and treats a suffix that ends first as smaller; it never allocates a suffix string. <code>compareSuffixPattern</code> compares a suffix against the pattern and returns three-way, with the important rule that a pattern which is a prefix of the suffix is a match, not a difference. <code>suffixSearch</code> is then an ordinary binary search, and <code>Option</code> carries the "not found" case without a sentinel index, the discipline <a href="../36-live-examples-programming-principles/index.html">Chapter 36</a> argues for.</p>
+<p class="step-label">Cost and notes</p>
+<p>Building the array here is insertion sort with an O(n) comparator, so O(n^2) comparisons in the worst case and O(n^3) time overall; it is correct and clear but only for modest texts. A prefix-doubling build, which sorts suffixes by their first 2^k characters for growing k, gets to O(n log n) and is what real suffix arrays use. Queries are O(pat.len × log n), and the whole point is amortisation: build once, answer thousands of queries. The array stores 64-bit indices, so it is 8 bytes per suffix, plus the text itself, which is why suffix arrays displaced suffix trees in practice.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>An empty pattern is defined to match at position zero and returns before the binary search, because an empty pattern is a prefix of every suffix. A pattern longer than any suffix is handled by <code>compareSuffixPattern</code> returning −1 when the suffix ends first. The search returns one occurrence, the first one the binary search happens to land on; to find all occurrences, scan left and right from the match while <code>compareSuffixPattern</code> still returns zero. The variation is to add a longest-common-prefix array computed alongside the suffix array, which turns the per-comparison cost down to O(1) and makes the build competitive with suffix trees.</p>
+<section><h2 id="s37-9">A Substitution Cipher</h2></section>
+<p class="step-label">The problem</p>
+<p>Encrypt a message with a repeating key so that each letter is shifted by a different amount, then decrypt it back. This is the Vigenère cipher, the step from the Caesar cipher's single shift to a polyalphabetic one.</p>
+<p class="step-label">The idea</p>
+<p>For each alphabetic character of the message, shift it by the corresponding key letter's position in the alphabet. Advance the key position only on letters, so spaces and punctuation pass through unchanged and do not consume key. Decryption is the same loop with the shift subtracted instead of added, and both directions reduce the letter to a 0-through-25 index, operate there, and add the case's base back.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::string { String };
+import(lib) std::io::ios { println };
+
+String vigenere(str text, str key, bool encrypt) {
+    String out = String::new();
+    // a missing key means no shift; return the input untouched
+    if (key.len == 0) return String::from(text);
+    // the key index advances only when a letter is consumed
+    usize ki = 0;
+    for (usize i = 0; i &lt; text.len; i += 1) {
+        u8 c = text.at(i);
+        u8 base = 0;
+        if (c &gt;= (u8)&#x27;A&#x27; &amp;&amp; c &lt;= (u8)&#x27;Z&#x27;) {
+            base = (u8)&#x27;A&#x27;;
+        } else if (c &gt;= (u8)&#x27;a&#x27; &amp;&amp; c &lt;= (u8)&#x27;z&#x27;) {
+            base = (u8)&#x27;a&#x27;;
+        } else {
+            // non-letters are copied verbatim and do not consume key
+            out.pushByte(c);
+            continue;
+        }
+
+        // cycle through the key
+        u8 k = key.at(ki % key.len);
+        u8 kbase = 0;
+        if (k &gt;= (u8)&#x27;A&#x27; &amp;&amp; k &lt;= (u8)&#x27;Z&#x27;) {
+            kbase = (u8)&#x27;A&#x27;;
+        } else if (k &gt;= (u8)&#x27;a&#x27; &amp;&amp; k &lt;= (u8)&#x27;z&#x27;) {
+            kbase = (u8)&#x27;a&#x27;;
+        } else {
+            // a non-letter key byte is a deliberate refusal
+            return String::from(text);
+        }
+
+        // shift the key letter to a 0..25 index
+        u8 shift = (u8)(k - kbase);
+        u8 letter = (u8)(c - base);
+        if (encrypt) {
+            // encrypt adds the shift, wrapping modulo 26
+            letter = (u8)((letter + shift) % 26);
+        } else {
+            // decrypt subtracts; the +26 keeps the result non-negative
+            letter = (u8)((letter + 26 - shift) % 26);
+        }
+        // restore the original letter&#x27;s case base
+        out.pushByte((u8)(letter + base));
+        // a letter was consumed, so advance the key
+        ki += 1;
+    }
+    return out;
+}
+
+void main() {
+    str message = &quot;Attack at dawn!&quot;;
+    str key = &quot;lemon&quot;;
+    String cipher = vigenere(message, key, true);
+    String plain = vigenere(cipher.asView(), key, false);
+    println(&quot;plain     {}&quot;, message);
+    println(&quot;cipher    {}&quot;, cipher.asView());
+    println(&quot;decoded   {}&quot;, plain.asView());
+    println(&quot;roundtrip {}&quot;, plain.asView().equals(message));
+}</code></pre>
+<p>The two case checks look repetitive, and a helper <code>letterBase(u8)</code> returning the base or −1 would be the DRY refactor of <a href="../36-live-examples-programming-principles/index.html">Chapter 36</a>. The <code>continue</code> on a non-letter is what keeps the key aligned with the message letters: punctuation is copied and <code>ki</code> is not advanced, which is the standard convention and the opposite of a key that consumes every character. The decrypt branch adds 26 before subtracting so the modular result never goes negative, which is the same trick as a clock running backward.</p>
+<p class="step-label">Cost and notes</p>
+<p>One pass, O(n) time and O(n) space for the owned output. The security is worth stating plainly: Vigenère was believed unbreakable for three centuries and is trivially broken today by frequency analysis, because a repeating key leaks its period and then each shift is just a Caesar cipher. This is an exercise in text manipulation, not cryptography; for real confidentiality use the standard library's AES or the primitives in Appendix I, and never a hand-rolled cipher.</p>
+<p class="step-label">Edge cases and variations</p>
+<p>An empty key returns the input unchanged, and a key containing non-letter bytes does the same, which is a deliberate refusal rather than a silent wrong answer. Empty text returns an empty string. Uppercase and lowercase are handled independently and preserve the message's case, which is what makes the output readable. The variation is the one-time pad: use a key as long as the message, never reused, and the cipher becomes information-theoretically unbreakable; the exercise is to explain why a repeating key can never be a pad, in terms of what a frequency count reveals.</p>
+<section><h2 id="exercises">Exercises</h2></section>
+<ol><li>Comprehension. Run-length encoding doubles the size of a string with no repeats. Explain, in terms of the entropy of the input, when a compressor's output can ever be smaller than the input, and why the answer is "only when the input is not already random."</li><li>Huffman. The single-symbol input is the case that breaks a naive tree walk. Add an assertion or a branch that makes the one-symbol tree explicit, and then explain why the code length for that symbol is one bit even though the tree has no edge to follow.</li><li>LZ77. Set <code>windowSize</code> to zero and confirm that every token is a lone literal. Then set it to the full text length and describe what the compression ratio becomes for a string that is its own repetition, and why the ratio is bounded by the window.</li><li>LZW. Trace the encoder and decoder by hand on "ABABABA". Identify where the KwKwK case arises in the decoder and explain what the encoder emitted that caused it.</li><li>Edit distance. Rewrite <code>editDistance</code> to use two rolling rows and O(n) space, then explain precisely which information the alignment needs that the rolling rows have discarded, and why that forces the full table for <code>printAlignment</code>.</li><li>KMP. The failure function of a pattern says how much of the pattern is both a prefix and a suffix at each point. Compute it by hand for "aabaabaaa" and verify each value against the definition; then explain why the search's total fallback work is linear.</li><li>Burrows–Wheeler. Run the transform on "mississippi" and on "abracadabra". Count the runs in each last column, then run-length encode both with 36.1 and compare the encoded sizes to the originals. Which string benefits more, and what does that say about what the transform exploits?</li><li>Suffix array. Extend <code>suffixSearch</code> to return every occurrence by scanning left and right from the match while <code>compareSuffixPattern</code> returns zero, and argue why those occurrences form a contiguous range. Then sketch the prefix-doubling build and explain why it is O(n log n) rather than O(n^2).</li><li>Cipher. Break a Vigenère ciphertext whose key length is known: split the text into as many streams as the key has letters, run a frequency count on each stream, and recover the key. Write the frequency-counting step using the byte predicates from Appendix F, and explain why the three-hundred-year belief in the cipher's strength was a failure of imagination rather than of mathematics.</li></ol>
+      <nav class="chapter-nav"><a href="../36-live-examples-programming-principles/index.html">← Previous</a><a href="../38-live-examples-computational-geometry-and-simulation/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

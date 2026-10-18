@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Appendix G · Input, Output, and System Interaction | The Coral Book</title>
+  <link rel="stylesheet" href="../book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Reference</p>
+      <h1>Appendix G · Input, Output, and System Interaction</h1>
+      
+      <p>Appendix G — Input/Output and System Interaction</p>
+<p>This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A — A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.</p>
+<hr />
+<section><h2 id="std-io">std::io</h2></section>
+<h3 id="40-std-io-ios-console-i-o-and-parsing-pr">40. <code>std::io::ios</code> — Console I/O and parsing (prelude)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// formatting / output
+pub void print&lt;comptime T&gt;(T fmt, ...)
+pub void println&lt;comptime T&gt;(T fmt, ...)
+pub void eprint&lt;comptime T&gt;(T fmt, ...)
+pub void eprintln&lt;comptime T&gt;(T fmt, ...)
+pub void vaprint(... args)
+pub void flush()
+
+// formatting helpers passed as arguments
+pub struct Spaces { u64 count; }
+pub struct Repeat { u8 ch; u64 count; }
+pub struct Hex    { u64 value; }
+pub struct Bin    { u64 value; }
+pub struct Fixed  { f64 value; u64 precision; }
+pub Spaces spaces(u64 count)
+pub Repeat repeat(u8 ch, u64 count)
+pub Hex    hex(u64 value)
+pub Bin    bin(u64 value)
+pub Fixed  fixed(f64 value, u64 precision)
+
+// parsing
+pub i64 parseI64(str sv, bool* ok)
+pub u64 parseU64(str sv, bool* ok)
+pub f64 parseF64(str sv, bool* ok)
+
+// input
+pub u8   readChar()
+pub bool readLine(String* out)
+pub void read&lt;comptime T&gt;(T* out)
+pub T    readVal&lt;T&gt;()</code></pre>
+<h3 id="41-std-io-fs-filesystem">41. <code>std::io::fs</code> — Filesystem</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant IoError
+{
+    Os       { i32 code; str op; },   // errno / GetLastError
+    Eof      { str op; },             // stream ended early
+    BadUsage { str msg; }             // caller-side problem
+}
+pub extend IoError
+{
+    static IoError os(str op)
+}
+
+pub const i32 O_RDONLY = 0;   O_WRONLY = 1;  O_RDWR = 2;
+pub const i32 O_CREAT  = 64;  O_TRUNC  = 512; O_APPEND = 1024;
+pub const i32 S_IRWXU  = 448; S_IRUSR  = 256; S_IWUSR = 128; S_IXUSR = 64;
+pub const i32 SEEK_SET = 0;   SEEK_CUR = 1;   SEEK_END = 2;
+pub const i32 F_OK = 0; R_OK = 4; W_OK = 2; X_OK = 1;
+
+pub distinct File = i32;
+pub distinct Dir  = rawptr;
+
+pub struct Stat
+{
+    u64 st_dev; u64 st_ino; u64 st_nlink;
+    u32 st_mode; u32 st_uid; u32 st_gid; u32 pad0;
+    u64 st_rdev; i64 st_size; i64 st_blksize; i64 st_blocks;
+    i64 st_atime; i64 st_atimeNsec;
+    i64 st_mtime; i64 st_mtimeNsec;
+    i64 st_ctime; i64 st_ctimeNsec;
+    i64 reserved[3];
+}
+
+pub enum FileType { Unknown, Regular, Directory, CharDevice, BlockDevice, Fifo, Symlink, Socket }
+
+pub Result&lt;File, IoError&gt; fileOpen(str path, str mode)
+pub void   fileClose(File f)
+pub Result&lt;isize, IoError&gt; fileRead(File f, u8* buf, usize count)
+pub Result&lt;isize, IoError&gt; fileWrite(File f, const u8* buf, usize count)
+pub Result&lt;isize, IoError&gt; fileSeek(File f, isize offset, i32 whence)
+pub bool   fileExists(str path)
+pub Option&lt;bool&gt; statPath(str path, Stat* out)
+pub FileType getFileType(const Stat* s)
+pub Result&lt;bool, IoError&gt; createDir(str path, i32 mode)
+pub Result&lt;bool, IoError&gt; createDirRecursive(str path, i32 mode)
+pub Result&lt;bool, IoError&gt; removeDir(str path)
+pub Result&lt;bool, IoError&gt; deleteFile(str path)
+pub Result&lt;bool, IoError&gt; renameFile(str oldPath, str newPath)
+pub bool   canAccess(str path, i32 mode)
+pub Result&lt;Dir, IoError&gt; openDir(str path)
+pub rawptr readDir(Dir dir)
+pub void   closeDir(Dir dir)
+pub Result&lt;String, IoError&gt; readFileToString(str path)
+pub Result&lt;bool, IoError&gt;   writeFileFromString(str path, const String* data)
+
+pub struct Dirent
+{
+    u64 d_ino; i64 d_off; u16 d_reclen; u8 d_type; u8 d_name[256];
+}
+pub bool readDirEntry(Dir dir, Dirent* out)</code></pre>
+<h3 id="42-std-io-bio-binary-readers-writers">42. <code>std::io::bio</code> — Binary readers/writers</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const i32 SEEK_SET = 0;
+const i32 SEEK_CUR = 1;
+
+pub struct FileReader
+{
+    i32 fd;
+    static FileReader fromFd(File fd)
+    Result&lt;bool, IoError&gt; readBytes(u8* dst, u64 n)   // exactly n bytes
+    u8   readU8()
+    i8   readI8()
+    u16  readU16Le()  readU16Be()
+    i16  readI16Le()  readI16Be()
+    u32  readU32Le()  readU32Be()
+    i32  readI32Le()  readI32Be()
+    u64  readU64Le()  readU64Be()
+    i64  readI64Le()  readI64Be()
+    f32  readF32Le()  readF32Be()
+    f64  readF64Le()  readF64Be()
+    void skip(u64 n)
+}
+
+pub struct FileWriter
+{
+    i32 fd;
+    static FileWriter fromFd(File fd)
+    void writeU8(u8 v)
+    void writeI8(i8 v)
+    void writeU16Le(u16 v)  writeU16Be(u16 v)
+    void writeI16Le(i16 v)  writeI16Be(i16 v)
+    void writeU32Le(u32 v)  writeU32Be(u32 v)
+    void writeI32Le(i32 v)  writeI32Be(i32 v)
+    void writeU64Le(u64 v)  writeU64Be(u64 v)
+    void writeI64Le(i64 v)  writeI64Be(i64 v)
+    void writeF32Le(f32 v)  writeF32Be(f32 v)
+    void writeF64Le(f64 v)  writeF64Be(f64 v)
+    Result&lt;bool, IoError&gt; writeBytes(const u8* src, u64 n)   // exactly n bytes
+}
+
+pub u16 bswapU16(u16 v)
+pub u32 bswapU32(u32 v)
+pub u64 bswapU64(u64 v)</code></pre>
+<h3 id="43-std-io-fios-file-based-i-o">43. <code>std::io::fios</code> — <code>FILE*</code>-based I/O</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct FileHandle = rawptr;
+
+pub Result&lt;FileHandle, IoError&gt; fileOpen(str path, str mode)
+pub void   fileClose(FileHandle fh)
+pub Result&lt;usize, IoError&gt; fileWrite(FileHandle fh, str data)
+pub Result&lt;usize, IoError&gt; fileRead(FileHandle fh, u8* buf, usize maxLen)
+pub bool   fileEof(FileHandle fh)
+pub bool   fileError(FileHandle fh)
+pub void   fileFlush(FileHandle fh)
+pub Result&lt;usize, IoError&gt; fileWriteString(FileHandle fh, const String* s)
+pub Result&lt;bool, IoError&gt;  fileReadAll(str path, String* out)</code></pre>
+<h3 id="44-std-io-log-logger">44. <code>std::io::log</code> — <code>Logger</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant LogLevel { Debug, Info, Warn, Error, Fatal }
+
+pub struct Logger
+{
+    LogLevel minLevel;
+    String name;
+
+    static Logger new(str name, LogLevel minLevel)
+    void dispose()
+    void setLevel(LogLevel level)
+    bool enabled(LogLevel level)
+    void debug(str msg)
+    void info(str msg)
+    void warn(str msg)
+    void error(str msg)
+    void fatal(str msg)
+    // helper: void _log(LogLevel level, str msg)
+}</code></pre>
+<h3 id="45-std-io-net-tcp-udp-sockets">45. <code>std::io::net</code> — TCP/UDP sockets</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const i32 AF_INET = 2;  SOCK_STREAM = 1;  SOCK_DGRAM = 2;
+const i32 IPPROTO_TCP = 6; IPPROTO_UDP = 17;
+const i32 SOL_SOCKET = 1; SO_REUSEADDR = 2;
+
+pub struct sockaddr_in
+{
+    u16 sinFamily; u16 sinPort; u32 sinAddr; u8 sinZero[8];
+}
+
+pub distinct TcpSocket = i32;
+pub Result&lt;TcpSocket, IoError&gt; tcpConnect(str ip, u16 port)
+pub Result&lt;TcpSocket, IoError&gt; tcpListen(u16 port)
+pub Result&lt;TcpSocket, IoError&gt; tcpAccept(TcpSocket server)
+pub Result&lt;isize, IoError&gt;     tcpSend(TcpSocket sock, const u8* buf, usize len)
+pub Result&lt;isize, IoError&gt;     tcpRecv(TcpSocket sock, u8* buf, usize len)
+pub void tcpClose(TcpSocket sock)
+
+pub struct UdpSocket { i32 fd; }
+pub Result&lt;UdpSocket, IoError&gt; udpSocket()
+pub Result&lt;bool, IoError&gt;      udpBind(UdpSocket* s, u16 port)
+pub Result&lt;isize, IoError&gt;     udpSendTo(UdpSocket* s, const u8* buf, usize len, str ip, u16 port)
+pub Result&lt;isize, IoError&gt;     udpRecvFrom(UdpSocket* s, u8* buf, usize len)
+pub void udpClose(UdpSocket* s)</code></pre>
+<h3 id="46-std-io-path-path-manipulation">46. <code>std::io::path</code> — Path manipulation</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const u8 SEP = &#x27;/&#x27;;
+const u8 ALT_SEP = &#x27;\\&#x27;;
+
+pub usize  findLastSep(str p)
+pub bool   isAbsolute(str p)
+pub bool   hasExtension(str p)
+pub str    extension(str p)
+pub str    stem(str p)
+pub str    parent(str p)
+pub str    filename(str p)
+pub String join(str a, str b)
+pub String normalize(str p)
+pub String absolute(str base, str rel)
+pub String changeExtension(str p, str newExt)</code></pre>
+<h3 id="47-std-io-process-subprocesses">47. <code>std::io::process</code> — Subprocesses</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Process
+{
+    i32 pid;
+    i32 stdinFd;
+    i32 stdoutFd;
+    i32 stderrFd;
+}
+
+pub struct ProcessResult
+{
+    i32  exitCode;
+    bool signaled;
+    i32  termSignal;
+}
+
+pub struct pollfd { i32 fd; i16 events; i16 revents; }
+
+pub Result&lt;Process, IoError&gt;       spawn(str cmd, Vec&lt;str&gt;* args)
+pub Result&lt;ProcessResult, IoError&gt; waitFor(Process* p)
+pub Result&lt;isize, IoError&gt;         writeStdin(Process* p, const cchar* data, usize len)
+pub Result&lt;isize, IoError&gt;         readStdout(Process* p, u8* buf, usize maxLen)
+pub Result&lt;isize, IoError&gt;         readStderr(Process* p, u8* buf, usize maxLen)
+pub Result&lt;i32, IoError&gt;           run(str cmd, Vec&lt;str&gt;* args)
+pub void                           exit(i32 code)</code></pre>
+<h3 id="48-std-io-temp-temporary-files-dirs">48. <code>std::io::temp</code> — Temporary files/dirs</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct TempFile
+{
+    i32 fd;
+    String path;
+    bool autoDelete;
+    static Result&lt;TempFile, IoError&gt; create(str prefix, str suffix)
+    void dispose()
+    File fd()
+    str  pathStr()
+    void setAutoDelete(bool ad)
+}
+
+pub struct TempDir
+{
+    String path;
+    bool autoDelete;
+    static Result&lt;TempDir, IoError&gt; create(str prefix)
+    void dispose()
+    str  pathStr()
+    void setAutoDelete(bool ad)
+    bool isValid()
+}
+
+pub extend TempFile : @drop { void drop(); }
+pub extend TempDir  : @drop { void drop(); }</code></pre>
+<h3 id="49-std-io-term-ansi-terminal-control">49. <code>std::io::term</code> — ANSI terminal control</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void reset()
+pub void bold()   dim()   italic()   underline()   blink()   reverse()
+pub void hidden() strikethrough()
+
+pub void black()  red()  green()  yellow()  blue()  magenta()  cyan()  white()
+pub void bgBlack() bgRed() bgGreen() bgYellow() bgBlue() bgMagenta() bgCyan() bgWhite()
+pub void brightBlack() brightRed() brightGreen() brightYellow()
+pub void brightBlue() brightMagenta() brightCyan() brightWhite()
+
+pub void cursorUp(u64 n)
+pub void cursorDown(u64 n)
+pub void cursorRight(u64 n)
+pub void cursorLeft(u64 n)
+pub void cursorPos(u64 row, u64 col)
+
+pub void clearScreen()
+pub void clearLine()
+pub void clearToEnd()
+pub void clearLineEnd()
+pub void saveCursor()
+pub void restoreCursor()
+pub void hideCursor()
+pub void showCursor()
+// helpers: bool _isTty(); void _writeCSI(str code); void _writeStr(str s);
+//           u64 _clampN(u64 n)</code></pre>
+<h3 id="50-std-io-cmd-argparser">50. <code>std::io::cmd</code> — <code>ArgParser</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct ArgParser
+{
+    Vec&lt;String&gt; positional;
+    bool   error;
+    String errMsg;
+    usize  pos;
+
+    static ArgParser new()
+    void dispose()
+    void parse(i32 argc, cchar** argv)
+    bool hasFlag(i32 argc, cchar** argv, str shortFlag, str longFlag)
+    bool getOption(i32 argc, cchar** argv, str shortFlag, str longFlag, String* out)
+    usize count()
+    str   get(usize idx)
+    // helper: bool _afterDoubleDash(i32 argc, cchar** argv, i32 idx)
+}
+pub Option&lt;str&gt; commandLine()</code></pre>
+<h3 id="51-std-io-env-environment-variables">51. <code>std::io::env</code> — Environment variables</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Option&lt;String&gt; get(str name)
+pub bool getInto(str name, String* out)
+pub Result&lt;bool, IoError&gt; set(str name, str value)
+pub Result&lt;bool, IoError&gt; unset(str name)
+pub usize all(Vec&lt;String&gt;* out)</code></pre>
+      <nav class="chapter-nav"><a href="../appendix-f-text-data-time-and-formatting/index.html">← Previous</a><a href="../appendix-h-memory-and-concurrency/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Appendix H · Memory and Concurrency | The Coral Book</title>
+  <link rel="stylesheet" href="../book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Reference</p>
+      <h1>Appendix H · Memory and Concurrency</h1>
+      
+      <p>Appendix H — Memory and Concurrency</p>
+<p>This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A — A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.</p>
+<hr />
+<section><h2 id="std-memory">std::memory</h2></section>
+<h3 id="52-std-memory-mman-allocators-and-alloca">52. <code>std::memory::mman</code> — Allocators and allocation (aka <code>std::mman</code>)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant AllocError { AllocFailed { str msg; } }
+
+pub Allocator* defaultAllocator;          // global default allocator
+pub void initDefaultAllocator()
+pub void ensureDefaultAllocator()
+pub void deinitDefaultAllocator()
+
+pub Allocator libcAllocator;              // malloc/free-backed
+pub Allocator miAllocator;                // mimalloc-backed
+pub Allocator cAllocator;                 // libc-backed wrapper
+pub Allocator pageAllocator;              // page-granular
+pub const usize pageSize = 4096u;
+
+pub struct FixedBufferAllocator
+{
+    u8* buffer; usize cap; usize used;
+    void init(u8* buffer, usize size)
+    Allocator allocator()
+    void reset()
+    usize remaining(const self*)
+}
+
+pub struct StackFallbackAllocator
+{
+    FixedBufferAllocator fba;
+    Allocator* fallback;
+    u8 stackBuf[1024];
+    void init(Allocator* fallback)
+    Allocator allocator()
+}
+
+pub struct ArenaAllocator
+{
+    Allocator* backing;
+    u8* base; usize cap; usize used;
+    void init(Allocator* backing, usize initialCap)
+    void deinit()
+    Allocator allocator()
+    rawptr push(usize size)
+    T*     pushType&lt;T&gt;(usize count)
+    void   reset()
+    usize  remaining()
+}
+
+pub struct PoolAllocator
+{
+    rawptr freeList; usize blockSize; usize blockCount;
+    u8* backing; Allocator* source;
+    void init(Allocator* source, usize blockSize, usize blockCount)
+    void deinit()
+    Allocator allocator()
+    rawptr allocBlock()
+    void   freeBlock(rawptr block)
+}
+
+pub struct ScopeAlloc
+{
+    Allocator* backing;
+    rawptr* ptrs; usize* sizes;
+    usize len; usize cap;
+    void init(Allocator* backing, usize cap)
+    rawptr alloc(usize size)
+    T*     allocType&lt;T&gt;(usize count)
+    void   freeAll()
+    void   deinit()
+    usize  bytesUsed(const self*)
+    // helper: void _grow()
+}
+
+pub struct LoggingAllocator
+{
+    Allocator* parent;
+    usize totalAlloced; usize totalFreed; usize currentUsed;
+    usize allocCount; usize freeCount;
+    rawptr* trackPtrs; usize* trackSizes;
+    usize trackLen; usize trackCap;
+    void init(Allocator* parent)
+    Allocator allocator()
+    void printStats()
+    // helpers: _trackGrow _track _untrack
+}
+
+// convenience wrappers over the default allocator
+pub T*   alloc&lt;T&gt;(usize count)
+pub void dealloc&lt;T&gt;(T* ptr)
+pub T*   realloc&lt;T&gt;(T* ptr, usize newCount)
+pub void copy&lt;T&gt;(T* dst, T* src, usize count)
+pub void move&lt;T&gt;(T* dst, T* src, usize count)
+pub void zero&lt;T&gt;(T* ptr, usize count)
+pub bool equal&lt;T&gt;(const T* a, const T* b, usize count)</code></pre>
+<h3 id="53-std-memory-intrinsics-memory-raw-memo">53. <code>std::memory::intrinsics::memory</code> — Raw memory primitives</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void memmove(rawptr dst, const rawptr src, usize n)
+pub void memcpy(rawptr dst, const rawptr src, usize n)
+pub rawptr mmap(rawptr addr, usize length, i32 prot, i32 flags, i32 fd, i64 offset)
+pub void munmap(rawptr addr, usize length)
+pub void memset(rawptr dst, u8 val, usize n)
+pub i32  memcmp(const rawptr a, const rawptr b, usize n)</code></pre>
+<h3 id="54-std-memory-allocators-allocator-alloc">54. <code>std::memory::allocators::allocator</code> — <code>Allocator</code> (vtable)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Allocator
+{
+    rawptr ctx;
+    rawptr(rawptr, usize)          alloc;
+    void(rawptr, rawptr)           free;
+    rawptr(rawptr, rawptr, usize)  realloc;
+}</code></pre>
+<h3 id="55-std-memory-allocators-tlsf-tlsf-two-l">55. <code>std::memory::allocators::tlsf</code> — <code>Tlsf</code> (Two-Level Segregated Fit)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Tlsf
+{
+    rawptr heapStart; rawptr heapEnd; usize heapSize;
+    FreeBlock* freeLists[32][32];
+    u32 fliBitmap;
+    u32 sliBitmap[32];
+
+    void init(rawptr heap, usize size)
+    rawptr alloc(usize size)
+    void   free(rawptr ptr)
+    rawptr realloc(rawptr ptr, usize newSize)
+    usize  getHeapSize(const self*)
+    usize  getFreeSize(const self*)
+    Allocator allocator()
+    // helpers: _fls _lsbIndex _getIndex _blockSize _blockFromPtr _memcpy
+    //          _ptrFromBlock _nextBlock _writeFooter _prevBlock
+    //          _removeFree _insertFree _findSuitableBlock
+}</code></pre>
+<p>Constants: <code>FLI_COUNT = 32</code>, <code>SLI_COUNT = 32</code>, <code>MIN_BLOCK_SIZE = 32u</code>, <code>BLOCK_ALIGN = 8u</code>, <code>BLOCK_USED = 1u</code>, <code>BLOCK_PREV_USED = 2u</code>.</p>
+<h3 id="56-std-memory-allocators-mimalloc-miallo">56. <code>std::memory::allocators::mimalloc</code> — <code>MiAlloc</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct MiAlloc
+{
+    MiHeap heap;
+
+    void init(usize reserveSize)
+    rawptr alloc(usize size)
+    void   free(rawptr ptr)
+    rawptr realloc(rawptr ptr, usize newSize)
+    rawptr calloc(usize count, usize size)
+    usize  getAllocated()
+    usize  getFreed()
+    usize  getUsed()
+    usize  getMapped()
+    Allocator allocator()
+}
+pub void miStatsPrint(MiAlloc* alloc)</code></pre>
+<p>Constants include <code>MI_ARENA_SIZE = 64 MiB</code>, <code>MI_SEGMENT_SIZE = 4 MiB</code>, <code>MI_PAGE_SIZE = 64 KiB</code>, <code>MI_SLICE_SIZE = 64 KiB</code>, <code>MI_ALIGN = 16</code>, <code>MI_MAX_BLOCK_SIZE = 512 KiB</code>, <code>MI_HUGE_THRESHOLD = 128 KiB</code>, <code>MI_SIZE_CLASS_COUNT = 44</code>, <code>MI_SEGMENT_MAP_SIZE = 64</code>.</p>
+<h3 id="57-std-memory-pool-pool-t-fixed-size-obj">57. <code>std::memory::pool</code> — <code>Pool&lt;T&gt;</code> (fixed-size object pool)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Pool&lt;T&gt;
+{
+    rawptr freeList;
+    u8* blocks;
+    usize blockSize;
+    usize blockCount;
+    usize totalBlocks;
+    usize usedBlocks;
+
+    static Pool&lt;T&gt; new()
+    void dispose()
+    T*   acquire()
+    void release(T* obj)
+    usize available()
+    usize used()
+    usize capacity()
+    bool _grow()
+}</code></pre>
+<h3 id="58-std-memory-shared-ptr-sharedptr-t-ref">58. <code>std::memory::shared_ptr</code> — <code>SharedPtr&lt;T&gt;</code> (refcounted)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct SharedPtr&lt;T&gt;
+{
+    T* ptr;
+    RefCount* rc;       // contains usize count
+
+    bool init(T value)
+    void dispose()
+    T    get(const self*)
+    T*   data()
+    const T* constData(const self*)
+    usize refCount(const self*)
+    bool isValid(const self*)
+}
+void drop()</code></pre>
+<h3 id="59-std-memory-smart-ptr-smartptr-t-uniqu">59. <code>std::memory::smart_ptr</code> — <code>SmartPtr&lt;T&gt;</code> (unique)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct SmartPtr&lt;T&gt;
+{
+    T* ptr;
+
+    bool init(T value)
+    void dispose()
+    T    get(const self*)
+    T*   data()
+    const T* constData(const self*)
+    void set(T value)
+    bool isValid(const self*)
+    T    take()
+}
+void drop()</code></pre>
+<hr />
+<section><h2 id="std-concurrent">std::concurrent</h2></section>
+<h3 id="60-std-concurrent-mutex-mutex">60. <code>std::concurrent::mutex</code> — <code>Mutex</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Mutex
+{
+    rawptr impl[6];
+    void init()
+    void initRecursive()
+    void destroy()
+    void lock()
+    void unlock()
+    bool tryLock()
+}</code></pre>
+<h3 id="61-std-concurrent-rwlock-rwlock">61. <code>std::concurrent::rwlock</code> — <code>RwLock</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct RwLock
+{
+    rawptr impl[8];
+    void init()
+    void destroy()
+    void readLock()
+    void writeLock()
+    bool tryReadLock()
+    bool tryWriteLock()
+    void unlock()
+}</code></pre>
+<h3 id="62-std-concurrent-semaphore-semaphore">62. <code>std::concurrent::semaphore</code> — <code>Semaphore</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Semaphore
+{
+    rawptr impl[8];
+    bool init(u32 value)
+    void destroy()
+    void wait()
+    bool tryWait()
+    void post()
+    i32  value()
+}</code></pre>
+<h3 id="63-std-concurrent-signal-posix-signals">63. <code>std::concurrent::signal</code> — POSIX signals</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub const i32 SIGABRT = 6;  SIGALRM = 14; SIGBUS = 7;  SIGCHLD = 17;
+pub const i32 SIGCONT = 18; SIGFPE = 8;   SIGHUP = 1;  SIGILL = 4;
+pub const i32 SIGINT = 2;   SIGKILL = 9;  SIGPIPE = 13; SIGQUIT = 3;
+pub const i32 SIGSEGV = 11; SIGSTOP = 19; SIGTERM = 15; SIGTSTP = 20;
+pub const i32 SIGTTIN = 21; SIGTTOU = 22; SIGUSR1 = 10; SIGUSR2 = 12;
+pub const i32 SIGSYS = 31;  SIGTRAP = 5;  SIGURG = 23; SIGXCPU = 24; SIGXFSZ = 25;
+pub const u8 SIG_DFL = 0;
+pub const usize SIG_IGN = 1;
+
+pub rawptr handle(i32 sig, rawptr handler)
+pub void   ignore(i32 sig)
+pub void   defaultHandler(i32 sig)
+pub i32    sendSig(i32 pid, i32 sig)
+pub i32    raiseSig(i32 sig)</code></pre>
+<h3 id="64-std-concurrent-thread-threads-conditi">64. <code>std::concurrent::thread</code> — Threads, conditions, atomics</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct Thread = rawptr;
+
+pub struct ConditionVar
+{
+    rawptr impl[6];
+    void init()
+    void destroy()
+    void wait(Mutex* mutex)
+    void signal()
+    void broadcast()
+}
+
+pub variant ThreadError { CreateFailed { str msg; } }
+
+pub Result&lt;Thread, ThreadError&gt; threadCreate(rawptr(rawptr) fn, rawptr arg)
+pub bool   threadJoin(Thread t, rawptr* retval)
+pub void   threadExit(rawptr retval)
+pub Thread threadCurrent()
+
+pub struct AtomicU64
+{
+    u64 value;
+    u64  load()
+    void store(u64 val)
+    u64  fetchAdd(u64 delta)
+    u64  fetchSub(u64 delta)
+    bool compareExchange(u64 expected, u64 desired)
+}
+
+pub struct AtomicU32
+{
+    u32 value;
+    u32  load()
+    void store(u32 val)
+    u32  fetchAdd(u32 delta)
+    u32  fetchSub(u32 delta)
+    bool compareExchange(u32 expected, u32 desired)
+}</code></pre>
+<h3 id="65-std-concurrent-threadpool-threadpool">65. <code>std::concurrent::threadpool</code> — <code>ThreadPool</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct ThreadPool
+{
+    Mutex mutex;
+    ConditionVar cond;
+    Thread* threads;
+    Task* queueHead;
+    Task* queueTail;
+    u32 threadCount;
+    bool stop;
+
+    bool init(u32 numThreads)
+    void deinit()
+    bool enqueue(void(rawptr) func, rawptr arg)
+    u32  threadCount()
+    // helper: void _worker()
+}
+pub extend ThreadPool : @drop { void drop(); }
+// helper: void _workerEntry(rawptr arg)</code></pre>
+<h3 id="66-std-concurrent-async-stackful-fiber-a">66. <code>std::concurrent::async</code> — Stackful-fiber async runtime</h3>
+<p>Built on glibc <code>ucontext</code>. <code>spawn</code> creates a fiber, <code>await</code> parks the current fiber until a future resolves, and <code>run</code>/<code>runOnce</code> drive the scheduler.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant AsyncError
+{
+    OutsideFiber { str msg; },
+    NullFuture   { str msg; },
+    SpawnFailed  { str msg; }
+}
+
+pub struct Future
+{
+    u8     state;         // FUTURE_PENDING / FUTURE_READY
+    rawptr result;
+    Fiber* waiters;
+    Future* chanNext;
+    bool   counted;
+}
+
+pub usize defaultFiberStackSize = 131072;   // 128 KiB
+
+pub bool init()
+pub Result&lt;Future*, AsyncError&gt; spawn(void(rawptr) fn, rawptr arg)
+pub Result&lt;rawptr, AsyncError&gt;  await(Future* f)
+pub Future* sleep(u64 ms)
+pub bool    run()
+pub void    runOnce()
+pub Future* poolRun(ThreadPool* pool, void(rawptr) fn, rawptr arg)
+
+pub struct AsyncChannel
+{
+    rawptr* buf;
+    usize cap;
+    usize count;
+    usize head;
+    Future* recvHead;
+    Future* recvTail;
+
+    bool    init(usize capacity)
+    void    deinit()
+    bool    send(rawptr value)
+    Future* recv()
+}
+pub extend AsyncChannel : @drop { void drop(); }</code></pre>
+<p>State/step constants (<code>FUTURE_*</code>, <code>FIBER_*</code>, <code>STEP_*</code>) and the scheduler internals (<code>Fiber</code>, <code>Scheduler</code>, <code>TimerEntry</code>, <code>_nowMs</code>, <code>_initScheduler</code>, …) are non-<code>pub</code> and not part of the public surface.</p>
+      <nav class="chapter-nav"><a href="../appendix-g-input-output-and-system-interaction/index.html">← Previous</a><a href="../appendix-i-math-and-crypto/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

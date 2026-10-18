@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 35 · Live Examples: Systems and Concurrency | The Coral Book</title>
+  <link rel="stylesheet" href="../book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Chapter 35</p>
+      <h1>Live Examples: Systems and Concurrency</h1>
+      <p class="lead">The Machinery You Can See</p>
+      <p><a href="../19-concurrency-and-parallelism/index.html">Chapter 19</a> told the story of concurrency: what a thread is, why a data race is undefined behaviour, what happens-before means, and how a mutex and a condition variable turn a collection of independently running threads into a correct exchange. This chapter is the workshop. It takes those primitives and builds the eleven structures that every real system is assembled from: a race that a counter loses, a producer and a consumer passing work across a queue, a thread pool draining a task list, a parallel map over a vector, an async pipeline that suspends and resumes, and a semaphore that caps how many things happen at once, followed by a reader–writer lock that admits many readers or one writer, a barrier that holds a group of threads together, a divide-and-conquer parallel sum, the dining philosophers and the lock-ordering rule that saves them, and a token-bucket rate limiter. Each one is short. Each one is a pattern you will meet again, often under a different name.</p>
+<p>The promise of this chapter is that the machinery is visible. Coral does not hide the thread behind a keyword, the queue behind a runtime, or the scheduler behind magic. <code>threadCreate</code> returns a real operating system thread and a <code>Result</code> that says whether it worked. A mutex is a struct you <code>init</code> and <code>lock</code>. A condition variable is a nap with an alarm. When you read a function in this chapter, you can point at the exact line that establishes the happens-before edge, and that is the point: correctness in concurrent code is not a property you hope for, it is a property you can audit, lock by lock and signal by signal.</p>
+<p>Two habits carry through every example, and they are worth naming before the first one. First: every piece of shared mutable state is touched only while holding the lock that protects it, and the function is written so that a reviewer can see that in one reading. Second, and this is the one beginners skip: every wait on a condition variable happens inside a <code>while</code> loop that rechecks the predicate. The platform is allowed to wake a waiter for its own reasons, and another thread may have taken what you waited for. The loop is not defensive style; it is part of the protocol.</p>
+<p>A last word on the shape of a thread's argument. Every thread in Coral runs a function that takes one <code>rawptr</code> and returns one <code>rawptr</code> (a pool task returns <code>void</code>). That single pointer must carry everything the worker needs, so in practice it points at a struct. The pointer is where the lifetime contract begins: if it points at a local that dies before the join, you have a use-after-free the compiler cannot see. Every example below either points at data that outlives the join, or allocates its job and frees it when the task is done.</p>
+<section><h2 id="s35-1">The Lost Update: Why a Counter Needs an Atomic</h2></section>
+<p class="step-label">The problem</p>
+<p>Two threads each add one to a shared counter a million times. The answer should be two million. Write the obvious code and it is almost always less, and the shortfall changes on every run.</p>
+<p class="step-label">The intuition</p>
+<p>The line <code>count += 1</code> is not one action; it is three. The processor loads the current value into a register, adds one, and stores it back. When two threads do this at the same instant, both load seven, both compute eight, both store eight, and one increment is lost. The operations interleaved by pure timing, and nothing in the program ordered them. This is a data race, and its result is not a stable wrong answer but an unpredictable one. The fix is a single-word atomic: an operation the hardware guarantees no other thread can observe half-done. <code>AtomicU64</code> loads, stores, and does read-modify-write in one indivisible step.</p>
+<p class="step-label">The approach</p>
+<p>Write the broken version first, deliberately, because the failure is the lesson and because it never reproduces on demand. Then replace the plain <code>u64</code> with an <code>AtomicU64</code> and watch the count come out exact every time.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::thread {
+    threadCreate, threadJoin, Thread, ThreadError, AtomicU64
+};
+
+// the same field, once plain and once atomic
+struct PlainCounter { u64 value; }
+struct AtomicCounter { AtomicU64 value; }
+
+rawptr bumpPlain(rawptr arg) {
+    PlainCounter* c = (PlainCounter*)arg;
+    // read-modify-write as three separate steps: the race lives here
+    for (u64 i = 0; i &lt; 1000000u; i += 1) c-&gt;value += 1;
+    return null;
+}
+
+rawptr bumpAtomic(rawptr arg) {
+    AtomicCounter* c = (AtomicCounter*)arg;
+    // one indivisible instruction, so no increment can be lost
+    for (u64 i = 0; i &lt; 1000000u; i += 1) c-&gt;value.fetchAdd(1u);
+    return null;
+}
+
+pub void main() {
+    PlainCounter plain = PlainCounter { .value = 0 };
+    // both threads write through the same pointer; the counter must outlive them
+    Result&lt;Thread, ThreadError&gt; a = threadCreate(bumpPlain, (rawptr)&amp;plain);
+    Result&lt;Thread, ThreadError&gt; b = threadCreate(bumpPlain, (rawptr)&amp;plain);
+    if (a.isOk()) threadJoin(a.unwrap(), null);
+    if (b.isOk()) threadJoin(b.unwrap(), null);
+    println(&quot;plain  {}&quot;, plain.value);          // often less than 2000000
+
+    AtomicCounter atomic = AtomicCounter { .value = AtomicU64 { .value = 0 } };
+    Result&lt;Thread, ThreadError&gt; c = threadCreate(bumpAtomic, (rawptr)&amp;atomic);
+    Result&lt;Thread, ThreadError&gt; d = threadCreate(bumpAtomic, (rawptr)&amp;atomic);
+    if (c.isOk()) threadJoin(c.unwrap(), null);
+    if (d.isOk()) threadJoin(d.unwrap(), null);
+    println(&quot;atomic {}&quot;, atomic.value.load());  // always 2000000
+}</code></pre>
+<p class="step-label">Cost and notes</p>
+<p><code>fetchAdd</code> is a single locked instruction on x86-64 (<code>lock xadd</code>), a few tens of cycles, serialising and indivisible. The plain increment is faster in isolation and wrong. The rule of thumb from <a href="../19-concurrency-and-parallelism/index.html">Chapter 19</a> is exact: use an atomic when the shared state is one integer (a counter, a flag, a ticket), and use a mutex the moment the state is anything larger. An atomic guards one cell; a mutex guards a region.</p>
+<p class="step-label">Edge cases</p>
+<p>The plain version is a genuine data race and its result is undefined, not merely imprecise. It may occasionally print two million on a fast machine with light contention, which is exactly why it is dangerous. The two threads must write through the same pointer, so the counter's lifetime must exceed both joins. <code>load</code>, <code>store</code>, <code>fetchAdd</code>, <code>fetchSub</code>, and <code>compareExchange</code> are the whole vocabulary, and each is a hardware guarantee rather than a simulation. And <code>AtomicU64 { .value = 0 }</code> is the initialisation; forgetting it leaves the counter holding whatever was on the stack.</p>
+<p class="step-label">Variation</p>
+<p>Two threads incrementing and one decrementing, with the result printed after all three join. The expected total is one million regardless of interleaving; confirm that the atomic version always reaches it and the plain version does not. Then try <code>compareExchange</code> to build a lock-free "increment only if below a cap" and explain the retry loop.</p>
+<section><h2 id="s35-2">Producer and Consumer with a Mutex and a Condition Variable</h2></section>
+<p class="step-label">The problem</p>
+<p>One thread produces values; another consumes them; they must meet in the middle without the producer overrunning a fixed-size buffer and without the consumer spinning on an empty one.</p>
+<p class="step-label">The intuition</p>
+<p>This is the single most reusable structure in concurrent programming. A thread pool is this queue with tasks. A channel is this queue with a protocol. An actor's mailbox is this queue. It is a fixed-size ring of slots, a mutex, and two condition variables: one that says "an item is ready" and one that says "room is free." The producer locks, waits while the ring is full, writes, signals that an item is ready, and unlocks. The consumer locks, waits while the ring is empty, reads, signals that room is free, and unlocks. The two signals cross: each side wakes the other precisely when the other can make progress.</p>
+<p class="step-label">The approach</p>
+<p>A ring buffer with <code>head</code> and <code>count</code>, protected by one mutex, with two condition variables. A <code>closed</code> flag lets the consumer drain and stop. The waits are all inside <code>while</code> loops, for the three named reasons (lost wakeup, spurious wakeup, stale predicate).</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+import(lib) std::concurrent::thread {
+    ConditionVar, threadCreate, threadJoin, Thread, ThreadError
+};
+import(lib) std::mman { alloc, dealloc };
+
+pub struct Queue {
+    // all fields below are guarded by this one mutex
+    Mutex mutex;
+    ConditionVar itemReady;
+    ConditionVar roomFree;
+    u64* items;
+    usize cap;
+    usize head;          // index of the oldest live slot
+    usize count;         // how many slots are currently live
+    bool closed;
+
+    bool init(usize capacity) {
+        // one contiguous block of ring slots
+        self.items = alloc&lt;u64&gt;(capacity);
+        if (self.items == null) return false;
+        self.mutex.init();
+        self.itemReady.init();
+        self.roomFree.init();
+        self.cap = capacity;
+        self.head = 0;
+        self.count = 0;
+        self.closed = false;
+        return true;
+    }
+
+    void destroy() {
+        // tear down synchronisation, then free the ring
+        self.mutex.destroy();
+        self.itemReady.destroy();
+        self.roomFree.destroy();
+        dealloc&lt;u64&gt;(self.items);
+    }
+
+    void push(u64 value) {
+        // take the lock before touching any shared field
+        self.mutex.lock();
+        // wait in a loop: recheck the full condition after every wake
+        while (self.count == self.cap &amp;&amp; !self.closed)
+            self.roomFree.wait(&amp;self.mutex);
+        // shutdown wins over a pending push
+        if (self.closed) { self.mutex.unlock(); return; }
+
+        // ring write at the tail; count tracks the live slots
+        self.items[(self.head + self.count) % self.cap] = value;
+        self.count += 1;
+        self.itemReady.signal();
+        self.mutex.unlock();
+    }
+
+    bool pop(u64* out) {
+        self.mutex.lock();
+        // same loop protocol, this time for the empty condition
+        while (self.count == 0 &amp;&amp; !self.closed)
+            self.itemReady.wait(&amp;self.mutex);
+        if (self.count == 0) { self.mutex.unlock(); return false; }
+
+        // the output pointer receives one value on success
+        *out = self.items[self.head];
+        // advance head and free a slot, which wakes the producer
+        self.head = (self.head + 1) % self.cap;
+        self.count -= 1;
+        self.roomFree.signal();
+        self.mutex.unlock();
+        return true;
+    }
+
+    void close() {
+        self.mutex.lock();
+        // set the flag under the lock so the wake cannot be missed
+        self.closed = true;
+        // broadcast, not signal: every waiter must see the closure
+        self.itemReady.broadcast();
+        self.roomFree.broadcast();
+        self.mutex.unlock();
+    }
+}
+
+rawptr producer(rawptr arg) {
+    Queue* q = (Queue*)arg;
+    // push one through one hundred, then poison-pill the queue
+    for (u64 i = 1; i &lt;= 100; i += 1) q-&gt;push(i);
+    q-&gt;close();
+    return null;
+}
+
+rawptr consumer(rawptr arg) {
+    Queue* q = (Queue*)arg;
+    u64 value;
+    u64 sum = 0;
+    // drains until pop reports the queue closed and empty
+    while (q-&gt;pop(&amp;value)) sum += value;
+    println(&quot;sum {}&quot;, sum);
+    return null;
+}
+
+pub i32 main() {
+    Queue q;
+    if (!q.init(16)) return 1;
+    // two threads share the queue; both must join before destroy
+    Result&lt;Thread, ThreadError&gt; p = threadCreate(producer, (rawptr)&amp;q);
+    Result&lt;Thread, ThreadError&gt; c = threadCreate(consumer, (rawptr)&amp;q);
+    if (p.isOk()) threadJoin(p.unwrap(), null);
+    if (c.isOk()) threadJoin(c.unwrap(), null);
+    q.destroy();
+    return 0;
+}</code></pre>
+<p>The sum prints 5050, the sum of one through a hundred, every time, though the interleaving of the two threads differs on every run. The ring arithmetic <code>(head + count) % cap</code> is the entire buffer discipline: <code>head</code> is the oldest slot, <code>count</code> is how many are live, and the modulo keeps the indices in range without ever moving a value. The <code>close</code> broadcast, called the poison pill, wakes both waiters so the consumer's loop ends on <code>false</code> and no thread is left asleep forever.</p>
+<p class="step-label">Cost and notes</p>
+<p>Each push and pop takes one lock, one or two signals, and O(1) bookkeeping. The mutex is held only for the bookkeeping and is released before any work is done on the item, so the critical section is tiny. The backpressure is the point: a fast producer blocks when the buffer is full instead of letting memory grow until the machine dies, and that blocking is what keeps the two sides in step.</p>
+<p class="step-label">Edge cases</p>
+<p>The buffer must never be touched outside the locked region; a single unlocked read of <code>count</code> reintroduces the race. Both waits recheck after waking, because <code>signal</code> wakes one waiter but the woken thread may find the predicate false. <code>close</code> uses <code>broadcast</code>, not <code>signal</code>, because every waiter must see the closure. And a producer that closes while the consumer is mid-<code>pop</code> is fine, because <code>pop</code> rechecks <code>count</code> after the wake and returns what is left before returning false.</p>
+<p class="step-label">Variation</p>
+<p>Generalise the element type to <code>rawptr</code> so the queue carries pointers to arbitrary jobs, which is exactly what the next example's thread pool does. Then add a second consumer thread and confirm the sum is still 5050 — the correctness does not depend on how many consumers there are, only on the lock discipline.</p>
+<section><h2 id="s35-3">A Thread-Pool Task Queue</h2></section>
+<p class="step-label">The problem</p>
+<p><code>threadCreate</code> per task does not scale: the operating system charges for a kernel object, a stack, and a scheduler slot, and a program that spawns a thread per request spends its life in the kernel. A pool creates a fixed set of workers once and feeds them tasks from a queue.</p>
+<p class="step-label">The intuition</p>
+<p>A pool is the producer–consumer queue of 34.2, with the tasks as items, the workers as consumers, and a stop flag for shutdown. The producer is any thread that calls <code>submit</code>; the consumers are the workers, each running the same loop: lock, wait for a task or a stop, take one, unlock, run it, repeat. The queue is a linked list because tasks arrive and leave one at a time, and a list needs no fixed capacity. The stop flag has its own discipline: on shutdown, set it under the lock and broadcast, so a sleeping worker wakes, rechecks, and exits after draining what is queued.</p>
+<p class="step-label">The approach</p>
+<p>A compact pool built directly on <code>Mutex</code>, <code>ConditionVar</code>, and <code>threadCreate</code>. <code>std::concurrent::threadpool::ThreadPool</code> is the production version of exactly this structure; reading its source after writing this one is the best way to see that there is no hidden machinery.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+import(lib) std::concurrent::thread {
+    ConditionVar, threadCreate, threadJoin, Thread, ThreadError
+};
+import(lib) std::mman { alloc, dealloc };
+
+struct Task {
+    // a function, its argument, and the next link in the list
+    void(rawptr) work;
+    rawptr arg;
+    Task* next;
+}
+
+pub struct MiniPool {
+    // every field here is protected by mutex
+    Mutex mutex;
+    ConditionVar cond;
+    Thread* workers;
+    Task* head;
+    Task* tail;
+    u32 nthreads;
+    bool stop;
+
+    bool init(u32 numThreads) {
+        // refuse a pool that could never make progress
+        if (numThreads == 0) return false;
+        self.mutex.init();
+        self.cond.init();
+        self.head = null;
+        self.tail = null;
+        self.stop = false;
+        self.nthreads = numThreads;
+        self.workers = alloc&lt;Thread&gt;((usize)numThreads);
+        if (self.workers == null) return false;
+        // start the fixed set of workers once; they then consume the queue
+        for (u32 i = 0; i &lt; numThreads; i += 1) {
+            Result&lt;Thread, ThreadError&gt; r = threadCreate(miniEntry, (rawptr)self);
+            if (r.isErr()) { self.shutdown(); return false; }
+            self.workers[i] = r.unwrap();
+        }
+        return true;
+    }
+
+    bool submit(void(rawptr) work, rawptr arg) {
+        if (work == null) return false;
+        // the task lives on the heap because it must outlive submit
+        Task* t = alloc&lt;Task&gt;(1);
+        if (t == null) return false;
+        t-&gt;work = work;
+        t-&gt;arg = arg;
+        t-&gt;next = null;
+
+        // link the task at the tail under the lock, then signal one worker
+        self.mutex.lock();
+        if (self.stop) { self.mutex.unlock(); dealloc&lt;Task&gt;(t); return false; }
+        if (self.tail != null) self.tail-&gt;next = t;
+        else self.head = t;
+        self.tail = t;
+        self.mutex.unlock();
+        // signal after unlocking; one worker wakes and takes it
+        self.cond.signal();
+        return true;
+    }
+
+    void workerLoop() {
+        loop {
+            self.mutex.lock();
+            // sleep until there is work or a shutdown, then recheck
+            while (self.head == null &amp;&amp; !self.stop) self.cond.wait(&amp;self.mutex);
+            if (self.stop &amp;&amp; self.head == null) { self.mutex.unlock(); return; }
+
+            // pop the head task while still holding the lock
+            Task* t = self.head;
+            self.head = t-&gt;next;
+            if (self.head == null) self.tail = null;
+            self.mutex.unlock();
+
+            // run the task and free it outside the lock
+            t-&gt;work(t-&gt;arg);
+            dealloc&lt;Task&gt;(t);
+        }
+    }
+
+    void shutdown() {
+        self.mutex.lock();
+        // set the stop flag under the lock, broadcast after releasing it
+        self.stop = true;
+        self.mutex.unlock();
+        self.cond.broadcast();
+        for (u32 i = 0; i &lt; self.nthreads; i += 1) threadJoin(self.workers[i], null);
+        // drain any tasks queued just before shutdown
+        self.mutex.lock();
+        while (self.head != null) {
+            Task* t = self.head;
+            self.head = t-&gt;next;
+            dealloc&lt;Task&gt;(t);
+        }
+        self.mutex.unlock();
+        self.workers = null;
+        self.mutex.destroy();
+        self.cond.destroy();
+    }
+}
+
+rawptr miniEntry(rawptr arg) {
+    // thread entry: hand the pool to its worker loop
+    ((MiniPool*)arg)-&gt;workerLoop();
+    return null;
+}</code></pre>
+<p class="step-label">Cost and notes</p>
+<p>Submission is O(1): allocate a task, link it under the lock, signal. A worker's idle cost is zero. It sleeps on the condition variable and consumes nothing until signalled. The concurrency is bounded by the number of workers, which is a tuning decision: one per core for CPU-bound work, more for tasks that block on I/O, fewer when tasks contend for a shared lock. The pool replaces one thread creation per task with one per worker, and turns the per-task cost into a queue push.</p>
+<p class="step-label">Edge cases</p>
+<p>The stop path must both set the flag under the lock and broadcast after releasing it, so a worker that checked the empty queue and was about to wait does not miss the wake. The standard order is set-and-unlock, then broadcast. A task submitted just before shutdown is either run or freed, never stranded; <code>shutdown</code> drains the list after all workers have stopped. If thread creation fails partway, <code>shutdown</code> joins the workers already made and returns failure. And <code>submit</code> returns <code>false</code> rather than silently dropping a task if the pool is stopping.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>pending()</code> method that returns the number of queued tasks under the lock, and use it to build a <code>drain()</code> that blocks until the queue is empty. It is the missing piece for a batch program that submits a thousand jobs and then waits for all of them, and it demonstrates that the pool's state is fully visible through the mutex.</p>
+<section><h2 id="s35-4">Parallel Map over a Vec</h2></section>
+<p class="step-label">The problem</p>
+<p>Apply a function to every element of a large vector, using every core. This is the simplest and most common parallel pattern, and it is the one a data-processing pipeline reaches for first.</p>
+<p class="step-label">The intuition</p>
+<p>Split the vector into contiguous chunks, hand each chunk to a task, and let the pool run the tasks at once. Each task writes only to its own slice of the output, so the threads never touch the same memory and no lock is needed for the data itself. The only shared thing is the output buffer, and each task owns a disjoint region of it. The chunk boundaries are the coordination. Wait for the pool to drain, and the whole vector is mapped. This is the cleanest possible demonstration that parallelism is a resource problem: the work is divided, the resources are used, and nothing is shared that does not have to be.</p>
+<p class="step-label">The approach</p>
+<p>Use the standard <code>ThreadPool</code>. Define a job that carries a pointer to the input, a pointer to the output, a range, and the function to apply. Allocate an array of jobs, submit each, then <code>deinit</code>, which drains all queued work before the workers exit. Because the input and output outlive the pool, and each job writes a disjoint range, no additional synchronisation is needed.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::threadpool { ThreadPool };
+import(lib) std::vec { Vec };
+import(lib) std::mman { alloc, dealloc };
+
+struct MapJob {
+    // one chunk&#x27;s inputs, its output range, and the function to apply
+    const Vec&lt;f64&gt;* input;
+    Vec&lt;f64&gt;* output;
+    usize start;
+    usize end;
+    f64(f64) func;
+}
+
+void runMapChunk(rawptr arg) {
+    MapJob* job = (MapJob*)arg;
+    // each task writes only its own disjoint slice: no lock needed
+    for (usize i = job-&gt;start; i &lt; job-&gt;end; i += 1)
+        job-&gt;output-&gt;set(i, job-&gt;func(job-&gt;input-&gt;at(i)));
+}
+
+pub f64 square(f64 x) { return x * x; }
+
+pub bool parallelMap(const Vec&lt;f64&gt;* input, Vec&lt;f64&gt;* output, f64(f64) func, u32 workers) {
+    usize n = input-&gt;count();
+    // preallocate one output slot per input element
+    output-&gt;clear();
+    for (usize i = 0; i &lt; n; i += 1) output-&gt;push(0.0);   // reserve the slots
+
+    // never make more chunks than there are elements to give them
+    usize chunks = (usize)workers;
+    if (chunks &gt; n) chunks = n;
+    if (chunks == 0) return true;
+
+    // one job struct per chunk, owned by this function
+    MapJob* jobs = alloc&lt;MapJob&gt;(chunks);
+    if (jobs == null) return false;
+
+    // the pool owns the worker threads for the duration
+    ThreadPool pool;
+    if (!pool.init(workers)) { dealloc&lt;MapJob&gt;(jobs); return false; }
+
+    // spread the remainder so the chunks cover every element exactly
+    usize per = n / chunks;
+    usize extra = n % chunks;
+    usize start = 0;
+    for (usize c = 0; c &lt; chunks; c += 1) {
+        usize len = per + (c &lt; extra ? 1 : 0);
+        jobs[c] = MapJob {
+            .input = input,
+            .output = output,
+            .start = start,
+            .end = start + len,
+            .func = func
+        };
+        // enqueue the chunk; the pool decides which worker runs it
+        pool.enqueue(runMapChunk, (rawptr)&amp;jobs[c]);
+        start += len;
+    }
+
+    pool.deinit();        // drains every queued task, then joins the workers
+    dealloc&lt;MapJob&gt;(jobs);
+    return true;
+}</code></pre>
+<p>The chunking gives the first <code>extra</code> chunks one element more than the rest, so the pieces cover the vector exactly even when the length is not a multiple of the worker count. A fire-and-forget version that did not call <code>deinit</code> would return while the workers were still writing, and the caller would read a half-mapped vector. <code>deinit</code>'s drain-then-join is what makes the return value meaningful.</p>
+<p class="step-label">Cost and notes</p>
+<p>The wall-clock time should approach the single-threaded time divided by the number of workers, up to the overhead of submission and the fact that some workers finish before others. The overhead is real: each task carries a struct and a queue push, and for tiny vectors the parallel version is slower than a plain loop. Parallelism pays when each chunk is large enough to dwarf the coordination, which is why the chunk count is a parameter and not a constant.</p>
+<p class="step-label">Edge cases</p>
+<p>The output vector must already have <code>n</code> slots before the tasks run, because <code>set</code> writes into existing positions and <code>at</code> would be out of range otherwise; the pre-fill loop is the allocation. Each job's range must be disjoint from every other's, or two threads write the same cell and the result is a race; the <code>start</code>/<code>len</code> arithmetic guarantees it. The function passed must be safe to run on many threads at once, which rules out anything that mutates shared state. And the jobs array and the pool must both be cleaned up on the failure paths, which the early returns do.</p>
+<p class="step-label">Variation</p>
+<p>Replace the map with a parallel reduction: instead of writing each result, each chunk computes a partial sum and the caller combines the partials. The partials must be written to distinct slots (one per chunk) and combined afterward, because summing into one shared accumulator would need an atomic or a lock. Doing it both ways shows how the pattern changes when the threads must combine rather than partition.</p>
+<section><h2 id="s35-5">An Async Pipeline with spawn, await, and a Channel</h2></section>
+<p class="step-label">The problem</p>
+<p>Coordinate several I/O-shaped stages — fetch, transform, store — so that while one stage waits, the others progress, without dedicating an operating-system thread to each wait.</p>
+<p class="step-label">The intuition</p>
+<p>A thread that sleeps blocks a thread; an async task that sleeps frees its execution context for other work. Coral's async runtime is a set of lightweight stacks called fibers, driven by whoever calls <code>run</code>. <code>spawn(fn, arg)</code> puts a function on its own fiber and returns a <code>Future*</code>, a one-shot result cell. <code>await(future)</code> suspends the calling fiber until the future is ready, then returns its result. <code>sleep(ms)</code> returns a future that resolves later, and awaiting it suspends the fiber for that long without blocking a thread. The top level of the program is not a fiber, so it cannot await; instead it spawns a coordinator and calls <code>run</code> to drive the scheduler to completion. The rule is: await inside a fiber, drive from outside.</p>
+<p class="step-label">The approach</p>
+<p>A producer fiber pushes values into an <code>AsyncChannel</code> with a sleep between them to model latency; a consumer fiber receives and accumulates them. The top level spawns both and runs the scheduler.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::async;
+import(lib) std::io::ios { println };
+
+pub void producerStage(rawptr arg) {
+    async::AsyncChannel* ch = (async::AsyncChannel*)arg;
+    // the producer emits five values with a pause between them
+    for (u64 i = 1; i &lt;= 5; i += 1) {
+        async::await(async::sleep(10));       // pretend to do I/O
+        ch-&gt;send((rawptr)i);
+    }
+}
+
+pub void consumerStage(rawptr arg) {
+    async::AsyncChannel* ch = (async::AsyncChannel*)arg;
+    // the consumer accumulates whatever it receives
+    u64 total = 0;
+    for (u64 i = 0; i &lt; 5; i += 1) {
+        // await suspends this fiber, freeing its thread for other work
+        Result&lt;rawptr, async::AsyncError&gt; got = async::await(ch-&gt;recv());
+        if (got.isOk()) total += (u64)got.unwrap();
+    }
+    println(&quot;async total {}&quot;, total);
+}
+
+pub i32 main() {
+    // bring up the runtime, then a buffered channel
+    async::init();
+    async::AsyncChannel ch;
+    if (!ch.init(4)) return 1;
+
+    // spawn both stages as fibers; each returns a future
+    Result&lt;async::Future*, async::AsyncError&gt; p = async::spawn(producerStage, (rawptr)&amp;ch);
+    Result&lt;async::Future*, async::AsyncError&gt; c = async::spawn(consumerStage, (rawptr)&amp;ch);
+    if (p.isErr() || c.isErr()) return 1;
+
+    async::run();     // drive until every spawned fiber has finished
+    // scheduler drained; tear the channel down
+    ch.deinit();
+    return 0;
+}</code></pre>
+<p>The producer sleeps, then sends; the consumer awaits a receive and adds what arrives. The <code>send((rawptr)i)</code> casts the integer to the channel's raw-pointer element type, and the consumer casts it back with <code>(u64)got.unwrap()</code>. The channel is buffered with capacity four, so sends and receives do not have to meet exactly. A zero capacity would make it a rendezvous, where a send succeeds only against an already-parked receiver.</p>
+<p class="step-label">Cost and notes</p>
+<p>The run-time cost of a fiber switch is a stack swap, cheaper than a kernel context switch, and the stacks are heap blocks recycled as fibers finish. The <code>sleep</code> is wall-clock and does not consume a thread; the scheduler idles in a timed wait on the same clock and wakes when the next timer is due. The gain over threads appears when many tasks spend most of their lives waiting, which is the I/O-bound case: one driver thread can hold thousands of suspended fibers on a fraction of the memory that many threads would need.</p>
+<p class="step-label">Edge cases</p>
+<p>Calling <code>await</code> outside a fiber reports that plainly and returns an error, because there is nowhere to suspend to. That is why the top level spawns and drives rather than awaiting directly. A future can be awaited by someone who never receives a value if no send ever matches it; v1 futures are not individually cancellable, and a pending receive that nobody sends to can stall the scheduler. And a blocking call inside a fiber stalls the whole runtime on that thread, which is the one discipline async demands: never block inside a task.</p>
+<p class="step-label">Variation</p>
+<p>Add a second consumer and a second channel, and route values to them in round-robin. It is the skeleton of a worker pipeline, and it shows that a channel per stage is the natural way to express the connections between them.</p>
+<section><h2 id="s35-6">Bounding Concurrency with a Semaphore</h2></section>
+<p class="step-label">The problem</p>
+<p>You have a hundred tasks and only four database connections. Every task wants a connection, and if they all grab one the database falls over. You need at most four tasks inside the connection-using region at once, regardless of how many tasks exist.</p>
+<p class="step-label">The intuition</p>
+<p>A mutex lets one through; a semaphore lets a fixed number through. It holds a count, <code>wait</code> decrements and blocks at zero, and <code>post</code> increments and wakes a waiter. Initialise it to four and exactly four tasks proceed; the rest queue on the wait without spinning. The semaphore has no owner: any thread may <code>post</code>, and it may release another thread's <code>wait</code>. That is the difference between it and a mutex, and the reason it can also serve as a signal.</p>
+<p class="step-label">The approach</p>
+<p>A shared counter of tasks that have finished, a semaphore of four permits, and a worker function that waits for a permit, does its work, and posts it back. The pool of tasks is larger than the permits on purpose.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::semaphore { Semaphore };
+import(lib) std::concurrent::thread {
+    threadCreate, threadJoin, Thread, ThreadError
+};
+
+struct Gate {
+    // a permit count and a tally of finished tasks
+    Semaphore permits;
+    u64* completed;
+}
+
+rawptr limitedTask(rawptr arg) {
+    Gate* gate = (Gate*)arg;
+    // acquire a permit: at most maxConcurrent tasks pass this point
+    gate-&gt;permits.wait();
+    // only four threads are ever inside this region at once
+    *gate-&gt;completed += 1;        // caller guarantees this is the only writer
+    // always release the permit, even conceptually on the way out
+    gate-&gt;permits.post();
+    return null;
+}
+
+pub void runLimited(u32 maxConcurrent, u32 taskCount) {
+    // one shared gate for every task
+    Gate gate;
+    if (!gate.permits.init(maxConcurrent)) return;
+    u64 completed = 0;
+    gate.completed = &amp;completed;
+
+    // in a real program the tasks come from the pool; here they run directly
+    Thread* threads = null;       // placeholder for a pool in production
+    for (u32 i = 0; i &lt; taskCount; i += 1) {
+        // join each task before the next, so the counter has a single writer
+        Result&lt;Thread, ThreadError&gt; t = threadCreate(limitedTask, (rawptr)&amp;gate);
+        if (t.isOk()) threadJoin(t.unwrap(), null);
+    }
+    // all tasks are joined, so the gate can be torn down
+    gate.permits.destroy();
+    // every task finished; report the tally
+    println(&quot;completed {}&quot;, completed);
+}</code></pre>
+<p>The example above creates and joins a thread per task for clarity; in production the tasks would be submitted to the pool from 34.3, and the semaphore would cap how many ran the guarded section at once. The essential lines are the three around the critical work: <code>wait</code>, do, <code>post</code>. Everything between the wait and the post runs under the cap, no matter how many tasks exist.</p>
+<p class="step-label">Cost and notes</p>
+<p><code>wait</code> and <code>post</code> are cheap kernel operations, far cheaper than creating a thread, and the queue of blocked waiters is handled by the kernel without spinning. The semaphore's promise is a maximum, unchanged by what happens inside: "never more than four connections open, whatever the work does," provided the work cannot throw a path that skips the post, which is why RAII or a single-exit structure matters. A binary semaphore, initialised to one, is almost a mutex, but its lack of ownership means any thread can release it; use the mutex to own a region and the semaphore to limit and to signal.</p>
+<p class="step-label">Edge cases</p>
+<p>A <code>post</code> without a matching <code>wait</code> raises the count above its initial value and lets more than the intended number through, so every <code>wait</code> must be paired with exactly one <code>post</code> on every path. Initialising to zero makes a pure signal, where a producer posts and a consumer waits. The shared counter in this example is safe only because the tasks are joined one at a time; with real parallelism it would need an <code>AtomicU64</code>, which is the lesson of 34.1 applied inside a concurrency-limiting pattern.</p>
+<p class="step-label">Variation</p>
+<p>Replace the join-one-at-a-time structure with the MiniPool from 34.3: submit all the tasks, have each do <code>wait</code>, work, <code>post</code>, and use an <code>AtomicU64</code> for the completed count. It combines three of this chapter's patterns — a pool, a semaphore, an atomic — into the shape of a real rate-limited service, and watching them fit together is the point of the whole chapter.</p>
+<section><h2 id="s35-7">A Reader-Writer Lock</h2></section>
+<p class="step-label">The problem</p>
+<p>Many threads read a piece of shared data and only a few ever write it. A plain mutex makes every reader wait for every other reader, needlessly serialising the common case. You want a lock that lets any number of readers in at once but gives a writer the room to itself.</p>
+<p class="step-label">The intuition</p>
+<p>The rule is a one-line contract: readers may share, a writer must be alone. Track how many readers are inside and whether a writer is active. A reader waits while a writer is active; a writer waits while any reader is active. That much is obvious. The subtlety is starvation: if readers keep arriving, a waiting writer never gets in. The fix used here is to make new readers wait whenever a writer is already waiting, so the backlog of readers cannot grow without bound. It costs a little reader latency to guarantee that writers eventually run.</p>
+<p class="step-label">The approach</p>
+<p>One mutex for the bookkeeping, two condition variables for the two waiting groups, a reader count, a writer-active flag, and a count of writers waiting for the priority rule.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+import(lib) std::concurrent::thread { ConditionVar };
+
+pub struct RwLock {
+    // one mutex guards the bookkeeping; two condition variables split the waiters
+    Mutex mutex;
+    ConditionVar canRead;
+    ConditionVar canWrite;
+    u32 readers;
+    bool writerActive;
+    u32 writersWaiting;
+
+    void init() {
+        // start unlocked with no readers and no waiting writers
+        self.mutex.init();
+        self.canRead.init();
+        self.canWrite.init();
+        self.readers = 0;
+        self.writerActive = false;
+        self.writersWaiting = 0;
+    }
+
+    void destroy() {
+        // release the synchronisation primitives
+        self.mutex.destroy();
+        self.canRead.destroy();
+        self.canWrite.destroy();
+    }
+
+    void readLock() {
+        self.mutex.lock();
+        // block while a writer runs, or while one waits (anti-starvation)
+        while (self.writerActive || self.writersWaiting &gt; 0)
+            self.canRead.wait(&amp;self.mutex);
+        // count ourselves in before releasing the mutex
+        self.readers += 1;
+        self.mutex.unlock();
+    }
+
+    void readUnlock() {
+        self.mutex.lock();
+        // one fewer reader inside
+        self.readers -= 1;
+        // last reader out lets a waiting writer in
+        if (self.readers == 0) self.canWrite.broadcast();
+        self.mutex.unlock();
+    }
+
+    void writeLock() {
+        self.mutex.lock();
+        // announce ourselves before waiting so readers yield to us
+        self.writersWaiting += 1;
+        while (self.writerActive || self.readers &gt; 0)
+            self.canWrite.wait(&amp;self.mutex);
+        self.writersWaiting -= 1;
+        // we are the only writer now
+        self.writerActive = true;
+        self.mutex.unlock();
+    }
+
+    void writeUnlock() {
+        self.mutex.lock();
+        self.writerActive = false;
+        self.canWrite.broadcast();      // a waiting writer goes next
+        self.canRead.broadcast();       // otherwise the readers may enter
+        self.mutex.unlock();
+    }
+}</code></pre>
+<p>The <code>writersWaiting &gt; 0</code> term in <code>readLock</code> is the whole anti-starvation policy; remove it and readers can barge past writers forever. The two broadcasts on release are deliberate: waking both groups and letting them recheck the predicates under the mutex is simpler and safer than computing which group should go next, and the priority rule sorts it out. Every wait is inside a loop, as the chapter's opening promise requires.</p>
+<p class="step-label">Cost and notes</p>
+<p>The lock is O(1) per operation, but read performance is the point: <code>readLock</code> and <code>readUnlock</code> touch the count and take the mutex, and any number of readers run their critical sections at once. The mutex is still held during the bookkeeping, so this is not lock-free; it is a way to shrink contention from "every access" to "every transition." Prefer the built-in <code>std::concurrent::rwlock</code> in production and read this version to understand what it does.</p>
+<p class="step-label">Edge cases</p>
+<p>A reader that takes the read lock twice on the same thread can deadlock if a writer arrives between the two: the second <code>readLock</code> blocks, the writer is stuck behind the first read lock, and the cycle never resolves. This is the price of writer priority, and it is why the API offers no recursive read lock. A writer must not call <code>readLock</code> while holding the write lock, or vice versa, for the same reason. If a reader crashes without releasing, <code>readers</code> never returns to zero and every writer waits forever; the lock cannot clean up after a thread, which is the discipline the caller owes it. And a lock released by a thread that never acquired it corrupts the counts silently.</p>
+<p class="step-label">Variation</p>
+<p>Remove the <code>writersWaiting</code> term to get a reader-preference lock, then run a stream of readers and one writer and observe that the writer is starved. Put the term back and watch the writer get a turn. The difference in behaviour is the whole argument for one policy over the other, and neither is universally right.</p>
+<section><h2 id="s35-8">A Barrier (Rendezvous)</h2></section>
+<p class="step-label">The problem</p>
+<p>A group of threads computes in phases, and no thread may begin phase two until every thread has finished phase one. You need a meeting point that holds all of them until the last one arrives, and that can be reused for the next phase.</p>
+<p class="step-label">The intuition</p>
+<p>Count the arrivals. The first threads to reach the barrier wait; the last one to arrive releases everyone and resets the count for the next round. The one hazard is the reuse. A thread that leaves one barrier may reach the barrier again and, if it is fast, be woken by the previous release. The fix is a generation number: each release increments it, and a waiting thread remembers the generation it arrived in and sleeps until the generation changes. It cannot be fooled by the previous round's wake-up because that would have changed the generation it is not yet waiting on.</p>
+<p class="step-label">The approach</p>
+<p>A mutex, one condition variable, the number of parties, the count currently waiting, and a generation counter.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+import(lib) std::concurrent::thread { ConditionVar };
+
+pub struct Barrier {
+    // parties is fixed; waiting and generation change every round
+    Mutex mutex;
+    ConditionVar cond;
+    u32 parties;
+    u32 waiting;
+    u64 generation;
+
+    bool init(u32 count) {
+        // a barrier of zero parties could never open
+        if (count == 0) return false;
+        self.mutex.init();
+        self.cond.init();
+        self.parties = count;
+        // start at generation zero with nobody waiting
+        self.waiting = 0;
+        self.generation = 0;
+        return true;
+    }
+
+    void destroy() {
+        // release mutex and condition variable
+        self.mutex.destroy();
+        self.cond.destroy();
+    }
+
+    void waitAt() {
+        self.mutex.lock();
+        // remember which round we arrived in
+        u64 myGen = self.generation;
+        // announce our arrival in this generation
+        self.waiting += 1;
+        if (self.waiting == self.parties) {
+            // last arrival: reset, bump the generation, release everyone
+            self.waiting = 0;
+            self.generation += 1;         // releases everyone waiting on myGen
+            self.cond.broadcast();
+        } else {
+            // sleep until the generation changes under us
+            while (self.generation == myGen)
+                self.cond.wait(&amp;self.mutex);
+        }
+        self.mutex.unlock();
+    }
+}</code></pre>
+<p>The last arrival skips the wait entirely: it has no reason to sleep, so it resets the count and wakes the others on its way out. The generation test <code>while (self.generation == myGen)</code> is what makes the barrier reusable; without it, a fast thread could fall through the next barrier using the previous round's signal.</p>
+<p class="step-label">Cost and notes</p>
+<p>Each <code>waitAt</code> is O(1): one lock, one comparison, and a broadcast by the last arriver. The cost of the broadcast is O(parties) wakeups, which is exactly what a rendezvous is. A barrier is how a parallel algorithm separates its phases when each phase must see the full result of the last, and it is the primitive behind <code>parallel_for</code> implementations with dependencies.</p>
+<p class="step-label">Edge cases</p>
+<p><code>count</code> of zero is meaningless and refused. Every party must call <code>waitAt</code> the same number of times; if one thread calls it an extra time it will block at the next phase waiting for parties that are not coming, which is the correct rendezvous behaviour but easy to mistake for a hang. The condition is broadcast, not signalled, because every waiter must be released, not just one. And a barrier gives no ordering between the release and the next phase's writes, so if phase two reads what phase one wrote, each thread's writes must be visible after the barrier: the mutex used inside the barrier provides that ordering, because each thread unlocks and re-locks, which is a happens-before edge.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>phase()</code> method that returns the current generation so a worker can tell which round it is in, and use it to run a three-phase pipeline where each phase prints a different message. Then write a sense-reversing barrier, which uses a boolean "sense" flag instead of a generation counter, and argue that the two are the same idea with different counters.</p>
+<section><h2 id="s35-9">Parallel Sum by Divide and Conquer</h2></section>
+<p class="step-label">The problem</p>
+<p>Sum a large array across several threads, but with a recursive division that mirrors how you would state the algorithm mathematically, rather than the fixed chunking of 34.4. The reduction — combining partial answers — is the pattern this example adds.</p>
+<p class="step-label">The intuition</p>
+<p>To sum a range, split it in half, sum each half, and add the two results. Do each half in parallel by giving one to a new thread and doing the other on the current thread. Stop splitting when the range is small enough that the cost of a thread exceeds the cost of just adding the remaining numbers; that cutoff is the only tuning knob. The data is read-only and the two halves are disjoint, so nothing is shared and no lock is needed. The partial sums are combined only after both sides have joined, which is the happens-before edge that makes the result valid.</p>
+<p class="step-label">The approach</p>
+<p>A job struct carries the data, the range, the cutoff, and an output slot for the partial sum. A recursive function fills the output; a thin thread entry calls it. The parent spawns the right half and computes the left half itself, then joins and adds.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::mman { alloc, dealloc };
+import(lib) std::concurrent::thread {
+    threadCreate, threadJoin, Thread, ThreadError
+};
+
+struct SumJob {
+    // data is read-only; the range is disjoint from every sibling range
+    const Vec&lt;f64&gt;* data;
+    usize start;
+    usize end;
+    usize cutoff;
+    f64 result;
+}
+
+void sumRange(SumJob* job) {
+    // below the cutoff, just add the numbers sequentially
+    if (job-&gt;end - job-&gt;start &lt;= job-&gt;cutoff) {
+        f64 s = 0.0;
+        // plain sequential sum over this small range
+        for (usize i = job-&gt;start; i &lt; job-&gt;end; i += 1) s += job-&gt;data-&gt;at(i);
+        job-&gt;result = s;
+        return;
+    }
+
+    // split the range in half at the midpoint
+    usize mid = job-&gt;start + (job-&gt;end - job-&gt;start) / 2;
+    SumJob* left = alloc&lt;SumJob&gt;(1);
+    SumJob* right = alloc&lt;SumJob&gt;(1);
+    // allocation failure falls back to a sequential sum
+    if (left == null || right == null) {
+        if (left != null) dealloc&lt;SumJob&gt;(left);
+        if (right != null) dealloc&lt;SumJob&gt;(right);
+        f64 s = 0.0;
+        for (usize i = job-&gt;start; i &lt; job-&gt;end; i += 1) s += job-&gt;data-&gt;at(i);
+        job-&gt;result = s;
+        return;
+    }
+
+    left-&gt;data = job-&gt;data;
+    left-&gt;start = job-&gt;start;
+    left-&gt;end = mid;
+    left-&gt;cutoff = job-&gt;cutoff;
+    left-&gt;result = 0.0;
+
+    right-&gt;data = job-&gt;data;
+    right-&gt;start = mid;
+    right-&gt;end = job-&gt;end;
+    right-&gt;cutoff = job-&gt;cutoff;
+    right-&gt;result = 0.0;
+
+    // one thread does the right half; the current thread does the left
+    Result&lt;Thread, ThreadError&gt; t = threadCreate(sumEntry, (rawptr)right);
+    sumRange(left);                                // the current thread takes the left half
+    if (t.isOk()) threadJoin(t.unwrap(), null);
+
+    // combine only after the join: that is the happens-before edge
+    job-&gt;result = left-&gt;result + right-&gt;result;
+    dealloc&lt;SumJob&gt;(left);
+    dealloc&lt;SumJob&gt;(right);
+}
+
+rawptr sumEntry(rawptr arg) {
+    // thread entry wraps the recursive routine
+    sumRange((SumJob*)arg);
+    return null;
+}
+
+pub f64 parallelSum(const Vec&lt;f64&gt;* data, usize cutoff) {
+    @assertOut(cutoff &gt;= 1, &quot;a cutoff of zero never terminates&quot;);
+    // the root job covers the whole vector on the current thread
+    SumJob root = SumJob {
+        .data = data, .start = 0, .end = data-&gt;count(),
+        .cutoff = cutoff, .result = 0.0
+    };
+    sumRange(&amp;root);
+    return root.result;
+}</code></pre>
+<p>Each internal node spawns exactly one thread — for the right half — and uses the current thread for the left, so the number of live threads is bounded by the depth of the recursion rather than by the number of leaves. The <code>right</code> job outlives the <code>threadJoin</code>, so freeing it afterward is safe; freeing it before the join would be the use-after-free the chapter's opening warns about.</p>
+<p class="step-label">Cost and notes</p>
+<p>The arithmetic is O(n), the same as a sequential loop, and the parallelism comes from running disjoint halves at once. The overhead is one thread creation per internal node, which is why the cutoff exists: below a few thousand elements, thread creation dominates and the sequential loop wins. This recursive shape is what you would feed into <code>std::concurrent::threadpool</code> or a work-stealing scheduler in production, so that a fixed set of workers runs all the tasks instead of creating a fresh thread at every fork.</p>
+<p class="step-label">Edge cases</p>
+<p>A cutoff of zero recurses without end, because a one-element range would keep splitting into an empty half and itself; the assertion refuses it. An empty input has <code>end - start == 0</code>, which is at most the cutoff, so the sequential branch handles it and returns zero. Allocation failure falls back to a sequential sum rather than dropping the work, which is the honest response when the answer matters more than the parallelism. And the two adds <code>left-&gt;result + right-&gt;result</code> happen after the join, which is the only synchronisation this pattern needs.</p>
+<p class="step-label">Variation</p>
+<p>Replace the <code>threadCreate</code> with the <code>ThreadPool</code> from 34.3 so the thread count is fixed and the fork becomes a queue push, then time both versions on an array of ten million and find the cutoff where the recursive version stops paying for itself.</p>
+<section><h2 id="s35-10">The Dining Philosophers, and How to Avoid Deadlock</h2></section>
+<p class="step-label">The problem</p>
+<p>Five philosophers sit around a table with one fork between each pair. To eat, a philosopher needs both the fork on the left and the fork on the right. Each spends the time alternating between thinking and eating. If every philosopher picks up the left fork first and then waits for the right, all five can hold one fork and wait forever. That is deadlock, and it is the smallest picture of the problem that any real locking code faces.</p>
+<p class="step-label">The intuition</p>
+<p>Deadlock is a cycle of waiting: each thread holds one resource and waits for the next, until the waiting wraps around to the start. Break the cycle and the deadlock cannot form. The simplest way is to impose a global order on the resources and always acquire them in that order. Number the forks zero through four; every philosopher takes the lower-numbered fork first, then the higher-numbered one. Now the philosopher between fork four and fork zero takes fork zero first, so nobody holds fork four while waiting for fork zero, and the circle is broken. The rule generalises to every program: give your locks a total order, and acquire them in that order, everywhere.</p>
+<p class="step-label">The approach</p>
+<p>A table of five mutexes. Each philosopher knows its seat, computes the two fork indices, and locks the smaller index before the larger. A fixed menu of meals keeps the run finite.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+import(lib) std::concurrent::mutex { Mutex };
+import(lib) std::concurrent::thread {
+    threadCreate, threadJoin, Thread, ThreadError
+};
+
+const u32 PHILOSOPHERS = 5;
+// five diners, each eats a fixed number of meals
+const u64 MEALS = 3;
+
+pub struct Table {
+    // one fork (mutex) between each pair of neighbours
+    Mutex forks[PHILOSOPHERS];
+
+    void init() {
+        for (u32 i = 0; i &lt; PHILOSOPHERS; i += 1) self.forks[i].init();
+    }
+
+    void destroy() {
+        for (u32 i = 0; i &lt; PHILOSOPHERS; i += 1) self.forks[i].destroy();
+    }
+}
+
+struct Seat {
+    // each philosopher&#x27;s seat and its own fork indices
+    Table* table;
+    u32 index;
+}
+
+rawptr dine(rawptr arg) {
+    Seat* seat = (Seat*)arg;
+    Table* table = seat-&gt;table;
+    u32 i = seat-&gt;index;
+
+    u32 left = (i + PHILOSOPHERS - 1) % PHILOSOPHERS;
+    u32 right = (i + 1) % PHILOSOPHERS;
+    // global order: always take the lower-numbered fork first
+    u32 first = left &lt; right ? left : right;
+    u32 second = left &lt; right ? right : left;
+
+    for (u64 meal = 0; meal &lt; MEALS; meal += 1) {
+        // acquire both forks in the fixed order, then release in reverse
+        table-&gt;forks[first].lock();
+        table-&gt;forks[second].lock();
+        // eat, holding both forks
+        table-&gt;forks[second].unlock();
+        table-&gt;forks[first].unlock();
+        // think
+    }
+    return null;
+}
+
+pub bool dinner() {
+    Table table;
+    // build the five forks before any philosopher starts
+    table.init();
+
+    // per-thread seat, handle, and a flag to track successful creation
+    Seat* seats = alloc&lt;Seat&gt;((usize)PHILOSOPHERS);
+    Thread* threads = alloc&lt;Thread&gt;((usize)PHILOSOPHERS);
+    bool* created = alloc&lt;bool&gt;((usize)PHILOSOPHERS);
+    // if any allocation failed, undo what succeeded and bail out
+    if (seats == null || threads == null || created == null) {
+        if (seats != null) dealloc&lt;Seat&gt;(seats);
+        if (threads != null) dealloc&lt;Thread&gt;(threads);
+        if (created != null) dealloc&lt;bool&gt;(created);
+        table.destroy();
+        return false;
+    }
+
+    for (u32 i = 0; i &lt; PHILOSOPHERS; i += 1) {
+        seats[i].table = &amp;table;
+        seats[i].index = i;
+        // record success so a failed creation is never joined
+        created[i] = false;
+        Result&lt;Thread, ThreadError&gt; t = threadCreate(dine, (rawptr)&amp;seats[i]);
+        if (t.isOk()) {
+            threads[i] = t.unwrap();
+            created[i] = true;
+        }
+    }
+
+    // join only the threads that were actually created
+    for (u32 i = 0; i &lt; PHILOSOPHERS; i += 1)
+        if (created[i]) threadJoin(threads[i], null);
+
+    // all joins done, release the bookkeeping
+    dealloc&lt;bool&gt;(created);
+    dealloc&lt;Thread&gt;(threads);
+    dealloc&lt;Seat&gt;(seats);
+    table.destroy();
+    return true;
+}</code></pre>
+<p>The two lines that prevent the disaster are <code>first = left &lt; right ? left : right</code> and <code>second = left &lt; right ? right : left</code>. Swap them back to "left then right" and the program can hang; the ordering is not a stylistic choice, it is the correctness proof. The <code>created</code> array is there because a thread creation that fails must not be joined, and the seat array is grown on the heap rather than the stack precisely so its lifetime is obvious.</p>
+<p class="step-label">Cost and notes</p>
+<p>The lock and unlock are the same O(1) mutex operations as everywhere else; the ordering adds nothing but a comparison. What it buys is the absence of a class of bug that is invisible in testing and shows up under load on a customer's machine. The alternative fixes are a waiter who grants both forks only when both are free, or seating only four of the five philosophers so at least one can always make progress; both work, and both are more machinery than sorting two integers.</p>
+<p class="step-label">Edge cases</p>
+<p>The ordering rule must be used by every code path that takes both forks, or the cycle can reappear through the path that forgot. A philosopher that releases the second fork before the first is fine here because there is no contention deadlock in release, but releasing in reverse of acquisition is the general habit to keep. This solution removes deadlock but not starvation: one philosopher could, in principle, be unlucky for a long time, and a fair implementation adds a queue. If the number of philosophers changes, <code>PHILOSOPHERS</code> must change with the array size in the struct, and the modulo arithmetic adapts automatically. And a thread that dies while holding a fork leaves it locked forever; there is no automatic cleanup, which is why production code pairs locks with a scoped release.</p>
+<p class="step-label">Variation</p>
+<p>Implement the waiter solution: a single mutex guarding a bitmask of free forks, with each philosopher becoming "hungry" and the waiter granting both forks only when both are free, signalling the philosopher to eat. It removes the starvation problem and replaces the lock-ordering argument with a single serialisation point, and comparing the two is the best way to see what each buys.</p>
+<section><h2 id="s35-11">A Token-Bucket Rate Limiter</h2></section>
+<p class="step-label">The problem</p>
+<p>Allow at most a fixed rate of operations — say four database queries per second — while still permitting a short burst when the work arrives in a clump. How do you enforce a rate without a background timer thread burning cycles?</p>
+<p class="step-label">The intuition</p>
+<p>Picture a bucket that holds tokens. Tokens drip in at a constant rate up to a maximum, and every operation takes one token; an operation that finds the bucket empty waits until a token drips in. The bucket's capacity is the largest burst you allow, and the drip rate is the sustained rate. The trick that removes the timer is to compute the tokens lazily: store the time of the last refill and, whenever someone touches the bucket, add the tokens that have accrued since then based on elapsed time. No thread sits in the background; the accounting happens on demand.</p>
+<p class="step-label">The approach</p>
+<p>A mutex protecting the token count and the last-refill timestamp, a monotonic clock for the elapsed time, and a wait loop that sleeps for exactly as long as the next token needs. <code>tryAcquire</code> is the non-blocking form for callers that would rather be rejected than delayed.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+import(lib) std::time {
+    Timespec, nowMonotonic, subTimespec, timespecToF64, sleepMs
+};
+
+pub struct TokenBucket {
+    // mutex guards tokens and last together; rate and capacity are read-only
+    Mutex mutex;
+    f64 rate;          // tokens added per second
+    f64 capacity;      // maximum burst
+    f64 tokens;
+    Timespec last;
+
+    void init(f64 ratePerSecond, f64 burst) {
+        // a non-positive rate would divide by zero later
+        @assertOut(ratePerSecond &gt; 0.0, &quot;rate must be positive&quot;);
+        self.mutex.init();
+        self.rate = ratePerSecond;
+        self.capacity = burst;
+        self.tokens = burst;              // start full, so the first burst is allowed
+        // remember the refill epoch
+        self.last = nowMonotonic();
+    }
+
+    void destroy() {
+        self.mutex.destroy();
+    }
+
+    // caller must hold the mutex; adds accrued tokens, capped at capacity
+    void refill() {
+        Timespec now = nowMonotonic();
+        // tokens accrue lazily from elapsed time; no timer thread exists
+        f64 elapsed = timespecToF64(subTimespec(now, self.last));
+        self.last = now;
+        self.tokens += elapsed * self.rate;
+        // a long pause cannot bank more than one full bucket
+        if (self.tokens &gt; self.capacity) self.tokens = self.capacity;
+    }
+
+    bool tryAcquire() {
+        self.mutex.lock();
+        self.refill();
+        // take one token if there is one, otherwise report failure
+        bool ok = self.tokens &gt;= 1.0;
+        if (ok) self.tokens -= 1.0;
+        self.mutex.unlock();
+        return ok;
+    }
+
+    void acquire() {
+        // retry loop: sleep, refill, and recheck until a token is available
+        while (true) {
+            // re-check under the lock on every attempt
+            self.mutex.lock();
+            self.refill();
+            if (self.tokens &gt;= 1.0) {
+                self.tokens -= 1.0;
+                self.mutex.unlock();
+                return;
+            }
+            // compute the exact wait until the next token is due
+            f64 deficit = (1.0 - self.tokens) / self.rate;   // seconds until a token
+            self.mutex.unlock();
+            u64 waitMs = (u64)(deficit * 1000.0) + 1u;       // round up a millisecond
+            sleepMs(waitMs);
+        }
+    }
+}</code></pre>
+<p><code>refill</code> reads and writes only under the lock; it is deliberately a separate method so that both <code>tryAcquire</code> and <code>acquire</code> share the exact same accounting. The clock is monotonic, so a system clock adjustment cannot make tokens appear or vanish. And the wait is a sleep for the computed deficit rather than a wait on a condition variable, because the API's condition variable has no timed wait: nobody will signal the callback when time passes, so the only honest way to wake on the clock is to sleep until the clock says a token is due.</p>
+<p class="step-label">Cost and notes</p>
+<p>Each call is O(1) arithmetic plus, in the blocking case, one sleep whose length is exactly the time until the next token. There is no polling loop spinning on the CPU and no timer thread; the laziness is the entire design. The capacity controls burstiness, and the rate controls the average, so the two numbers are independent dials: a large bucket with a small rate is a burst-tolerant limiter, a bucket of one is a strict metronome.</p>
+<p class="step-label">Edge cases</p>
+<p>A non-positive rate divides by zero in the deficit computation; the assertion at construction refuses it. Several waiters can wake at once and find only one token; the losers sleep again, which is a small thundering herd but never a correctness problem, because the check and the decrement happen under the lock. Starting full means the first callers get their burst immediately; starting empty would make the limiter stall for a full interval before the first operation, which is rarely what you want. If the process is suspended for a long time, the accumulated tokens are capped at the capacity, so a long pause does not bank an unbounded burst. And <code>sleepMs</code> sleeps at least the requested duration but may oversleep, so the limiter is approximate and always errs on the side of being slow, never fast.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>tryAcquireN(u64 n)</code> for operations that cost more than one token, and a fairness counter so callers are served in arrival order rather than competing. Then move the sleeping into a background refiller thread that wakes every few milliseconds and signals a condition variable, and compare the two designs on CPU wake-ups and on the accuracy of the rate under load.</p>
+<section><h2 id="s35-12">Exercises</h2></section>
+<ol><li>Comprehension. Explain why <code>count += 1</code> in two threads can lose an increment, and why <code>fetchAdd</code> cannot. Then explain why the rule is "atomic for one cell, mutex for a region," and give an example that tempts you to break it.</li><li>Producer–consumer. Change the <code>Queue</code> in 34.2 to hold pointers (<code>rawptr</code>) instead of <code>u64</code>s, and use it to pass two different kinds of job to a worker that switches on a small tag. Why must the tag travel with the pointer?</li><li>Thread pool. Add a <code>drain()</code> to the <code>MiniPool</code> that blocks until every submitted task has run, and use it to write a program that submits a thousand increment tasks and prints the final atomic count. Which of the two synchronisation tools (the queue lock, the atomic) protects which piece of state?</li><li>Parallel map. Time the parallel map against a plain loop for a vector of ten, ten thousand, and ten million elements, with two and eight workers. At what size does parallelism start to win, and what does that tell you about the overhead per task?</li><li>Async. Rewrite the pipeline in 34.5 with three stages connected by two channels, so that a middle stage reads from one and writes to the next. Where does the middle stage await, and why can it not do its work between two awaits without a task switch?</li><li>Semaphore. Implement a <code>tryAcquire</code> helper around <code>tryWait</code> that runs a task without blocking if a permit is free and reports failure if not. Describe a situation where trying and failing is better than waiting.</li><li>Correctness audit. Take the producer–consumer code and find every line that touches <code>items</code>, <code>count</code>, <code>head</code>, or <code>closed</code>. For each, name the lock that must be held and confirm from the code that it is. Then deliberately move one access outside the lock and explain what can now go wrong.</li><li>Design. You are building a web server with a fixed number of worker threads and a bounded request queue. Using this chapter's structures, describe the whole design — the queue, the pool, the bound — and say what happens to a request that arrives when the queue is full. Which is the right response, blocking or rejecting, and why?</li></ol>
+      <nav class="chapter-nav"><a href="../34-live-examples-tiny-machine-learning/index.html">← Previous</a><a href="../36-live-examples-programming-principles/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

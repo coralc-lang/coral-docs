@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 20 · Foreign Function Interface and Interoperability | The Coral Book</title>
+  <link rel="stylesheet" href="../book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Chapter 20</p>
+      <h1>Foreign Function Interface and Interoperability</h1>
+      <p class="lead">Living With C</p>
+      <p>Coral is not an island. It runs on operating systems that are themselves written in C, links against libraries written in C, and must sometimes expose itself to callers written in C. The foreign function interface — the FFI — is the seam where Coral meets everything else. Every systems language has one, because every systems language eventually has to call <code>read</code> and <code>open</code> and the platform's own functions, and no language is large enough to reimplement the world.</p>
+<p>Here is the difference in worlds, and it is worth holding onto for the whole chapter. Inside Coral, a pointer is an address with a type, a string is a pointer and a length, and a struct's layout is the compiler's private business. Inside C, a pointer is just an address, a string is a run of bytes terminated by a nul, and a struct's layout is a contract written in bytes because a linker does not know your field names. Crossing the boundary means leaving Coral's rules and entering C's, and then coming back. Coral's FFI is deliberately thin: you declare a foreign function with its C signature, call it, and the compiler generates a call the linker resolves. There is no binding generator to run and no runtime marshalling layer, because either would be machinery you cannot see.</p>
+<p>Thin does not mean trivial. The discipline is real, and the chapter's plan is: learn to declare foreign functions, learn to pass and receive data across the boundary, learn to represent C's types, and then learn the most valuable habit of all — to build a wrapper so that the rest of your program never touches the raw interface. A good FFI is invisible from the outside. That is the standard this chapter is aiming at.</p>
+<p>An analogy: the FFI is a border crossing. Coral has its own language, currency, and rules; C on the other side has different ones. A pointer is a passport number with no photo, a C string is a name with no promised length, and a struct is a parcel whose contents match only if both sides packed it the same way. The wrapper of 19.7 is the customs officer who translates once, so the rest of your program never has to cross.</p>
+<section><h2 id="s20-1">What the FFI Is For</h2></section>
+<p>It helps to be concrete about why you would ever need this. There are four jobs, and almost every use of the FFI is one of them.</p>
+<p>The first is the operating system itself. There is no Coral way to ask the kernel to open a file, because the kernel does not speak Coral; it speaks C, and the way you talk to it is a set of functions with C signatures. <code>read</code>, <code>write</code>, <code>open</code>, <code>close</code>, <code>mmap</code>, <code>socket</code> — these are the platform's vocabulary, and the FFI is how Coral pronounces them.</p>
+<p>The second is third-party libraries. The world's compression, cryptography, databases, graphics, and parsing libraries are overwhelmingly written in C, with C interfaces. If you want zlib to decompress a buffer, you call a C function.</p>
+<p>The third is performance. Occasionally a hot loop already exists as a hand-tuned C library, and calling it beats rewriting it in Coral. This is a real reason and a dangerous one, because it invites you to cross the boundary in the middle of a computation, which is where the boundary's costs and rules are most awkward.</p>
+<p>The fourth is exposure. Sometimes Coral must be the library: a plugin, a shared object, an entry point that a C program loads and calls. This is the reverse direction, and it has its own section (19.9).</p>
+<p>Notice what all four have in common: the boundary is a place where two sets of rules meet, and someone has to be responsible for the translation. In Coral, that someone is you, and the chapter's goal is to make you a careful translator.</p>
+<section><h2 id="s20-2">Declaring an Extern Function</h2></section>
+<p>An extern function is a declaration with no body. You write the name, the return type, the parameters, and you stop. The compiler records the signature, and at link time the linker connects the name to a real symbol.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern i64 read(i32 fd, cchar* buf, u64 count);
+pub extern i32 open(const cchar* path, i32 flags, i32 mode);
+pub extern void free(rawptr ptr);</code></pre>
+<p>That is the entire declaration. Three things are worth noticing.</p>
+<p>First, there is no function body. A declaration with <code>extern</code> and no <code>{}</code> is a promise to the linker: there is a symbol with this name and this signature, and I will use it. If the symbol does not exist, the link fails — which is the correct and early way to discover a typo, far better than a crash at runtime.</p>
+<p>Second, the parameter names are optional. The signatures above name their parameters for readability, but <code>i32 open(const cchar*, i32, i32);</code> is equally valid. Names in an extern declaration are documentation; the compiler only needs the types.</p>
+<p>Third, the common functions need no special link line, because the C standard library is linked by default. A function in a library that needs an explicit link is declared the same way, and the build provides the flag:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// links against -lm
+pub extern f64 sqrt(f64 x);
+pub extern f64 pow(f64 x, f64 y);</code></pre>
+<p>The standard library's own platform bindings are the model to read, because they are exactly this, written out at length. The platform module holds <code>libc</code> for POSIX systems and <code>win32</code> for Windows, and each is a list of extern declarations with no bodies:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// a fragment of platform/libc.crl
+pub extern u64 strlen(const cchar* s);
+pub extern rawptr malloc(u64 size);
+pub extern i32 open(const cchar* path, i32 flags, i32 mode);
+pub extern i64 read(i32 fd, cchar* buf, u64 count);
+
+// a fragment of platform/win32.crl
+pub extern rawptr CreateFileA(const cchar* lpFileName, u32 dwDesiredAccess, u32 dwShareMode, rawptr lpSecurityAttributes, u32 dwCreationDisposition, u32 dwFlagsAndAttributes, rawptr hTemplateFile);
+pub extern bool ReadFile(rawptr hFile, cchar* lpBuffer, u32 nNumberOfBytesToRead, u32* lpNumberOfBytesRead, rawptr lpOverlapped);</code></pre>
+<p>Two things are visible in the Windows fragment that are not in the POSIX one. The names are longer, because the platform's API is longer, and the types <code>u32</code> and <code>bool</code> show up where C has <code>unsigned</code> and its own boolean — we will meet the translation table in 19.4. The point is that adding a binding the library does not yet have is a one-line addition of a declaration. That is the whole extension mechanism.</p>
+<p>A whole binding can be smaller than a sentence. This complete program opens a file and closes it, with no wrapper at all:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) platform::libc { open, close };
+
+void main() {
+    i32 fd = open(C&quot;/etc/hosts&quot;, 0, 0);
+    if (fd &gt;= 0) {
+        close(fd);
+    }
+}</code></pre>
+<p>It works, and it shows why the wrapper of 19.7 is worth writing: the raw <code>i32</code> descriptor and the magic <code>0, 0</code> flags are exactly the details a wrapper is meant to hide.</p>
+<section><h2 id="s20-3">Calling Conventions and Function Pointers</h2></section>
+<p>A function's calling convention is the low-level agreement about how arguments are passed and who cleans up — in registers or on the stack, in what order, who pops. For the ordinary C convention, <code>extern</code> alone is enough, because the default is the platform's C convention. When a function uses a non-default convention, the convention is named:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern(&quot;C&quot;) void callback_handler(i32 code);</code></pre>
+<p><code>extern("C")</code> makes the C convention explicit, which matters where a platform could default differently. On mainstream targets the two spellings produce the same call, so writing it out is a clarity improvement more than a behavioural one. Where it genuinely matters is when the name could otherwise be mangled or when the platform has more than one convention.</p>
+<p>Function pointers are where the boundary gets interesting, because C passes callbacks as pointers to functions, and Coral passes Coral functions as pointers too. A C function that takes a callback takes a parameter written as a Coral function-pointer type, <code>RetType(params)</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern void qsort(rawptr base, usize count, usize size, i32(const rawptr, const rawptr) cmp);
+pub extern rawptr signal(i32 signum, void(i32) handler);</code></pre>
+<p>The type <code>i32(const rawptr, const rawptr)</code> is "a pointer to a function taking two <code>const rawptr</code> and returning <code>i32</code>." <code>void(i32)</code> is "a function taking an <code>i32</code> and returning nothing." Coral can pass a function to such a parameter, because a Coral function whose signature matches the function-pointer type is usable as that type:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 compareInts(const rawptr a, const rawptr b) {
+    i32 x = *(const i32*)a;
+    i32 y = *(const i32*)b;
+    return x - y;
+}
+
+void main() {
+    i32 data[5];
+    data[0] = 5; data[1] = 3; data[2] = 4; data[3] = 1; data[4] = 2;
+    qsort((rawptr)data, 5u, 4u, compareInts);
+}</code></pre>
+<p>The one subtlety is the calling convention. A callback invoked by C must use the C convention, so a Coral function passed across the boundary must have a C-compatible signature — it must take and return only FFI-compatible types, and it must not assume it can throw or unwind. An owned Coral type with drop behaviour is not something C can pass by value; keep callbacks simple, and if a callback needs context, pass it through a raw pointer, exactly as C does.</p>
+<section><h2 id="s20-4">C Types and Coral Types</h2></section>
+<p>The boundary has a small translation table, and knowing it prevents the most common FFI bug, which is a type that is the right size on one platform and the wrong size on another.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">C type        Coral type       note
+int           i32              on the platforms Coral targets
+long          i64 (LP64)       i32 on Windows (LLP64) — check the platform
+unsigned      u32
+size_t        usize            pointer-sized
+char          cchar            a byte, signedness platform-dependent
+char*         cchar*           a C string or byte buffer
+const char*   const cchar*     a read-only C string
+void*         rawptr           an untyped pointer
+bool          bool             C&#x27;s boolean, in the bindings
+struct foo    struct foo       by value, with a matching layout
+function ptr  void(rawptr)     the same, spelled Coral&#x27;s way</code></pre>
+<p>Four of these deserve a pause.</p>
+<p><code>cchar</code> is the C <code>char</code>: a single byte whose signedness depends on the platform, and the element type of a C string. It is deliberately distinct from the Coral <code>char</code>, which is a Unicode codepoint, and from <code>u8</code>, which is unambiguously unsigned. Using <code>cchar</code> at the boundary is a signal to the reader that you are dealing with C's notion of a character, and it prevents the mistake of handing a UTF-32 codepoint to a function that wants a byte.</p>
+<p><code>rawptr</code> is the <code>void*</code>: it carries an address and no type. Converting to and from it is explicit, <code>(rawptr)x</code> and <code>(T*)ptr</code>, which is exactly the type discipline Coral wants — the type is erased and restored at the boundary, and the casts mark where.</p>
+<p><code>usize</code> is <code>size_t</code>: the pointer-sized unsigned integer, and the type of every C length and count. When a C function says "how many bytes," it says <code>usize</code>, and when you pass a length you pass a <code>usize</code>.</p>
+<p>And the sizes are not universal. <code>long</code> is 64 bits on the LP64 model (Linux, macOS) and 32 bits on the LLP64 model (Windows). A binding that declares <code>i64</code> for a C <code>long</code> is correct on Linux and wrong on Windows. This is the first thing to check when a binding behaves strangely on one platform only, and it is why the platform bindings are separate files rather than one.</p>
+<section><h2 id="s20-5">C Strings and Coral Strings</h2></section>
+<p>The single largest source of FFI bugs is string handling, and Coral attacks it by making the two representations distinct types. A Coral <code>str</code> is a pointer and a length. A C string is a pointer to nul-terminated bytes with no length. They are not interchangeable, and the language does not pretend they are.</p>
+<p>Simply put, a <code>str</code> is a page with the number of words written at the top, and a C string is a page that just stops at the first blank line. Hand the first kind to a function that expects the second and it keeps reading past your last word until it happens to find a blank — or walks off the page.</p>
+<p>To call a C function that wants a C string, you must have a C string. A literal with the <code>C</code> prefix is one:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">open(C&quot;/etc/hosts&quot;, 0, 0);</code></pre>
+<p>The <code>C"..."</code> literal is nul-terminated in memory and has type <code>const cchar*</code>, so it can be passed directly and with no allocation. This is the cheapest and safest way to hand a fixed string to C, and it is the one to reach for whenever the string is known at compile time.</p>
+<p>For a runtime string — a <code>String</code> or a <code>str</code> — you convert explicitly. A <code>String</code> can produce a C-string view because it keeps a trailing nul; a <code>str</code> that is only a view must be copied into an owned buffer first:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">String s = String::from(&quot;config.txt&quot;);
+cchar* cstr = s.asCstr();          // valid while s is alive
+
+// a borrowed view that must be owned before it can be a C string
+String tmp = String::from(view);
+open(tmp.asCstr(), 0, 0);</code></pre>
+<p>The conversion is not free and it is not implicit, and that is the point: turning a length-carrying string into a nul-terminated one is a decision with a cost — either an allocation or a guarantee about a trailing byte — and the API makes you write the decision down. <code>asCstr()</code> does not allocate; it hands back the <code>String</code>'s own bytes, which is why the <code>String</code> must outlive the pointer. That lifetime rule is yours to keep.</p>
+<p>The common mistake here is to write <code>open(tmp.asCstr(), ...)</code> where <code>tmp</code> was a temporary that is already gone by the time C reads it. <code>asCstr</code> does not copy; it lends you the <code>String</code>'s own bytes, so the <code>String</code> must still be alive when the C function uses the pointer. If the pointer has to outlive the string, copy the bytes yourself first.</p>
+<p>The reverse direction is equally explicit. <code>String::fromCstr</code> measures the C string and copies it into an owned <code>String</code>; <code>str::fromCstr</code> measures it and returns a borrowed view:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">String owned = String::fromCstr(cstr);   // copies; owns its bytes
+str view = str::fromCstr(cstr);          // borrows; measures with strlen</code></pre>
+<p>Two warnings belong here, and they are the two bugs everyone writes at least once. First, a borrowed <code>str</code> made from a C string does not own the bytes: if the C code frees them, the view dangles, and the language cannot save you. Second, a <code>str</code> that is not nul-terminated must never be passed to a function expecting a C string; the function will read past the end looking for a nul that is not there, and it will keep going until it finds one or faults. The types make the distinction visible but not impossible, because at the boundary the C function's expectation is not something Coral can see.</p>
+<p>One more caution about null. A C function that returns a <code>cchar*</code> may return null to mean "not found" — <code>getenv</code> does exactly this. Handing that null straight to <code>String::fromCstr</code> sends a null pointer into <code>strlen</code>, which is a fault. Check for null first, every time:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern cchar* getenv(const cchar* name);
+
+String home(str name) {
+    const cchar* val = getenv(name.asCstr());
+    if (val == null) return String::from(&quot;(unset)&quot;);
+    return String::fromCstr(val);
+}</code></pre>
+<section><h2 id="s20-6">Passing Structures and Buffers</h2></section>
+<p>A struct can be passed to C by pointer, or by value if its layout matches. Matching layout is the catch. By default the compiler is free to insert padding between fields for alignment and to reorder fields for a tighter fit, which means a plain Coral struct does not necessarily have the layout C expects. For a struct that must cross the boundary, the layout is pinned with attributes:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[packed]]
+struct Header {
+    u8  version;
+    u8  flags;
+    u16 length;
+    u32 checksum;
+}
+
+pub extern i32 readHeader(i32 fd, Header* out);</code></pre>
+<p><code>#[[packed]]</code> removes the padding the compiler would otherwise insert, so the struct's size is the sum of its fields and its bytes lie in the declared order. This is required for wire formats, protocol headers, and any ABI where the byte layout is specified by something outside your program. The trade-off is access speed: a packed struct may be slower to use because unaligned fields cost more on some platforms, and the rule is to pack exactly the structs that cross a boundary and leave in-memory types unpacked.</p>
+<p><code>#[[reorder]]</code> is the opposite permission: it tells the compiler it may permute fields for a tighter layout. That is fine for a private in-memory type and wrong for anything that crosses the boundary, because C will read the bytes where C thinks they are. A struct that is neither packed nor reordered has a layout the compiler chooses, and that layout must be treated as private to Coral. The discipline is simple enough to chisel on the wall: if a struct crosses the FFI, mark it packed; if it does not, treat its layout as nobody's business.</p>
+<p>Buffers cross as pointers with an explicit length, because C has no way to infer one. A C function that fills a buffer takes a <code>rawptr</code> or <code>cchar*</code> and a <code>usize</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u8 buffer[4096];
+i64 n = read(fd, (cchar*)buffer, 4096u);</code></pre>
+<p>The cast from the array to <code>cchar*</code> is a cast to the parameter's type; the length is passed separately. The caller owns the buffer and its lifetime, the C function writes into it and returns how many bytes it used, and a negative return means an error. This pattern — a caller-provided buffer and a returned count — is the standard shape of every C read, and wrapping it so that callers get a <code>String</code> or a typed result back is the job of the next section.</p>
+<section><h2 id="s20-7">Wrapping the Boundary</h2></section>
+<p>The interface a C library presents is designed for C. It is full of raw pointers, integer return codes, out-parameters, and error codes left in a global. Do not let that interface leak into your program. Write a wrapper: a small Coral module that does the conversions, checks the return codes, turns them into <code>Result</code>s, and exposes a Coral-shaped API. The rest of the program then uses the wrapper and never sees a <code>rawptr</code>.</p>
+<p>A wrapper for a C file API shows the shape. Suppose the C side offers the standard trio:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern rawptr fopen(const cchar* path, const cchar* mode);
+pub extern u64 fread(rawptr ptr, u64 size, u64 count, rawptr stream);
+pub extern i32 fclose(rawptr stream);</code></pre>
+<p>Wrap it in an owned type with a drop and a <code>Result</code>-returning open:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) platform::libc { fopen, fread, fclose };
+import(lib) std::text::string { String };
+
+pub struct File {
+    rawptr handle;
+}
+
+pub variant FileError {
+    NotFound { String path; },
+    PermissionDenied { String path; },
+    Unknown { i32 code; },
+}
+
+pub extend File : @drop {
+    void drop() { fclose(self.handle); }
+}
+
+pub Result&lt;File, FileError&gt; fileOpen(str path) {
+    String tmp = String::from(path);
+    rawptr h = fopen(tmp.asCstr(), C&quot;r&quot;);
+    if (h == null)
+        return Result&lt;File, FileError&gt;::Err {
+            .error = FileError::NotFound { .path = path.asString() }
+        };
+    return Result&lt;File, FileError&gt;::Ok { .value = File { .handle = h } };
+}
+
+pub Result&lt;usize, FileError&gt; fileRead(File* f, u8* buf, usize len) {
+    u64 n = fread((rawptr)buf, 1u, len, f-&gt;handle);
+    return (usize)n;
+}</code></pre>
+<p>Everything that made the C API awkward is hidden here. <code>fopen</code>'s null-on-failure becomes a typed error in a <code>Result</code>. The raw handle is wrapped in a struct that owns it and frees it through <code>@drop</code>, so a <code>File</code> going out of scope closes the descriptor — RAII at the boundary, which is the single most valuable thing a wrapper provides. The C-string conversion is done once, inside. Callers write <code>fileOpen("config.txt")</code> and get a <code>Result</code>, and they never hold a <code>rawptr</code> or remember to close.</p>
+<p>Why this matters: a wrapper is what turns a C library from a pile of footguns into a tool your teammates can use without reading the C manual. The boundary work is done once, in one file, and every caller afterwards writes ordinary Coral.</p>
+<p>The wrapper is also where the ownership contract is decided. The <code>File</code> owns the handle, so copying a <code>File</code> would double-close it; the wrapper must either forbid copying or use a reference count the way a file descriptor is meant to be shared. The language does not decide this for you, because C did not decide it for you. The wrapper's job is to make the decision once, in one place, and to express it in the type so that the rest of the program inherits it.</p>
+<p>Two more details make a wrapper feel finished. First, map error codes to a small closed set of cases, so callers can switch on them. Second, use the switch's <code>|</code> to group cases that share a handling path:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (err) {
+    FileError::NotFound | FileError::PermissionDenied =&gt; recover(),
+    FileError::Unknown { code }                       =&gt; panic(code),
+}</code></pre>
+<p>This is the same pattern-matching from the book's variants chapter, applied to the boundary: the C error, an integer, has become a Coral variant the compiler can check.</p>
+<p>When a C function reports failure by returning a sentinel and setting <code>errno</code>, the wrapper reads <code>errno</code> through its accessor and turns it into a case. On POSIX, <code>errno</code> is reached through <code>__errno_location</code>, which returns a pointer to the current thread's error cell:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) platform::libc { __errno_location };
+
+i32 currentErrno() {
+    return *__errno_location();
+}</code></pre>
+<p>The indirection through a function is not an accident; it is precisely how <code>errno</code> is made thread-local, so that one thread's error cannot be read by another — the same story the concurrency chapter told about thread-local storage.</p>
+<section><h2 id="s20-8">Inline Assembly and Clobbering</h2></section>
+<p>There is one more way across the boundary, and it skips C entirely: inline assembly. When no C function exists for the operation you need — a raw syscall, a fence, an instruction the language does not expose — you write the instruction yourself, in the middle of a Coral statement. This is the escape hatch below the FFI, and like every escape hatch it trades safety for reach. It is what the platform layer of the standard library is built from: the <code>mmap</code> in <code>std/x86_64/linux/memory/intrinsics/memory.crl</code> is a system call written inline, and the atomics in <code>std/x86_64/linux/concurrent/thread.crl</code> are <code>lock</code>-prefixed instructions written inline. Once you have read this section you can read those files.</p>
+<p>The grammar is small. An <code>asm</code> statement is the keyword, an optional <code>volatile</code>, and a brace block:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">asm [volatile] { &quot;template&quot; [ : outputs ] [ : inputs ] [ : clobbers ] }</code></pre>
+<p>or <code>volatile asm { ... }</code>; the qualifier is accepted on either side and means the same thing (it sets one flag bit, <code>flags &amp; 1</code>, the <code>isVolatile</code> bit on <code>StmtKind::Asm</code>). The template is one or more string literals; a comma between pieces is optional, so adjacent literals join, exactly as C concatenates adjacent string literals. After the template come three optional colon-delimited sections, in the order C's extended asm uses: outputs, then inputs, then clobbers. Sections may be omitted from the right, and a <code>::</code> (lexed as one <code>ColonColon</code> token) closes a section and makes the next one empty, which is how the common barrier <code>asm volatile { "" ::: "memory" }</code> leaves both operand lists empty and reaches the clobber list. Operands in the output and input sections are <code>"constraint"(expression)</code> pairs — a string literal followed by a parenthesized Coral expression — while the clobber list is bare string literals. The parser stores them in the same shape the AST declares: <code>StmtKind::Asm { template, outputs, inputs, clobbers, flags }</code> (coral-ast/stmt.crl:127).</p>
+<p>Simply put, an <code>asm</code> block is a place where you write a few instructions in the machine's own language and hand them to the C compiler to place around your Coral variables. The template is the instruction text; the outputs, inputs, and clobbers are the note card telling the compiler which of its variables and registers the block reads, writes, and tramples, so it can keep them straight.</p>
+<p>The template is emitted verbatim, wrapped in the host C compiler's <code>__asm__</code> (or <code>__asm__ volatile</code> when the qualifier is present), because Coral's backend lowers the statement straight to GNU inline assembly (coral-backend/codegen.crl:4908). Two consequences follow. First, the operand placeholders are the C compiler's: <code>%0</code>, <code>%1</code>, … number the operands in order, outputs first and then inputs, and a literal percent in an x86 template is written <code>%%</code>, so a register is <code>%%rax</code> and instruction streams are separated with <code>\n\t</code>. Second, the constraint letters are the C compiler's, not Coral's: Coral copies each constraint string into the right slot without interpreting it (codegen.crl:4955), so any constraint GCC or Clang accepts works. <code>"r"</code> is a general-purpose register, <code>"m"</code> a memory location, <code>"i"</code> an immediate; on x86 <code>"a"</code>, <code>"D"</code>, <code>"S"</code>, <code>"d"</code> name AX, DI, SI, DX, and <code>"q"</code> a byte-addressable register. An output constraint carries <code>=</code> (<code>"=r"</code>, <code>"=m"</code>), a read-write operand carries <code>+</code> (<code>"+r"</code>, <code>"+m"</code>), and a digit constraint like <code>"0"</code> ties an input to the output with that number, so the two share a register or location. Operands bind to Coral variables by being lvalues: <code>"=r"(v)</code> names the local <code>v</code>, and the C compiler loads the input operands before the block and stores the output operands after it. The semantic check walks the template, output, and input expressions and type-checks each one (coral-semantics/stmt.crl:203); it does not check constraints or clobbers.</p>
+<p>A syscall shows all the pieces at once. This is the shape of the standard library's <code>mmap</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub rawptr sysMmap(rawptr addr, usize length, i32 prot, i32 flags, i32 fd, i64 offset) {
+    usize ret;
+    asm volatile {
+        &quot;movq %2, %%rdi\n\t&quot;
+        &quot;movq %3, %%rsi\n\t&quot;
+        &quot;movq %4, %%rdx\n\t&quot;
+        &quot;movq %5, %%r10\n\t&quot;
+        &quot;movq %6, %%r8\n\t&quot;
+        &quot;movq %7, %%r9\n\t&quot;
+        &quot;syscall\n\t&quot;
+        &quot;movq %%rax, %0&quot;
+        : &quot;=a&quot;(ret)
+        : &quot;0&quot;(9u), &quot;D&quot;((usize)addr), &quot;S&quot;(length), &quot;d&quot;((usize)prot),
+          &quot;r&quot;((usize)flags), &quot;r&quot;((usize)fd), &quot;r&quot;((usize)offset)
+        : &quot;rcx&quot;, &quot;r8&quot;, &quot;r9&quot;, &quot;r10&quot;, &quot;r11&quot;, &quot;memory&quot;
+    }
+    if ((i64)ret &lt; 0 &amp;&amp; (i64)ret &gt;= -4095) return null;
+    return (rawptr)ret;
+}</code></pre>
+<p>The template moves the syscall number and the arguments into the registers the kernel expects, issues <code>syscall</code>, and reads the result out of <code>%%rax</code>; <code>%%</code> keeps those register names literal while <code>%0</code>…<code>%7</code> are operands. The output <code>"=a"(ret)</code> puts the result in AX and stores it into <code>ret</code>. The first input <code>"0"(9u)</code> matches output 0, so the syscall number shares AX; the rest use the x86 register constraints <code>"D"</code>, <code>"S"</code>, <code>"d"</code> and the generic <code>"r"</code> for the operand the compiler has no specific register for. The clobber list names the registers the <code>syscall</code> instruction destroys that are not otherwise covered — <code>"rcx"</code>, <code>"r8"</code>, <code>"r9"</code>, <code>"r10"</code>, <code>"r11"</code> — and <code>"memory"</code>, which tells the C compiler the call can read and write arbitrary memory.</p>
+<p>A memory barrier is the shortest useful form, and it is nothing but a clobber:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void memoryBarrier() {
+    asm volatile { &quot;&quot; ::: &quot;memory&quot; }
+}</code></pre>
+<p>The template is empty, both operand sections are skipped with <code>::</code>, and the only content is <code>"memory"</code>. That single clobber is the entire point: it forbids the C compiler from keeping memory values in registers across the statement, which is what a compiler barrier is. <code>"cc"</code> is the sibling clobber for the condition codes — the flags — and a clobber that names a register (<code>"rcx"</code>, <code>"r11"</code>) tells the C compiler that register does not survive the block.</p>
+<p>Reading a register is an output with no input. The stack pointer is always in <code>%%rsp</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize readStackPointer() {
+    usize sp;
+    asm volatile { &quot;movq %%rsp, %0&quot; : &quot;=r&quot;(sp) }
+    return sp;
+}</code></pre>
+<p>The same shape reads the timestamp counter, whose result arrives split across two registers: <code>asm volatile { "rdtsc" : "=a"(lo), "=d"(hi) }</code>. Each output constraint binds one register to one Coral variable.</p>
+<p>Now the caveats, because this is the least safe surface in the language. Inline assembly is architecture-specific and target-specific, and it is the target C compiler that assembles it, not Coral; the standard library keeps separate files per platform (<code>std/x86_64/linux/...</code> versus <code>std/x86_64/windows/...</code>) for exactly this reason, and any use of <code>asm</code> should be quarantined the same way, behind a wrapper the rest of the program can call without knowing the target. An <code>asm</code> without <code>volatile</code> and without outputs is dead code to the C optimizer and may be deleted; if the block has a side effect, write <code>volatile</code>. Clobbers and constraints are not validated by Coral today: the compiler copies the constraint strings straight through and never inspects them, so a wrong constraint, an unlisted clobbered register, or a missing <code>"memory"</code> produces a miscompile that appears and disappears with the optimisation level. The error catalogue reserves codes for these mistakes — E0401 (invalid inline-assembly register-constraint allocation), E0402 (a clobbered register also listed as a live input/output operand), and E0403 (a volatile memory write flushed by a non-volatile read optimisation) — but those diagnostics are documented intentions in <code>errors.txt</code>, not checks that exist in the current compiler; do not rely on being warned.</p>
+<p>The attributes around a function do not make the assembly safer. <code>#[[noreturn]]</code> records that a function does not return, which is right when the function's whole body is an asm block ending in an exit syscall or a trap instruction, so callers know control does not continue past the call — but it is currently parsed, stored, and not yet honoured. <code>#[[noalias]]</code> is likewise parsed but not emitted, and it is the wrong tool here anyway: aliasing across an asm block is controlled by the <code>"memory"</code> clobber, not by a pointer attribute. <code>#[[inline]]</code> and <code>#[[inline_always]]</code> are named to the monomorphiser as codegen hints, but the current C backend does not act on them; inlining a wrapper around an asm block can change register allocation around it, never the asm itself, so it is not a correctness lever. And the asm's own <code>volatile</code> qualifier is a different thing from the <code>#[[const]]</code> attribute: <code>volatile</code> stops the asm from being moved or deleted, while <code>#[[const]]</code> (a const method or function) promises not to mutate <code>self</code> or its parameters. The const check does not look inside asm operands, so an asm output that writes through <code>self</code> is a mutation the checker will not see; const-correctness over an asm block is the programmer's responsibility.</p>
+<p>The rule of thumb is the chapter's rule, sharpened. Reach for an ordinary <code>extern</code> binding first, because a C function is checkable and portable. Reach for inline assembly only when no binding exists — a syscall with no libc wrapper, an instruction the compiler will not emit, a fence — and then put it in one small, target-guarded function with an accurate clobber list, and let the rest of the program call that function as if it were any other.</p>
+<section><h2 id="s20-9">Calling Into Coral From C</h2></section>
+<p>The direction also matters. Sometimes a Coral function must be callable from C: an entry point, a callback registered with a C library, a symbol in a shared object. A Coral function is callable from C when its signature is FFI-compatible and its name is exported. The <code>#[[no_mangle]]</code> attribute keeps the function's name unmangled so the linker symbol matches what C expects:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_mangle]]
+pub extern(&quot;C&quot;) i32 coral_entry(i32 argc, cchar** argv) {
+    return run(argc, argv);
+}</code></pre>
+<p>The <code>extern("C")</code> on a definition asserts the C calling convention; <code>#[[no_mangle]]</code> keeps the symbol name. Together they make <code>coral_entry</code> visible to a linker, and callable from C by that name. A Coral function registered as a callback needs no attributes beyond the C-compatible signature the function-pointer parameter already demands.</p>
+<p>Three rules keep the reverse direction safe. First, a Coral function passed to C must not assume it can throw, panic, or unwind across the boundary, because C has no mechanism to handle that; errors must be communicated through return values, exactly as C expects. Second, a <code>@drop</code> type must not be passed by value to C, full stop, because C has no mechanism to run the destructor. Such a type may cross by pointer, with the ownership contract the wrapper declares, but never by value — the moment the bytes leave for C, Coral's drop discipline does not travel with them. Third, keep the exported surface small. Every exported symbol is a contract with code you cannot see, so export an entry point, not an API.</p>
+<section><h2 id="s20-10">A Worked Example: Reading a File Through a Wrapper</h2></section>
+<p>Assemble the pieces into a program that reads a text file through the wrapper of 19.7, keeping the mess in one module. First the wrapper, in a file of its own:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// file.crl — the only module that mentions a rawptr
+import(lib) platform::libc { fopen, fread, fclose };
+import(lib) std::text::string { String };
+
+pub struct File { rawptr handle; }
+pub variant FileError {
+    OpenFailed { String path; },
+    Unknown { i32 code; },
+}
+
+pub extend File : @drop {
+    void drop() { fclose(self.handle); }
+}
+
+pub Result&lt;File, FileError&gt; fileOpen(str path) {
+    String tmp = String::from(path);
+    rawptr h = fopen(tmp.asCstr(), C&quot;r&quot;);
+    if (h == null)
+        return Result&lt;File, FileError&gt;::Err {
+            .error = FileError::OpenFailed { .path = path.asString() }
+        };
+    return Result&lt;File, FileError&gt;::Ok { .value = File { .handle = h } };
+}
+
+pub Result&lt;usize, FileError&gt; fileRead(File* f, u8* buf, usize len) {
+    return (usize)fread((rawptr)buf, 1u, len, f-&gt;handle);
+}</code></pre>
+<p>Then the program that uses it, which never sees C at all:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println, eprintln };
+import(lib) std::text::string { String };
+import file;
+
+Result&lt;String, FileError&gt; readWholeFile(str path) {
+    Result&lt;File, FileError&gt; opened = fileOpen(path);
+    switch (opened) {
+        Err { error } =&gt; return Result&lt;String, FileError&gt;::Err { .error = error },
+        else          =&gt; {}
+    }
+    File f = opened.unwrap();
+
+    String out = String::new();
+    u8 buf[4096];
+    Result&lt;usize, FileError&gt; r = fileRead(&amp;f, buf, 4096u);
+    while (r.isOk()) {
+        usize n = r.unwrap();
+        if (n == 0) break;
+        out.pushView(str::fromParts(buf, n));
+        r = fileRead(&amp;f, buf, 4096u);
+    }
+    return Result&lt;String, FileError&gt;::Ok { .value = out };
+}
+
+void main() {
+    switch (readWholeFile(&quot;config.txt&quot;)) {
+        Ok { value }  =&gt; println(&quot;read {} bytes&quot;, value.len),
+        Err { error } =&gt; eprintln(&quot;could not open the file&quot;),
+    }
+}</code></pre>
+<p><code>main</code> never sees a <code>rawptr</code>, a <code>cchar</code>, or a return code. It sees a <code>Result</code> and a <code>String</code>, because <code>readWholeFile</code> turned C's <code>fopen</code>/<code>fread</code>/<code>fclose</code> world into Coral's <code>Result</code> world and hid the difference. The <code>File</code> is owned, so it is closed automatically when <code>readWholeFile</code> returns — success or failure, the descriptor is released. The buffer is a fixed array, passed down as a pointer and a length, converted by the wrapper. This is what a good FFI looks like from the outside: the boundary is invisible, and the discipline of the boundary lives in one wrapper rather than scattered across the program.</p>
+<p>Notice, too, what the wrapper did not hide and should not have hidden: the fact that reading can fail, and that failure is an ordinary part of the flow rather than an exception. The C function reported failure with a count of zero or a null pointer; the wrapper carried it up as a <code>Result</code>; the caller handled it with a <code>switch</code>. The error never disappeared, and it never escaped as a surprise. That is the whole art of the boundary in one small program: speak both languages, decide once where the translation happens, and let the rest of the code be as if C were never there.</p>
+<section><h2 id="s20-11">Exercises</h2></section>
+<ol><li>Comprehension. Write the Coral signature for a C function <code>double clamp(double x, double lo, double hi);</code> and for one returning <code>char*</code>. Explain each type choice.</li><li>Comprehension. What is the difference between Coral's <code>char</code>, <code>cchar</code>, and <code>u8</code>? Which one crosses to C as a C <code>char</code>, and what breaks if you use the wrong one?</li><li>Implementation. Declare externs for the C functions <code>getpid</code>, <code>time</code>, and <code>getenv</code>, and write a program that prints the process id and the value of an environment variable. Handle the case where <code>getenv</code> returns null.</li><li>Strings. Write a function that takes a <code>str</code> and calls <code>strlen</code> on its C equivalent. Why must you convert first, and what happens if you pass a non-nul-terminated view? What is different about a <code>C"..."</code> literal?</li><li>Layout. Define a packed struct matching this C declaration, and explain why <code>#[[packed]]</code> is required: <code>struct { char tag; int value; }</code>. What would the compiler be free to do without it?</li><li>Drop. Write a wrapper for a C resource (a lock, a handle, or a buffer) whose destructor frees it. Show a function that uses it, and explain exactly when the destructor runs — including on the error path.</li><li>Errors. A C function returns <code>-1</code> on failure and sets <code>errno</code>. Wrap it in a Coral function returning a <code>Result</code>, and explain how you reach <code>errno</code> and why it is thread-local.</li><li>Callbacks. Declare a C function that takes a callback invoked on each element of an array. Write the Coral callback and pass it. Why must the callback avoid owned Coral types in its signature?</li><li>Export. Write a Coral function with the C calling convention and an unmangled name that C could call. Why does a <code>@drop</code> type not belong in its signature, even by pointer-as-value?</li><li>Design and meta. Take a C library you know — zlib, sqlite, a graphics library — and design its wrapper: which types become Coral structs, which functions return <code>Result</code>s, and where the destructors go. Then argue the opposite case: describe one situation where calling C directly, with no wrapper, is the right call, and say what makes the wrapper not worth its cost there.</li></ol>
+      <nav class="chapter-nav"><a href="../19-concurrency-and-parallelism/index.html">← Previous</a><a href="../21-build-system-and-tooling/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

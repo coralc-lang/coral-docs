@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 27 · Live Examples: Stacks, Queues, and Linked Lists | The Coral Book</title>
+  <link rel="stylesheet" href="../book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../index.html">Book contents</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Chapter 27</p>
+      <h1>Live Examples: Stacks, Queues, and Linked Lists</h1>
+      <p class="lead">The Shapes of Ordered Access</p>
+      <p>The last two chapters stored things and looked them up. This chapter is about the <em>order</em> in which you get them back, and about a way of storing things that is not an array at all. Three structures carry the chapter, each best introduced by a homely rule.</p>
+<p>A stack is a pile of plates. You put a plate on top, and you take a plate off the top. The last plate you put down is the first one you pick up. Last in, first out. The rule sounds trivial, and yet it is the engine behind undo, behind matching brackets, behind the call stack that runs every recursive function you have ever written.</p>
+<p>A queue is a checkout line. You join at the back and are served at the front. The first person in is the first person through. First in, first out. The rule behind task scheduling, breadth-first search, and any problem where things must be handled in the order they arrive.</p>
+<p>A linked list is a treasure hunt. Each clue does not tell you where the treasure is; it tells you where the next clue is. There is no "clue number 5." You reach the fifth clue by following four arrows. That is both its power (insert a clue between two others by rewriting one arrow) and its weakness (to reach a clue you must walk there, and walking means jumping around memory instead of sliding along a contiguous array, which the processor's cache does not like). <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a> introduced the standard library's <code>LinkedList&lt;T&gt;</code>. Here we mostly build our own nodes, because the point is to manipulate the arrows directly, and the classic list problems ask for exactly that.</p>
+<p>One note before the code. Coral has no separate <code>Stack</code> type, and that is not an omission. A stack is a <code>Vec</code> used with two operations, <code>push</code> and <code>pop</code>; naming that usage is a comment, not a type. A queue is a <code>Deque</code> used at one end, or the library's thin <code>Queue</code> wrapper; the underlying ring buffer lives in <code>std::collections.deque</code> and <code>ringbuf</code> (<a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>, 16.6). When a problem says "use a stack," reach for a <code>Vec</code>. When it says "use a queue," reach for a <code>Queue</code> or a <code>Deque</code>. The data structure in the algorithm is a pattern of access, and Coral's containers are the storage that supports the pattern.</p>
+<section><h2 id="s27-1">Valid Parentheses</h2></section>
+<p class="step-label">The problem</p>
+<p>Given a string of the characters <code>()[]{}</code>, decide whether the brackets are balanced: every opener is closed by the matching kind, in the right order.</p>
+<p class="step-label">Picture this</p>
+<p>A stack of open brackets. When you see an opener, put it on the pile. When you see a closer, take the top opener off the pile and check that it is the matching kind. If the pile is empty when a closer arrives, the closer has nothing to close. If the pile is not empty at the end, some opener was never closed. Both are failures. The order is checked automatically, because the <em>nearest</em> unmatched opener is always on top.</p>
+<p>Brute force</p>
+<p>Repeatedly scan the string and delete adjacent matching pairs until none are left. If the string ends up empty, it balanced. Each scan is linear and you might need many, so it is quadratic. It is also awkward to implement, because deletion in the middle shifts everything.</p>
+<p class="step-label">The better approach</p>
+<p>One pass and a stack. Opener, push. Closer, pop and verify. At the end, the stack must be empty. The stack enforces the "most recent unmatched opener closes first" rule for free, which is the nesting rule.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::io::ios { println };
+
+bool isValid(str s) {
+    Vec&lt;u8&gt; stack = Vec&lt;u8&gt;::new();
+    for (usize i = 0; i &lt; s.len; i++) {
+        u8 c = s.at(i);
+        if (c == &#x27;(&#x27; || c == &#x27;[&#x27; || c == &#x27;{&#x27;) {
+            stack.push(c);
+        } else {
+            if (stack.isEmpty()) {
+                return false;
+            }
+            u8 open = stack.pop();
+            if (c == &#x27;)&#x27; &amp;&amp; open != &#x27;(&#x27;) return false;
+            if (c == &#x27;]&#x27; &amp;&amp; open != &#x27;[&#x27;) return false;
+            if (c == &#x27;}&#x27; &amp;&amp; open != &#x27;{&#x27;) return false;
+        }
+    }
+    return stack.isEmpty();
+}</code></pre>
+<p>Two lines do most of the work. The <code>stack.isEmpty()</code> check at the top of the closing branch catches a closer with nothing to match; the input <code>")"</code> fails there. The final <code>return stack.isEmpty()</code> catches the opposite failure, an unmatched opener, as in <code>"("</code>. A naive version that forgot the final check would accept <code>"("</code> and every broken string that begins with an extra opener.</p>
+<p class="step-label">The cost</p>
+<p>Time is linear: each character is pushed at most once and popped at most once, so the stack work is bounded by the length. Space is linear in the worst case, a string of all openers, because the stack holds every unmatched opener. Here the extra memory is genuinely proportional to the input, and that is unavoidable: the answer depends on how deep the nesting goes, and the depth is exactly what the stack measures.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>An empty string is valid, and the loop returns true from the final check. A string of odd length can never be valid; add <code>if (s.len % 2 == 1) return false;</code> as a cheap early exit. The variation: allow the wildcard <code>*</code> to stand for an opener, a closer, or nothing at all. That turns a one-pass check into a small dynamic-programming or greedy-with-stack problem. A second variation, very common in real code, is to report <em>where</em> the first mismatch is rather than just a yes or no, by pushing the <em>index</em> of each opener instead of the character. The extra information costs nothing and turns the function into a diagnostic.</p>
+<section><h2 id="s27-2">Min Stack</h2></section>
+<p class="step-label">The problem</p>
+<p>Design a stack that, in addition to push and pop, can return its minimum element, all in constant time.</p>
+<p class="step-label">Picture this</p>
+<p>A stack of boxes. Each box, alongside its content, carries a note saying "the smallest item at or below me." The note is cheap to maintain: when a new box goes on, its note is the smaller of its own content and the note on the box beneath it. The smallest item in the whole stack is then simply the note on the top box, read in one glance.</p>
+<p>Brute force</p>
+<p>Keep the stack, and when asked for the minimum, scan all the elements. That is linear per query, which fails the constant-time requirement.</p>
+<p class="step-label">The better approach</p>
+<p>Two stacks, or one stack of paired values. The first stack holds the data. The second, the "minimum stack," holds at each level the minimum of everything from the bottom up to that level. Pushing a value pushes <code>min(value, currentMin)</code> onto the minimum stack; popping the data stack pops the minimum stack in lockstep. The top of the minimum stack is always the answer. This is the note-on-every-box idea made explicit.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::io::ios { println };
+
+struct MinStack {
+    Vec&lt;i32&gt; data;
+    Vec&lt;i32&gt; mins;
+
+    static MinStack new() {
+        return MinStack {
+            .data = Vec&lt;i32&gt;::new(),
+            .mins = Vec&lt;i32&gt;::new()
+        };
+    }
+
+    void push(i32 v) {
+        self.data.push(v);
+        if (self.mins.isEmpty() || v &lt;= self.mins.back()) {
+            self.mins.push(v);
+        } else {
+            self.mins.push(self.mins.back());
+        }
+    }
+
+    void pop() {
+        self.data.pop();
+        self.mins.pop();
+    }
+
+    i32 top() {
+        return self.data.back();
+    }
+
+    i32 getMin() {
+        return self.mins.back();
+    }
+
+    bool isEmpty() {
+        return self.data.isEmpty();
+    }
+}</code></pre>
+<p>The <code>v &lt;= self.mins.back()</code> comparison is deliberately non-strict. If a new value equals the current minimum, both copies must go on the minimum stack, because both come off as the data stack pops past them. A strict <code>&lt;</code> would drop one of the equal minima, and the minimum stack would lose track of its meaning once the first of the two popped away. This is the same "equal values are not duplicates to be merged" subtlety as the second-largest problem in <a href="../24-live-examples-warm-up-and-fundamentals/index.html">Chapter 24</a>.</p>
+<p class="step-label">The cost</p>
+<p>Every operation is constant time. The data stack costs the same as any Vec stack, constant amortized. The minimum stack adds one more push and pop per operation, also constant, so the query is constant as required. Space is linear, but it is twice the space of a plain stack. That doubling is the price of the constant-time minimum, and it is worth asking whether your problem needs the query often enough to pay it. This is the constant-time trade: precompute a little on every write so every read is free.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>Pushing onto an empty stack makes the value the minimum, handled by the <code>mins.isEmpty()</code> branch. Calling <code>getMin</code> on an empty stack is a misuse; the underlying <code>back</code> asserts, the correct loud failure from <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>. The variation with a much smaller memory footprint: instead of storing the minimum at every level, store only the <em>changes</em> to the minimum. Keep a single minimum and a stack of the old minima, pushed only when a new smaller value arrives, popped when the current minimum is the value being removed. Constant time, and on inputs that rarely decrease, far less memory.</p>
+<section><h2 id="s27-3">Evaluate Reverse Polish Notation</h2></section>
+<p class="step-label">The problem</p>
+<p>Evaluate an arithmetic expression in reverse Polish (postfix) notation, where operators come after their operands: <code>["2", "1", "+", "3", "<em>"]</code> means <code>(2 + 1) </em> 3 = 9</code>.</p>
+<p class="step-label">Picture this</p>
+<p>Reading postfix is like assembling a value from the bottom up. Each number is a completed piece; each operator takes the two most recently completed pieces, combines them, and leaves the single result as the new most recent piece. The "most recently completed" rule is exactly a stack: numbers go on, and an operator pops two and pushes one.</p>
+<p>Brute force</p>
+<p>No meaningful slower approach exists; postfix evaluation is naturally linear. But the naive implementation keeps a list and, at each operator, searches backward for the two operands and splices them out. That search makes it quadratic and obscures the elegance. The stack makes the "two most recent" idea literal.</p>
+<p class="step-label">The better approach</p>
+<p>One pass. On a number, push it. On an operator, pop the right operand, pop the left operand (note the order), apply, and push the result. At the end, exactly one value remains on the stack. That value is the answer.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::io::ios { parseI64, println };
+
+bool isOperator(str t) {
+    if (t.len != 1) return false;
+    u8 c = t.at(0);
+    return c == &#x27;+&#x27; || c == &#x27;-&#x27; || c == &#x27;*&#x27; || c == &#x27;/&#x27;;
+}
+
+i32 applyOp(u8 op, i32 a, i32 b) {
+    if (op == &#x27;+&#x27;) return a + b;
+    if (op == &#x27;-&#x27;) return a - b;
+    if (op == &#x27;*&#x27;) return a * b;
+    return a / b;
+}
+
+i32 evalRPN(const Vec&lt;str&gt;* tokens) {
+    Vec&lt;i32&gt; stack = Vec&lt;i32&gt;::new();
+    for (usize i = 0; i &lt; tokens-&gt;count(); i++) {
+        str t = tokens-&gt;at(i);
+        if (isOperator(t)) {
+            i32 b = stack.pop();
+            i32 a = stack.pop();
+            stack.push(applyOp(t.at(0), a, b));
+        } else {
+            bool ok = false;
+            i64 n = parseI64(t, &amp;ok);
+            stack.push((i32)n);
+        }
+    }
+    return stack.pop();
+}</code></pre>
+<p>The single most important line is which operand is popped first. <code>b</code> is popped before <code>a</code>, and <code>applyOp</code> is then called as <code>applyOp(op, a, b)</code>, so the order is right for subtraction and division: <code>b</code> was the top of the stack and therefore the <em>right</em> operand. Reversing these two pops is the classic bug in every RPN evaluator. It produces programs that are correct for addition and multiplication and wrong only for subtraction and division, the worst kind of bug, because half your test cases pass.</p>
+<p class="step-label">The cost</p>
+<p>Time is linear: one pass, constant work per token (a push, or two pops and a push). Space is linear in the worst case, when the input is a long run of numbers before any operator, because the stack must hold them all.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>A well-formed expression leaves exactly one value. A malformed expression underflows the stack, and the <code>pop</code> assertion catches it loudly. Integer division truncates toward zero in Coral, matching the usual problem statement. Overflow of intermediate results is the real risk; promote the stack to <code>i64</code> if the inputs are large. The variation: build the expression tree instead of evaluating it. Push node pointers rather than numbers and, on an operator, pop two subtrees and push a new operator node. That produces an abstract syntax tree, the <code>Expr</code> variant of <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>, which you can then evaluate, pretty-print, or compile. It shows that a stack is a tool for building trees from postfix order, not just for arithmetic.</p>
+<section><h2 id="s27-4">Daily Temperatures</h2></section>
+<p class="step-label">The problem</p>
+<p>Given a list of daily temperatures, for each day return how many days you must wait until a warmer day. If no warmer day comes, the answer for that day is 0.</p>
+<p class="step-label">Picture this</p>
+<p>A line of days, each waiting to be told when a warmer day will beat it. The trick is the monotonic stack. We keep a stack of days that are still <em>waiting</em>, in decreasing order of temperature from bottom to top. When a new, warmer day arrives, it resolves every waiting day on the stack that it beats; those days are popped and their answers recorded. The stack never holds a day after the day that beats it arrives, and the days are resolved in the order they are beaten.</p>
+<p>Brute force</p>
+<p>For each day, look forward until you find a warmer day. Quadratic in the worst case; a strictly decreasing temperature list makes every search scan to the end.</p>
+<p class="step-label">The better approach</p>
+<p>One pass with a stack of <em>indices</em> whose temperatures are waiting. For each new day i, while the stack is non-empty and today's temperature is greater than the temperature at the top index, pop that index j and record <code>i - j</code> as its answer. Then push i as a new waiting day. Days left on the stack at the end never got a warmer day, so their answers stay at the initialized zero.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::io::ios { println };
+
+Vec&lt;i32&gt; dailyTemperatures(const Vec&lt;i32&gt;* t) {
+    Vec&lt;i32&gt; out = Vec&lt;i32&gt;::new();
+    for (usize i = 0; i &lt; t-&gt;count(); i++) {
+        out.push(0);
+    }
+
+    Vec&lt;usize&gt; stack = Vec&lt;usize&gt;::new();
+    for (usize i = 0; i &lt; t-&gt;count(); i++) {
+        while (!stack.isEmpty() &amp;&amp; t-&gt;at(i) &gt; t-&gt;at(stack.back())) {
+            usize j = stack.pop();
+            out.set(j, (i32)(i - j));
+        }
+        stack.push(i);
+    }
+    return out;
+}</code></pre>
+<p>The stack stores indices rather than temperatures, and that is no accident: it lets a later day compute the wait <code>i - j</code> for the day it beats. Storing only the temperature would settle the comparison but lose the position, and the answer is a distance. The comparison is strict <code>&gt;</code>, so equal temperatures do not resolve each other. A day is only ended by a <em>warmer</em> one, not an equally warm one.</p>
+<p class="step-label">The cost</p>
+<p>Time is linear, and again the nested <code>while</code> is deceptive. Each index is pushed exactly once and popped at most once, so across the whole run the inner loop performs at most n pops. Space is linear in the worst case; a strictly decreasing list keeps every index on the stack. But that is the input that needs it.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>An empty or single-element list answers with all zeroes; the loop handles both. Equal temperatures keep both days waiting, so the earlier day is not resolved by its equal twin, which is correct. The variation: instead of waiting for a warmer day, compute the next <em>greater</em> element to the right for each position. Same monotonic decreasing stack, same idea. Change "warmer" to "colder" and you use a monotonic increasing stack instead. The monotonic stack is a general tool. Whenever a problem asks "for each element, find the next element that beats it," the answer is usually a monotonic stack, and the only design choice is which order the stack maintains.</p>
+<section><h2 id="s27-5">Implement a Queue Using Two Stacks</h2></section>
+<p class="step-label">The problem</p>
+<p>Implement a first-in-first-out queue using only two stacks, and support enqueue and dequeue.</p>
+<p class="step-label">Picture this</p>
+<p>You have two piles of plates and must serve the oldest first. You enqueue onto one pile, the "in" pile. To dequeue, you move plates one at a time from the in pile to the out pile, which reverses their order, and then take from the top of the out pile. Because the reversal happens only when the out pile is empty, each plate moves at most once, and the service order is exactly the arrival order. The two piles together have the memory of a line.</p>
+<p>Brute force</p>
+<p>With a single stack you cannot do it: a stack serves the newest first, the opposite of a queue. You could copy the whole stack into a temporary on every dequeue, but that is O(n) per dequeue and gives nothing over the two-stack design.</p>
+<p class="step-label">The better approach</p>
+<p>Two stacks, <code>inStack</code> and <code>outStack</code>. Enqueue pushes onto <code>inStack</code>. Dequeue, when <code>outStack</code> is empty, pours every element of <code>inStack</code> into <code>outStack</code> (which reverses them), then pops from <code>outStack</code>. The amortized cost per operation is constant, even though a single dequeue can cost O(n) when it triggers a pour. The key: each element is poured at most once per arrival, so the total work across all operations is linear.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::io::ios { println };
+
+struct StackQueue {
+    Vec&lt;i32&gt; inStack;
+    Vec&lt;i32&gt; outStack;
+
+    static StackQueue new() {
+        return StackQueue {
+            .inStack = Vec&lt;i32&gt;::new(),
+            .outStack = Vec&lt;i32&gt;::new()
+        };
+    }
+
+    void enqueue(i32 v) {
+        self.inStack.push(v);
+    }
+
+    i32 dequeue() {
+        if (self.outStack.isEmpty()) {
+            while (!self.inStack.isEmpty()) {
+                self.outStack.push(self.inStack.pop());
+            }
+        }
+        return self.outStack.pop();
+    }
+
+    bool isEmpty() {
+        return self.inStack.isEmpty() &amp;&amp; self.outStack.isEmpty();
+    }
+
+    usize count() {
+        return self.inStack.count() + self.outStack.count();
+    }
+}</code></pre>
+<p>The lazy pour is the heart of it. Pour on every enqueue instead, and each element could move many times. By pouring only on a dequeue that finds the out stack empty, and pouring everything at once, each element moves exactly twice in its lifetime: once into the in stack, once into the out stack. That is what makes the amortized cost constant.</p>
+<p class="step-label">The cost</p>
+<p>A single enqueue is constant. A single dequeue is O(n) in the worst case, when it triggers a pour of n elements, but the <em>amortized</em> cost (total work divided by the number of operations) is constant, because each element is poured once. This is the first genuine amortized analysis in these chapters. It is the same reasoning that makes a growing <code>Vec</code>'s pushes constant on average (<a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>): an occasional expensive operation paid for by many cheap ones. Space is linear.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>Dequeuing from an empty queue asserts, the correct loud failure. An enqueue followed by a dequeue works on the first pour. The variation with a practical note: the standard library already ships a queue, <code>std::collections::queue { Queue }</code>, whose <code>enqueue</code>, <code>dequeue</code>, and <code>peek</code> are constant time on every call, because it is a ring buffer, not two stacks (<a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>, 16.6). The two-stack queue is a <em>classic interview problem</em>. It exists to test whether you understand amortized analysis and the relationship between the two orderings. It is not a thing to ship when the library has the real one. Knowing when a clever construction is a teaching exercise and when it is production code is part of the skill.</p>
+<section><h2 id="s27-6">Reverse a Linked List</h2></section>
+<p class="step-label">The problem</p>
+<p>Given the head of a singly linked list, reverse it and return the new head.</p>
+<p class="step-label">Picture this</p>
+<p>Reversing a chain of arrows means walking the chain and turning each arrow around as you pass. You need three fingers: one on the node <em>before</em> the current one, one on the current node, and one on the node after, because you are about to overwrite the current node's arrow and would otherwise lose your place. That third finger, the "next" saved before the rewrite, is the detail everyone forgets the first time.</p>
+<p>Brute force</p>
+<p>Copy the values into an array, then rebuild the list in reverse. Linear time and linear extra space, and it treats the list as if it were an array, which misses the point: the whole difficulty is manipulating the links in place.</p>
+<p class="step-label">The better approach</p>
+<p>Iterate with three pointers. Save <code>next</code>, point the current node's <code>next</code> backward at <code>prev</code>, then advance all three. When the current node falls off the end, <code>prev</code> is standing on the new head. Each node's arrow is flipped exactly once.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println };
+
+struct Node {
+    i32 value;
+    Node* next;
+}
+
+Node* newNode(i32 v) {
+    Node* n = alloc&lt;Node&gt;(1);
+    n-&gt;value = v;
+    n-&gt;next = null;
+    return n;
+}
+
+Node* reverseList(Node* head) {
+    Node* prev = null;
+    Node* cur = head;
+    while (cur != null) {
+        Node* next = cur-&gt;next;
+        cur-&gt;next = prev;
+        prev = cur;
+        cur = next;
+    }
+    return prev;
+}</code></pre>
+<p>The recursion version is a nice mirror of the same idea and worth seeing, because it shows what the explicit "next" finger is doing:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Node* reverseRec(Node* head) {
+    if (head == null || head-&gt;next == null) {
+        return head;
+    }
+    Node* newHead = reverseRec(head-&gt;next);
+    head-&gt;next-&gt;next = head;
+    head-&gt;next = null;
+    return newHead;
+}</code></pre>
+<p>The recursive version reverses the tail first, then stitches the current node onto the end of the reversed tail. Shorter, and worse: it uses stack space proportional to the list length, so a list of a hundred thousand nodes can overflow the call stack, while the iterative version uses constant space. This is the rare case where the prettier code is the wrong code, and it is why the iterative version is the one to remember.</p>
+<p class="step-label">The cost</p>
+<p>Iterative: linear time, one pass, constant space for the three pointers. Recursive: linear time but linear space for the call stack. The asymptotic time is the same; the space is the difference, and for lists that is often the difference between working and crashing. Freeing the nodes is a separate concern from reversing them (see the exercises), and this is the boundary between an algorithm and the ownership discipline of <a href="../11-memory-management/index.html">Chapter 11</a>: the algorithm rearranges pointers, but it does not decide who owns the memory.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>An empty list returns null; a single-node list returns that node unchanged, and both fall out of the loops. The variation: reverse only the sub-list between positions <code>m</code> and <code>n</code>, leaving the rest attached. It uses the same three-pointer walk, with a saved node before the start of the interval and one extra stitch at the end, and it is a good exercise in keeping the outside connections straight while flipping the inside ones.</p>
+<section><h2 id="s27-7">Merge Two Sorted Linked Lists</h2></section>
+<p class="step-label">The problem</p>
+<p>Given the heads of two sorted linked lists, merge them into one sorted list and return its head, reusing the existing nodes.</p>
+<p class="step-label">Picture this</p>
+<p>Two sorted queues of cards. You repeatedly compare the two front cards, take the smaller, and append it to the output. Because both inputs are sorted, the smallest remaining card is always at one of the two fronts, so the greedy choice is correct. A placeholder node, called a dummy, sits at the front of the output so you do not have to special-case the very first card. Keep a finger on the last output node and extend from it.</p>
+<p>Brute force</p>
+<p>Collect both lists into arrays, concatenate, sort, and rebuild. That throws away the sortedness both inputs already have, costs O((m+n) log(m+n)) instead of O(m+n), and allocates.</p>
+<p class="step-label">The better approach</p>
+<p>Merge in place with a dummy head and a tail pointer. While both lists have a node, append the smaller one and advance that list. When one list runs out, append the entire remainder of the other: it is already sorted and already linked, so it is a single pointer assignment, not a loop. Finally, free the dummy and return its next.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println };
+
+struct Node {
+    i32 value;
+    Node* next;
+}
+
+Node* newNode(i32 v) {
+    Node* n = alloc&lt;Node&gt;(1);
+    n-&gt;value = v;
+    n-&gt;next = null;
+    return n;
+}
+
+Node* mergeTwoLists(Node* a, Node* b) {
+    Node* dummy = newNode(0);
+    Node* tail = dummy;
+    while (a != null &amp;&amp; b != null) {
+        if (a-&gt;value &lt;= b-&gt;value) {
+            tail-&gt;next = a;
+            a = a-&gt;next;
+        } else {
+            tail-&gt;next = b;
+            b = b-&gt;next;
+        }
+        tail = tail-&gt;next;
+    }
+    tail-&gt;next = (a != null) ? a : b;
+    Node* result = dummy-&gt;next;
+    dealloc&lt;Node&gt;(dummy);
+    return result;
+}</code></pre>
+<p>The <code>&lt;={</code> comparison makes the merge stable: when the two fronts are equal, the node from <code>a</code> comes first, preserving the original relative order of equal elements. Change it to <code>&lt;</code> and equal elements from <code>b</code> jump ahead of their equals from <code>a</code>, a legitimate merge but a different one. The dummy node is the other trick worth naming. Without it, the first output node would need its own branch to be installed as the head, and every other iteration would need a different path. The dummy turns "first" into "just another" and removes the special case.</p>
+<p class="step-label">The cost</p>
+<p>Time is linear in the combined length: each iteration consumes one node, and the trailing append of the remainder is constant. Space is constant: a handful of pointers and one temporary dummy node, freed before returning. The nodes themselves are reused, not copied, so no allocation happens inside the loop at all.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>If either input is empty, the loop does not run and the entire other list is appended, which is correct. If both are empty, the result is null. The variation: merge k sorted lists. Merging them two at a time costs O(N log k), where N is the total length and one full list is rescanned at each level of the pairwise reduction. Better: keep a min-heap of the k current fronts and repeatedly pop the smallest, O(N log k) with no rescans. That is exactly <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>'s <code>PriorityQueue</code>. The same greedy choice, generalized with the right data structure.</p>
+<section><h2 id="s27-8">Linked List Cycle</h2></section>
+<p class="step-label">The problem</p>
+<p>Decide whether a linked list contains a cycle — a node whose <code>next</code> eventually leads back to a node already in the list.</p>
+<p class="step-label">Picture this</p>
+<p>Two runners on the same track. One runs one step per tick, the other two. If the track is a straight line, the fast runner pulls away and eventually reaches the end. If the track loops, the fast runner enters the loop first, then sooner or later laps the slow runner from behind. The moment they stand on the same spot, you know there is a loop. This is Floyd's tortoise-and-hare, and it needs no extra memory at all.</p>
+<p>Brute force</p>
+<p>Walk the list and record every visited node in a set. If you ever arrive at a node already in the set, there is a cycle. Linear time, but linear extra space. And if the nodes had no comparable identity, you would be storing pointers, which is fine but wasteful for a question this simple.</p>
+<p class="step-label">The better approach</p>
+<p>Two pointers, slow and fast. Advance slow by one and fast by two each iteration. If fast ever falls off the end, there is no cycle. If slow and fast ever point at the same node, there is a cycle. Constant space, and the running time is linear, because the fast pointer closes the gap by one node each tick once both are inside the loop.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println };
+
+struct Node {
+    i32 value;
+    Node* next;
+}
+
+Node* newNode(i32 v) {
+    Node* n = alloc&lt;Node&gt;(1);
+    n-&gt;value = v;
+    n-&gt;next = null;
+    return n;
+}
+
+bool hasCycle(Node* head) {
+    Node* slow = head;
+    Node* fast = head;
+    while (fast != null &amp;&amp; fast-&gt;next != null) {
+        slow = slow-&gt;next;
+        fast = fast-&gt;next-&gt;next;
+        if (slow == fast) {
+            return true;
+        }
+    }
+    return false;
+}</code></pre>
+<p>The loop condition must check both <code>fast != null</code> and <code>fast-&gt;next != null</code> before the body dereferences <code>fast-&gt;next-&gt;next</code>. Checking only <code>fast</code> would cover the first of the two hops but not the second, and the missing guard is a null dereference waiting for any list of even length. This is the same discipline as the two-pointer loops in <a href="../25-live-examples-arrays-strings-and-two-pointers/index.html">Chapter 25</a>: whenever a pointer takes two steps, both steps must be guarded.</p>
+<p class="step-label">The cost</p>
+<p>Time is linear. In the acyclic case the fast pointer reaches the end after about n/2 ticks. In the cyclic case, once both pointers are in the loop the distance between them shrinks by one each tick, so they meet within one loop length. Space is constant, two pointers and nothing else, which is the point of Floyd's algorithm over the set-marking version.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>An empty list and a single node with no self-loop both return false. A node that points to itself forms a cycle of length one, and the loop detects it on the first iteration, because <code>slow</code> and <code>fast</code> both land on it. The variation, and a lovely one: find not only <em>whether</em> there is a cycle but <em>where</em> it begins. Once the two pointers meet, move one pointer back to the head and advance both one step at a time; they meet again exactly at the entry node of the cycle. The proof is a short piece of arithmetic on the distances traveled, and implementing it is the standard follow-up. The same tortoise-and-hare idea also solves <a href="../26-live-examples-hashing-and-sets/index.html">Chapter 26</a>'s Happy Number in constant space, a nice sign that you have understood the pattern rather than memorized it for lists.</p>
+<section><h2 id="s27-9">Sliding Window Maximum</h2></section>
+<p class="step-label">The problem</p>
+<p>Given an array and a window width <code>k</code>, return the maximum of every contiguous window of width <code>k</code>. So for <code>[1, 3, -1, -3, 5, 3]</code> with <code>k = 3</code>, the windows are <code>[1,3,-1]</code>, <code>[3,-1,-3]</code>, <code>[-1,-3,5]</code>, and <code>[-3,5,3]</code>, giving <code>[3, 3, 5, 3]</code>.</p>
+<p class="step-label">Picture this</p>
+<p>A monotonically decreasing deque of <em>candidate</em> indices. Its front is always the index of the current window's maximum. When a new value arrives, it kicks off the back every candidate it beats, because those can never be the maximum again while the new, larger value is still in the window. The new index then enters at the back. When the front index falls out the left side of the window, drop it. Keeping indices, not values, is what lets us notice that the front has left the window.</p>
+<p>Brute force</p>
+<p>For each window, scan its <code>k</code> elements and take the maximum. There are about <code>n</code> windows and each scan is <code>k</code> steps, so <code>O(n · k)</code>, which is quadratic when <code>k</code> is a constant fraction of <code>n</code>.</p>
+<p class="step-label">The better approach</p>
+<p>One pass with a double-ended queue of indices whose values are strictly decreasing from front to back. Before inserting index <code>i</code>, pop from the back while the back's value is less than or equal to <code>v[i]</code>; those are dominated forever. Insert <code>i</code>. If the front index is now outside the window, pop it from the front. Once the window is full, the front is the answer. Each index enters and leaves the deque once, so the total work is linear even though the inner loop looks nested.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::collections::deque { Deque };
+import(lib) std::io::ios { println };
+
+Vec&lt;i32&gt; maxSlidingWindow(const Vec&lt;i32&gt;* nums, usize k) {
+    Vec&lt;i32&gt; out = Vec&lt;i32&gt;::new();
+    Deque&lt;usize&gt; dq = Deque&lt;usize&gt;::new();
+    for (usize i = 0; i &lt; nums-&gt;count(); i++) {
+        while (!dq.isEmpty() &amp;&amp; nums-&gt;at(dq.back()) &lt;= nums-&gt;at(i)) {
+            dq.popBack();
+        }
+        dq.pushBack(i);
+        if (dq.front() + k &lt;= i) {
+            dq.popFront();
+        }
+        if (i + 1 &gt;= k) {
+            out.push(nums-&gt;at(dq.front()));
+        }
+    }
+    return out;
+}</code></pre>
+<p>The <code>&lt;=</code> in the back-pop is deliberate: a new value equal to a candidate also retires it, because the newer index will outlive the older one as the window slides. Using strict <code>&lt;</code> would leave stale equal-valued indices in the deque and waste space, though it would still be correct. The front-eviction test <code>dq.front() + k &lt;= i</code> says "the front index is no longer inside <code>[i - k + 1, i]</code>," which is exactly when it must leave.</p>
+<p class="step-label">The cost</p>
+<p>Time is linear: each index is pushed once and popped at most once from either end, so the total number of inner-loop iterations across the whole run is bounded by <code>n</code>. Space is <code>O(k)</code>, the most indices the deque can hold, which is the window width. The quadratic scan collapses to linear because the monotonic property lets each element be discarded once and only once.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>A window wider than the array yields an empty result, because the <code>i + 1 &gt;= k</code> test never fires. <code>k = 1</code> returns the array itself. A strictly decreasing array keeps every index until it ages out, which is the worst case for space and still linear in time. The variation: return the maximum <em>with</em> its index, by outputting <code>dq.front()</code> instead of the value at it. A second variation: sliding-window <em>minimum</em> flips the comparison, giving a monotonically increasing deque. The only design choice, as with every monotonic structure in this chapter, is the direction the deque is kept sorted in.</p>
+<section><h2 id="s27-10">Implement a Stack Using Queues</h2></section>
+<p class="step-label">The problem</p>
+<p>Implement a last-in-first-out stack using only queue operations (enqueue at the back, dequeue from the front), and support push and pop.</p>
+<p class="step-label">Picture this</p>
+<p>A queue serves the oldest first, the opposite of what a stack wants. The trick is to make a push wait its turn behind everything already present, and then reverse the order by rotating: after enqueuing the new element, dequeue and re-enqueue every older element once, so the new element ends up at the front. Now the front is always the most recently pushed value, and pop is just a dequeue. One queue, a full rotation on push.</p>
+<p>Brute force</p>
+<p>A single queue has no way to pop the newest element directly. You could dequeue everything into a temporary, take the last one, and enqueue the rest back, which is <code>O(n)</code> per pop and reinvents the rotation on the wrong side.</p>
+<p class="step-label">The better approach</p>
+<p>One queue and a rotation on push. Push <code>v</code>, note how many elements were already in the queue, then move exactly those older elements from the front to the back by dequeuing and re-enqueuing them. After the rotation, <code>v</code> sits at the front and pop is <code>O(1)</code>. The cost simply moves from pop to push: push is <code>O(n)</code>, pop is <code>O(1)</code>, which is the mirror image of the two-stack queue of 26.5.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::collections::queue { Queue };
+import(lib) std::io::ios { println };
+
+struct QueueStack {
+    Queue&lt;i32&gt; q;
+
+    static QueueStack new() {
+        return QueueStack { .q = Queue&lt;i32&gt;::new() };
+    }
+
+    void push(i32 v) {
+        usize older = self.q.count();
+        self.q.enqueue(v);
+        for (usize i = 0; i &lt; older; i++) {
+            self.q.enqueue(self.q.dequeue());
+        }
+    }
+
+    i32 pop() {
+        return self.q.dequeue();
+    }
+
+    i32 top() {
+        return self.q.peek();
+    }
+
+    bool isEmpty() {
+        return self.q.isEmpty();
+    }
+}</code></pre>
+<p><code>older</code> is captured <em>before</em> the enqueue, so the rotation moves exactly the elements that were present before the new one, leaving the new one at the front. Rotate one too few or one too many and the new value ends up in the wrong place. <code>peek</code> gives the top without changing the order, because the queue's front is already the newest element.</p>
+<p class="step-label">The cost</p>
+<p>Push is <code>O(n)</code> and pop is <code>O(1)</code>, a clean trade against 26.5's stack queue, where enqueue is <code>O(1)</code> and dequeue is amortized <code>O(1)</code>. There is no way to make both ends constant with a single queue, and that asymmetry is the point of the problem: the direction you pay on is a choice. Space is linear in the number of elements.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>Popping from an empty stack asserts through the underlying queue's dequeue, the correct loud failure. Pushing onto an empty stack rotates nothing, so the value is immediately the top. The variation: build it with <em>two</em> queues instead, always enqueuing onto the secondary queue and then moving the primary into it, swapping their roles; the amortized analysis is the same as 26.5 read backward. A second variation: make push <code>O(1)</code> and pop pay the rotation instead, which some argue is the more natural stack behavior. Write both and compare, because the exercise is really about noticing that the expensive operation can be pushed to either side.</p>
+<section><h2 id="s27-11">Remove the Nth Node From the End</h2></section>
+<p class="step-label">The problem</p>
+<p>Given the head of a linked list and an integer <code>n</code>, remove the <code>n</code>th node counting from the end, and return the (possibly new) head. Do it in one pass.</p>
+<p class="step-label">Picture this</p>
+<p>Two runners spaced <code>n</code> nodes apart. Start the fast runner <code>n</code> steps ahead of the slow one. When the fast runner reaches the last node, the slow runner is standing exactly <code>n</code> nodes from the end, which means the node it must remove is the one <em>after</em> it. Advance them in lockstep until fast runs out, then unlink the target. The spacing is set up once and maintained mechanically.</p>
+<p>Brute force</p>
+<p>Walk the list once to count its length, then walk again to the <code>(length - n)</code>th node and unlink it. Two passes, and the arithmetic is easy to get off by one. It is correct and it does not hold any extra pointers.</p>
+<p class="step-label">The better approach</p>
+<p>One pass with two pointers and a <em>dummy</em> node before the head. The dummy exists so that removing the first node is not a special case: slow starts at the dummy, fast starts at the dummy, fast takes <code>n + 1</code> steps to open the gap, and when fast reaches null, slow sits on the node just before the target. Unlink, free, and return <code>dummy-&gt;next</code>.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println };
+
+struct Node {
+    i32 value;
+    Node* next;
+}
+
+Node* newNode(i32 v) {
+    Node* n = alloc&lt;Node&gt;(1);
+    n-&gt;value = v;
+    n-&gt;next = null;
+    return n;
+}
+
+Node* removeNthFromEnd(Node* head, i32 n) {
+    Node* dummy = newNode(0);
+    dummy-&gt;next = head;
+    Node* fast = dummy;
+    Node* slow = dummy;
+
+    for (i32 i = 0; i &lt;= n; i++) {
+        if (fast == null) {
+            break;
+        }
+        fast = fast-&gt;next;
+    }
+    while (fast != null) {
+        fast = fast-&gt;next;
+        slow = slow-&gt;next;
+    }
+
+    Node* target = slow-&gt;next;
+    if (target != null) {
+        slow-&gt;next = target-&gt;next;
+        dealloc&lt;Node&gt;(target);
+    }
+
+    Node* result = dummy-&gt;next;
+    dealloc&lt;Node&gt;(dummy);
+    return result;
+}</code></pre>
+<p>The gap is <code>n + 1</code>, not <code>n</code>, and that off-by-one is the entire difficulty of the problem. With a gap of <code>n + 1</code>, when <code>fast</code> falls off the end, <code>slow</code> is on the node <em>before</em> the one to remove, which is exactly the node whose <code>next</code> must be rewritten. A gap of <code>n</code> would land <code>slow</code> on the target itself, with no way to reach its predecessor in a singly linked list.</p>
+<p class="step-label">The cost</p>
+<p>Time is linear: one pass, each node visited a constant number of times. Space is constant, the two pointers and one temporary dummy node. The dummy node is freed before returning; the removed node is freed at unlink time. This is the same dummy-head trick that made 26.7's merge clean, applied to deletion.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>Removing the only node leaves the head null, which works because slow is the dummy and <code>dummy-&gt;next</code> becomes null. Removing the first node of a longer list is handled without a special branch, the whole reason for the dummy. If <code>n</code> exceeds the list length, the gap loop stops at the end and the function removes nothing rather than crashing, which is a choice worth documenting. The variation: remove the middle node given only a pointer to it, in <code>O(1)</code>, by copying the next node's value into it and unlinking the next. It is a party trick that fails on the last node, and it is a good example of how the singly linked list's one-way arrows constrain every solution.</p>
+<section><h2 id="s27-12">Add Two Numbers</h2></section>
+<p class="step-label">The problem</p>
+<p>You are given two non-negative integers represented as linked lists whose digits are stored in reverse order, one digit per node. Add them and return the sum as a linked list in the same format. So <code>(2 -&gt; 4 -&gt; 3)</code> plus <code>(5 -&gt; 6 -&gt; 4)</code> is <code>(7 -&gt; 0 -&gt; 8)</code>, because 342 + 465 = 807.</p>
+<p class="step-label">Picture this</p>
+<p>Primary-school column addition, but the columns arrive as list nodes from least significant digit upward, which is convenient: you add the two current digits and the carry, write the units digit, and pass the tens digit along. A dummy head owns the result, and a tail pointer extends it. The process continues while either list still has digits <em>or</em> a carry remains, and that last condition is the one people forget.</p>
+<p>Brute force</p>
+<p>Convert each list to an integer, add, and convert back. It works for small numbers and silently overflows for the length of list that makes the problem interesting. It also discards the whole point, which is to do the addition position by position.</p>
+<p class="step-label">The better approach</p>
+<p>Walk both lists together with a running <code>carry</code>. Each step, sum the carry with whichever current digits exist, compute the new digit as <code>sum % 10</code> and the new carry as <code>sum / 10</code>, then append the digit. The loop's three-way condition — <code>a</code> not done, <code>b</code> not done, or carry nonzero — guarantees a final carry becomes its own node.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println };
+
+struct Node {
+    i32 value;
+    Node* next;
+}
+
+Node* newNode(i32 v) {
+    Node* n = alloc&lt;Node&gt;(1);
+    n-&gt;value = v;
+    n-&gt;next = null;
+    return n;
+}
+
+Node* addTwoNumbers(Node* a, Node* b) {
+    Node* dummy = newNode(0);
+    Node* tail = dummy;
+    i32 carry = 0;
+
+    while (a != null || b != null || carry != 0) {
+        i32 sum = carry;
+        if (a != null) {
+            sum = sum + a-&gt;value;
+            a = a-&gt;next;
+        }
+        if (b != null) {
+            sum = sum + b-&gt;value;
+            b = b-&gt;next;
+        }
+        carry = sum / 10;
+        tail-&gt;next = newNode(sum % 10);
+        tail = tail-&gt;next;
+    }
+
+    Node* result = dummy-&gt;next;
+    dealloc&lt;Node&gt;(dummy);
+    return result;
+}</code></pre>
+<p>Digits are stored least-significant first precisely so the carry flows in the same direction as the list, so no reversal is needed. The elements of the two input lists are read but not consumed or freed; the caller still owns them. Only the dummy is allocated and freed here, and the new nodes are owned by the returned list.</p>
+<p class="step-label">The cost</p>
+<p>Time is linear in the longer list, plus one step if there is a final carry. Space is linear in the length of the result, which is at most one node longer than the longer input. No arithmetic wider than <code>i32</code> is needed because each column sums at most <code>9 + 9 + 1 = 19</code>.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>Two empty lists sum to zero, which the loop produces as a single <code>0</code> node because <code>carry</code> is zero but both lists are null; adjust the condition if you want an empty result instead. Lists of different lengths are handled by the <code>if (a != null)</code>/<code>if (b != null)</code> guards. The variation: store the digits most-significant first instead, which forces a reversal of both inputs or a recursive solution that defers the carry. A second variation: subtract two numbers by borrowing, which is the same skeleton with the carry replaced by a borrow and a sign test.</p>
+<section><h2 id="s27-13">Palindrome Linked List</h2></section>
+<p class="step-label">The problem</p>
+<p>Decide whether a singly linked list reads the same forwards and backwards, in <code>O(n)</code> time and <code>O(1)</code> extra space.</p>
+<p class="step-label">Picture this</p>
+<p>Find the middle with two pointers at different speeds, reverse the second half in place, then compare the two halves from the outside in. The first half is unchanged; the second half now runs toward the middle. When the comparisons finish, reverse the second half again to restore the list, because a good function leaves its input as it found it.</p>
+<p>Brute force</p>
+<p>Copy the list's values into a vector, then use the two-pointer palindrome test of 24.2 on the vector. Linear time, but linear extra space, which the problem forbids.</p>
+<p class="step-label">The better approach</p>
+<p>Slow and fast pointers to the middle, the 26.6 reversal for the back half, then a lockstep comparison, then a second reversal to undo the damage. The middle finding and the reversal are both problems already solved in this chapter; the new idea is only that they combine, and that the mutation must be repaired before returning.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+import(lib) std::io::ios { println };
+
+struct Node {
+    i32 value;
+    Node* next;
+}
+
+Node* newNode(i32 v) {
+    Node* n = alloc&lt;Node&gt;(1);
+    n-&gt;value = v;
+    n-&gt;next = null;
+    return n;
+}
+
+Node* reverseList(Node* head) {
+    Node* prev = null;
+    Node* cur = head;
+    while (cur != null) {
+        Node* next = cur-&gt;next;
+        cur-&gt;next = prev;
+        prev = cur;
+        cur = next;
+    }
+    return prev;
+}
+
+bool isPalindromeList(Node* head) {
+    if (head == null || head-&gt;next == null) return true;
+
+    Node* slow = head;
+    Node* fast = head;
+    while (fast-&gt;next != null &amp;&amp; fast-&gt;next-&gt;next != null) {
+        slow = slow-&gt;next;
+        fast = fast-&gt;next-&gt;next;
+    }
+
+    Node* second = reverseList(slow-&gt;next);
+    Node* p1 = head;
+    Node* p2 = second;
+    bool ok = true;
+    while (p2 != null) {
+        if (p1-&gt;value != p2-&gt;value) {
+            ok = false;
+            break;
+        }
+        p1 = p1-&gt;next;
+        p2 = p2-&gt;next;
+    }
+
+    slow-&gt;next = reverseList(second);
+    return ok;
+}</code></pre>
+<p>The middle-finding loop stops with <code>slow</code> on the last node of the first half for both even and odd lengths, so <code>slow-&gt;next</code> is always the start of the second half and the split is clean. The comparison runs while <code>p2</code> is non-null, which correctly ignores the middle node of an odd-length list. The final <code>reverseList(second)</code> restores the link, so the list is left exactly as it arrived.</p>
+<p class="step-label">The cost</p>
+<p>Time is linear: the middle walk, the reversal, the comparison, and the restore each touch each node a constant number of times. Space is constant: four pointers, no allocation, no array. This is the <code>O(1)</code>-space answer to a problem the brute force solves with a full copy, and it earns its keep only when the list is large.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>An empty list and a single node are palindromes, returned before any mutation. A two-node list is a palindrome only when both values are equal, which the middle walk handles with <code>slow</code> on the first node. The critical discipline is the restore: skip it and the caller's list is silently reordered, a bug that may not surface until much later. The variation: if the problem permits destroying the input, drop the final reversal and save the work. A second variation: check whether the list is a palindrome <em>after deleting at most one node</em>, which follows 24.2's "valid palindrome II" by trying both skips when the comparison first disagrees.</p>
+<section><h2 id="s27-14">Largest Rectangle in Histogram</h2></section>
+<p class="step-label">The problem</p>
+<p>Given bar heights along a baseline, find the area of the largest rectangle that fits entirely under the skyline. So for <code>[2, 1, 5, 6, 2, 3]</code> the answer is 10, from the two bars of height 5 and 6 with a width of 2.</p>
+<p class="step-label">Picture this</p>
+<p>Each bar can be the short side of a rectangle that stretches left and right until it hits a shorter bar. So the question for each bar is: how far left and right can it extend before something shorter blocks it? A monotonically increasing stack answers exactly that. When a new, shorter bar arrives, every taller bar on the stack now knows its right boundary, and its left boundary is the bar just below it on the stack. Pop, compute the area, and keep the best.</p>
+<p>Brute force</p>
+<p>For each bar, expand left and right while the neighbours are at least as tall, and compute the width times height. That is <code>O(n²)</code> and it re-expands through the same gaps for every bar.</p>
+<p class="step-label">The better approach</p>
+<p>One pass with a stack of indices kept in increasing height order. Before pushing index <code>i</code>, pop every index whose height is greater than or equal to <code>h[i]</code>, because <code>i</code> is their right boundary. For a popped index <code>j</code>, its height is the rectangle's height, its left boundary is the index now on top of the stack (or the start of the array), and its width is <code>i</code> minus that left boundary. A sentinel bar of height zero at the end flushes the stack, since zero is shorter than everything. Widen the areas to <code>i64</code>; a wide histogram times a tall bar overflows <code>i32</code> easily.</p>
+<p class="step-label">The implementation</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::io::ios { println };
+
+i64 largestRectangle(const Vec&lt;i32&gt;* h) {
+    Vec&lt;usize&gt; stack = Vec&lt;usize&gt;::new();
+    i64 best = 0;
+    usize n = h-&gt;count();
+
+    for (usize i = 0; i &lt;= n; i++) {
+        i64 cur = (i == n) ? 0 : (i64)h-&gt;at(i);
+        while (!stack.isEmpty() &amp;&amp; (i64)h-&gt;at(stack.back()) &gt;= cur) {
+            i64 height = (i64)h-&gt;at(stack.pop());
+            usize left = stack.isEmpty() ? 0 : stack.back() + 1;
+            i64 width = (i64)(i - left);
+            i64 area = height * width;
+            if (area &gt; best) best = area;
+        }
+        stack.push(i);
+    }
+    return best;
+}</code></pre>
+<p>The virtual bar at <code>i == n</code> with height zero is the sentinel, and it is why the loop runs one step past the end. When a bar is popped, the new top of the stack is the nearest shorter bar to its left, so <code>stack.back() + 1</code> is the first column the rectangle can occupy on the left. The <code>&gt;=</code> comparison retires equal-height bars too; using <code>&gt;</code> would still be correct but would leave them for a later pop, and either way each bar is popped exactly once.</p>
+<p class="step-label">The cost</p>
+<p>Time is linear: each index is pushed once and popped at most once, so the inner loop does <code>O(n)</code> work in total across the whole run. Space is <code>O(n)</code> in the worst case, a strictly increasing histogram that keeps every index until the sentinel. This is the same "nested loop, linear total" accounting as the monotonic stack of 26.4, and the same structure answers both, only with different bookkeeping when the item is popped.</p>
+<p class="step-label">Edge cases and a variation</p>
+<p>An empty histogram returns zero, because the loop's single sentinel step pops nothing. A single bar returns its own height. A non-decreasing histogram keeps every bar on the stack until the sentinel, at which point they are popped right to left with increasing widths. The variation: the <em>maximal rectangle</em> in a binary matrix, which runs this routine once per row, treating the 1s as heights and resetting a column's height to zero wherever the row has a 0. That is the same monotonic stack applied row by row, and it is the natural next problem from this one.</p>
+<section><h2 id="s27-15">Exercises</h2></section>
+<ol><li>Comprehension. In 26.1, why does the stack automatically enforce the <em>nesting</em> rule, not just the counting of opens and closes? Give a string with equal numbers of each bracket that is invalid, and trace the stack to show where it fails.</li><li>Comprehension. In 26.2, why is the comparison <code>v &lt;= currentMin</code> and not <code>v &lt; currentMin</code>? Construct the sequence of pushes and pops where the strict version corrupts <code>getMin</code>.</li><li>Implementation. Using the stack of 26.1, write <code>i32 longestValidParentheses(str)</code> returning the length of the longest balanced substring. Push indices and use a sentinel base; explain what each stack entry means.</li><li>Implementation. Write a <code>StackQueue</code> (26.5) whose <code>dequeue</code> also provides <code>peek</code>, and argue that <code>peek</code> is also amortized constant. Then replace the whole thing with <code>std::collections::queue { Queue }</code> and list everything that disappears.</li><li>Implementation. Write <code>Node* removeNthFromEnd(Node*, i32 n)</code> using two pointers offset by n, in one pass. Why does the dummy-head trick from 26.7 help here too?</li><li>Implementation. Write <code>bool isPalindromeList(Node*)</code> in O(n) time and constant space, using the reverse-in-place technique of 26.6 on the second half and then restoring it afterward. What must you remember to undo?</li><li>Analysis. In 26.6, compare the iterative and recursive reversals for a list of one million nodes. What is the space cost of each, and what specifically fails in the recursive version?</li><li>Design. In 26.4, modify the monotonic stack to return, for each day, the index of the next warmer day rather than the distance. Which line changes? Then do the same problem with a brute-force O(n²) scan and compare the operation counts on a strictly decreasing list.</li><li>Cycles. Implement the "find the cycle entry" variation of 26.8 and prove, with the distances traveled, that the meeting-after-reset really lands on the entry node. Why does the proof not depend on the loop's length?</li><li>Ownership. Every list function in 26.6 through 26.8 allocates nodes with <code>alloc&lt;Node&gt;</code> but none of them frees the list. Write <code>void freeList(Node*)</code> that frees every node in an acyclic list, then explain why calling it on a cyclic list is a bug and how <code>hasCycle</code> would protect the caller. Where does this leave you relative to <a href="../11-memory-management/index.html">Chapter 11</a>'s RAII, and would a <code>LinkedList&lt;T&gt;</code> from <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a> have avoided the manual free?</li><li>Selection. Queue, Deque, and RingBuf all model first-in-first-out in some way. For each of these tasks, name the right container and justify it: (a) a task scheduler that never grows past a fixed size and overwrites the oldest entry when full; (b) a breadth-first search frontier that grows and shrinks at both ends; (c) a simple job queue with no size limit.</li><li>Meta. This chapter used a stack for four problems, a queue for one, and linked lists for three. For each, state in one sentence why the <em>order</em> the structure provides was the reason it was chosen — not its storage, but its ordering. That is the question to ask before reaching for any container.</li></ol>
+      <nav class="chapter-nav"><a href="../26-live-examples-hashing-and-sets/index.html">← Previous</a><a href="../28-live-examples-recursion-backtracking-and-trees/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>
