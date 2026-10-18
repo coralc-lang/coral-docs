@@ -16,6 +16,7 @@ import re
 SRC = "/home/cerie/Documents/coralc/coral-docs/textbook"
 SITE = "/home/cerie/Documents/coral-docs"
 OUT = os.path.join(SITE, "textbook")
+BASE_URL = "https://coralc-lang.github.io/coral-docs"
 
 APX_TITLES = {
     "a": "Appendix A · A Tour of the Standard Library",
@@ -160,6 +161,24 @@ def is_section_heading(line):
     return re.match(r"^\d+\.\d+\s+\S", line) is not None
 
 
+def is_prose_block(block):
+    """True when an indented block is really prose (full sentences), not code."""
+    for raw in block:
+        t = raw.strip()
+        if not t:
+            continue
+        if re.match(r"^([-*]|\d+[.)])\s", t):
+            return False
+        if re.search(r"[+\-*/=<>^|]", t):
+            return False
+        words = t.split()
+        if len(words) < 6 or sum(len(w) >= 3 for w in words) < 4:
+            return False
+        if not re.search(r"[.?!]$", t):
+            return False
+    return True
+
+
 def parse_block(lines, i):
     """Parse one block starting at line i. Return (element, next_i)."""
     line = lines[i]
@@ -193,6 +212,9 @@ def parse_block(lines, i):
         dl = as_definition_list(block)
         if dl is not None:
             return ("dl", dl), i
+        if is_prose_block(block):
+            items = [l.strip() for l in block if l.strip()]
+            return ("checklist", items), i
         ded = [l[4:] if l.startswith("    ") else l for l in block]
         stripped = [l.strip() for l in ded if l.strip()]
         head = stripped[0] if stripped else ""
@@ -248,6 +270,9 @@ def render_elements(elements):
         elif kind == "dl":
             rows = "".join(f"<dt>{inline(t)}</dt><dd>{inline(d)}</dd>" for t, d in el[1])
             parts.append(f'<dl class="glossary">{rows}</dl>')
+        elif kind == "checklist":
+            items = "".join(f"<li>{inline(x)}</li>" for x in el[1])
+            parts.append(f'<ul class="checklist">{items}</ul>')
         elif kind == "pre":
             code = html.escape(el[2])
             parts.append(
@@ -276,6 +301,16 @@ def render_elements(elements):
             inner = "".join(f"<p>{inline(p)}</p>" for p in el[1])
             parts.append(f"<blockquote>{inner}</blockquote>")
     return "\n".join(parts)
+
+
+def render_chapter(els):
+    """Render a chapter body, wrapping the Exercises block in its own section."""
+    ex = next((i for i, e in enumerate(els) if e[0] == "h2" and e[1] == "exercises"), None)
+    if ex is None:
+        return render_elements(els)
+    head = render_elements(els[: ex + 1])
+    body = render_elements(els[ex + 1:])
+    return f'{head}\n<section class="exercises">{body}</section>'
 
 
 def parse_manuscript(path, num):
@@ -404,16 +439,33 @@ def parse_markdown(path, fallback_title, num_prefix=None):
     return title, None, els, topics
 
 
-def shell(root, title_tag, page_title, kicker_html, lead_html, body_html, prev, nxt):
+def shell(root, title_tag, page_title, kicker_html, lead_html, body_html, prev, nxt,
+          canonical=None, description=None):
     prev_html = f'<a href="{root}textbook/{prev}">← Previous</a>' if prev else "<span></span>"
     next_html = f'<a href="{root}textbook/{nxt}">Next →</a>' if nxt else "<span></span>"
+    desc = description or (
+        "The Coral Book: a systems programming language for people who think in C."
+    )
+    desc = re.sub(r"\s+", " ", desc).strip()
+    extra = ""
+    if canonical:
+        extra = (
+            f'  <link rel="canonical" href="{canonical}" />\n'
+            f'  <meta property="og:type" content="article" />\n'
+            f'  <meta property="og:title" content="{html.escape(title_tag)}" />\n'
+            f'  <meta property="og:description" content="{html.escape(desc)}" />\n'
+            f'  <meta property="og:url" content="{canonical}" />\n'
+            f'  <meta name="twitter:card" content="summary" />\n'
+        )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="{html.escape(desc)}" />
+  <meta name="robots" content="index, follow" />
   <title>{html.escape(title_tag)}</title>
-  <link rel="stylesheet" href="{root}textbook/book.css" />
+{extra}  <link rel="stylesheet" href="{root}textbook/book.css" />
   <script src="{root}assets/js/script.js" defer></script>
 </head>
 <body>
@@ -496,7 +548,9 @@ def main():
         page = shell(
             "../../",
             f"Chapter {num} · {info['title']} | The Coral Book",
-            info["title"], kicker, lead, render_elements(info["els"]), prev, nxt,
+            info["title"], kicker, lead, render_chapter(info["els"]), prev, nxt,
+            canonical=f"{BASE_URL}/textbook/{info['href']}",
+            description=info["subtitle"] or f"Chapter {int(num)} of the Coral Book: {info['title']}.",
         )
         write(os.path.join(OUT, info["slug"], "index.html"), page)
 
@@ -515,6 +569,8 @@ def main():
             "../../",
             f"{a['title']} | The Coral Book",
             a["title"], kicker, "", render_elements(a["els"]), prev, nxt,
+            canonical=f"{BASE_URL}/textbook/{a['href']}",
+            description=f"{a['title']} from the Coral Book.",
         )
         write(os.path.join(OUT, slug, "index.html"), page)
 
@@ -529,6 +585,8 @@ def main():
             f"{ref_title} | Coral Docs",
             ref_title, '<p class="chapter-kicker">Reference</p>', "",
             render_elements(ref_els), None, None,
+            canonical=f"{BASE_URL}/{out_rel.replace(os.sep, '/')}/index.html",
+            description=f"{ref_title} reference for the Coral language.",
         )
         write(os.path.join(SITE, out_rel, "index.html"), page)
 
@@ -585,6 +643,13 @@ def main():
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="The Coral Book: a chapter-by-chapter introduction to the Coral systems programming language." />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="{BASE_URL}/textbook/" />
+  <meta property="og:title" content="The Coral Book" />
+  <meta property="og:description" content="A chapter-by-chapter introduction to the Coral systems programming language." />
+  <meta property="og:url" content="{BASE_URL}/textbook/" />
+  <meta name="twitter:card" content="summary" />
   <title>The Coral Book</title>
   <link rel="stylesheet" href="./book.css" />
   <script src="../assets/js/script.js" defer></script>
@@ -614,7 +679,78 @@ def main():
 </html>
 """
     write(os.path.join(OUT, "index.html"), landing)
-    print(f"chapters: {len(CH)}  appendices: {len(APX)}  parts: {len(data_parts)}")
+
+    # ---- site root landing ----
+    root_landing = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="The Coral Book: a chapter-by-chapter introduction to Coral, a systems programming language for people who think in C." />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="{BASE_URL}/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="The Coral Book" />
+  <meta property="og:description" content="A chapter-by-chapter introduction to Coral, a systems programming language for people who think in C." />
+  <meta property="og:url" content="{BASE_URL}/" />
+  <meta name="twitter:card" content="summary" />
+  <title>The Coral Book</title>
+  <link rel="stylesheet" href="./textbook/book.css" />
+  <script src="./assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="./index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="./textbook/index.html">Textbook</a><a href="./coral-docs/index.html">Coral Docs</a><a href="./coral-docs/tooling/index.html">Tooling</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <header class="book-hero">
+        <div class="book-kicker">The Coral programming language</div>
+        <h1>The Coral Book</h1>
+        <p>A chapter-by-chapter introduction to Coral: C-family syntax, type-first declarations, explicit memory, and the modern machinery built around them.</p>
+      </header>
+      <h2>Start reading</h2>
+      <ol class="chapter-list">
+        <li><a href="./textbook/index.html"><span><span class="chapter-title">Textbook</span><span class="chapter-summary">The guided path, from first principles to end-to-end problem solving.</span></span><span class="chapter-state">Read</span></a></li>
+        <li><a href="./coral-docs/index.html"><span><span class="chapter-title">Coral Docs</span><span class="chapter-summary">Topic-based language and tooling documentation.</span></span><span class="chapter-state">Browse</span></a></li>
+      </ol>
+    </article>
+  </main>
+</body>
+</html>
+"""
+    write(os.path.join(SITE, "index.html"), root_landing)
+
+    # ---- sitemap + robots ----
+    urls = [
+        f"{BASE_URL}/",
+        f"{BASE_URL}/textbook/",
+        f"{BASE_URL}/coral-docs/",
+        f"{BASE_URL}/coral-docs/language/",
+        f"{BASE_URL}/coral-docs/tooling/",
+    ]
+    urls += [f"{BASE_URL}/textbook/{c['href']}" for c in CH.values()]
+    urls += [f"{BASE_URL}/textbook/{a['href']}" for a in APX.values()]
+    for md in sorted(glob.glob(os.path.join(SITE, "reference", "**", "*.md"), recursive=True)):
+        rel = os.path.relpath(md, SITE)
+        out_rel = os.path.join(os.path.dirname(rel), os.path.splitext(os.path.basename(rel))[0])
+        urls.append(f"{BASE_URL}/{out_rel.replace(os.sep, '/')}/index.html")
+    seen = list(dict.fromkeys(urls))
+    sitemap = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "".join(f"  <url><loc>{html.escape(u)}</loc></url>\n" for u in seen)
+        + "</urlset>\n"
+    )
+    write(os.path.join(SITE, "sitemap.xml"), sitemap)
+    write(os.path.join(SITE, "robots.txt"),
+          f"User-agent: *\nAllow: /\nSitemap: {BASE_URL}/sitemap.xml\n")
+    print(f"chapters: {len(CH)}  appendices: {len(APX)}  parts: {len(data_parts)}  sitemap urls: {len(seen)}")
 
 
 if __name__ == "__main__":

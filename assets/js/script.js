@@ -50,11 +50,14 @@ function loadTreeSitter() {
   return new Promise((resolve) => {
     const runtime = document.createElement("script");
     runtime.src = `${TREE_SITTER_BASE}tree-sitter.js`;
-    runtime.onload = () => resolve(window.TreeSitter || null);
+    runtime.onload = () => resolve(window.TreeSitter || window.Parser || null);
     runtime.onerror = () => resolve(null);
     document.head.append(runtime);
   }).then(async (Parser) => {
-    if (!Parser || typeof Parser.init !== "function") return null;
+    if (!Parser || typeof Parser.init !== "function") {
+      console.warn("[coral] tree-sitter runtime could not be loaded");
+      return null;
+    }
     try {
       await Parser.init({ locateFile: (file) => `${TREE_SITTER_BASE}${file}` });
       const [wasm, scm] = await Promise.all([
@@ -66,65 +69,9 @@ function loadTreeSitter() {
       parser.setLanguage(Coral);
       return { parser, query: Coral.query(scm) };
     } catch (error) {
+      console.warn("[coral] tree-sitter highlighting failed", error);
       return null;
     }
-  });
-}
-
-function tokenizeCode(raw) {
-  const tokenPatterns = [
-    { regex: /\/\/.*$|\/\*[\s\S]*?\*\//gm, cls: "comment" },
-    { regex: /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, cls: "string" },
-    { regex: /\b(?:0x[0-9a-fA-F]+|\d+\.\d+|\d+)\b/g, cls: "number" },
-    {
-      regex: /\b(?:var|struct|enum|variant|extend|pub|static|return|fn|import|mod|new|if|else|while|for|loop|switch|defer|break|continue|true|false|null|main|println|printf|as|self|const|extern|trait|union|typedef|volatile|comptime)\b/g,
-      cls: "keyword",
-    },
-    {
-      regex: /\b(?:i8|i16|i32|i64|u8|u16|u32|u64|u128|i128|f32|f64|bool|void|usize|isize|str|char|rawptr|T|U|Color|Option|Some|None)\b/g,
-      cls: "type",
-    },
-    {
-      regex: /(?:\+\+|--|->|::|&&|\|\||<<|>>|==|!=|<=|>=|\+=|-=|\*=|\/=|%=|=|\+|-|\*|\/|%|<|>|!|~|:|;|,|\.|&|\^|\||\?|@|#)/g,
-      cls: "operator",
-    },
-    { regex: /\b[a-zA-Z_][a-zA-Z0-9_]*\s*(?=\()/g, cls: "function" },
-  ];
-
-  const combined = new RegExp(
-    tokenPatterns.map(({ regex }) => `(${regex.source})`).join("|"),
-    "g"
-  );
-
-  let result = "";
-  let lastIndex = 0;
-
-  for (const match of raw.matchAll(combined)) {
-    const start = match.index;
-    const end = start + match[0].length;
-
-    if (start > lastIndex) {
-      result += escapeHtml(raw.slice(lastIndex, start));
-    }
-
-    const matchedGroupIndex = match.slice(1).findIndex((value) => value !== undefined);
-    const tokenClass = tokenPatterns[matchedGroupIndex]?.cls || "plain";
-    result += `<span class="token ${tokenClass}">${escapeHtml(match[0])}</span>`;
-
-    lastIndex = end;
-  }
-
-  if (lastIndex < raw.length) {
-    result += escapeHtml(raw.slice(lastIndex));
-  }
-
-  return result;
-}
-
-function highlightCodeBlocks() {
-  document.querySelectorAll("code.language-coral").forEach((code) => {
-    const original = code.textContent || "";
-    code.innerHTML = tokenizeCode(original);
   });
 }
 
@@ -191,11 +138,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const codeEls = document.querySelectorAll("code.language-coral");
   if (codeEls.length) {
     const sitter = await loadTreeSitter();
-    if (sitter) {
-      highlightWithTreeSitter(sitter, codeEls);
-    } else {
-      highlightCodeBlocks();
-    }
+    if (sitter) highlightWithTreeSitter(sitter, codeEls);
   }
   bindCopyButtons();
   bindSearch();
