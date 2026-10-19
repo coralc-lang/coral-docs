@@ -4,29 +4,29 @@ Live Examples: Arrays, Strings, and Two Pointers
 
 Two Fingers on the Same List
 
-Chapter24 was about single-pass bookkeeping. This chapter is about a pattern that cracks a surprising number of array and string problems with one idea: keep two positions in the data and move them by a rule. The pattern is called two pointers. It is less a technique than a way of seeing. Most problems a beginner solves with a double loop do not need one. The double loop is redundant: one of the two loops rediscovers information the other already has. Replace the nested loop with two coordinated pointers and the redundancy disappears. The brute force costs n²; the two-pointer version costs n.
+This chapter is about two pointers: keep two positions in the data and move them by a rule. Most problems beginners solve with a double loop do not need one; the nested loop rediscovers information the other loop already has. The brute force costs n²; the two-pointer version costs n.
 
-Hold on. Let me make that concrete, because "two pointers" sounds like jargon until it clicks. Imagine looking for your friend in a single-file queue. The naive method: stand at the front and, for each person, walk the whole queue behind them comparing faces. That is the nested loop. The two-pointer method: put one finger at the front and one at the back, and move a finger based on what you see. You never revisit a position you already left behind, so the total number of steps is the length of the queue. The art is choosing which finger moves. That rule is always justified by a property of the data: sortedness, or a target, or symmetry. In each problem below I point at the property that licenses the move, because that is the part that transfers.
+The art is choosing which pointer moves. That rule is always justified by a property of the data: sortedness, a target, or symmetry. Each problem below names the property that licenses the move, because that is the part that transfers.
 
-The other theme is the difference between a `str` and a `String`, and between a value you may overwrite and one you may only read. Reversing a string in place needs a mutable buffer, which in Coral means a `String`; a `str` is a borrowed, read-only view by design (Chapter17). Several problems below also use a "write pointer" and a "read pointer" inside one array, a cousin of the two-pointer idea where one index writes the values that survive and the other scans. Once you see it, you see it everywhere. Filtering, deduplicating, and compacting are all the same three lines.
+The other theme is `str` versus `String`, and read-only versus overwritable. Reversing in place needs a mutable buffer, a `String`; a `str` is a borrowed, read-only view (Chapter17). Several problems also use a write pointer and a read pointer in one array: one index writes the survivors, the other scans. Filtering, deduplicating, and compacting are all the same three lines.
 
 25.1 Reverse a String In Place
 
 The problem
 
-Given a mutable string, reverse its characters without allocating a second string.
+Reverse a mutable string's characters without allocating a second string.
 
 Picture this
 
-Two people standing at opposite ends of a row of boxes, each holding one item, walk toward the center swapping as they meet. When they pass each other, every box has changed places exactly once. Nobody copies the whole row; only one swap is in flight at a time.
+Two people at opposite ends of a row walk toward the center, swapping as they meet. When they pass, every box has changed places exactly once.
 
 Brute force
 
-Build a new string by walking the original backwards and appending each character. Correct and linear, but it needs a second buffer the size of the first. The problem says "in place" precisely to forbid that.
+Walk the original backwards and append each character. Correct and linear, but it needs a second buffer; "in place" forbids that.
 
 The better approach
 
-Two pointers, one at the left end and one at the right, swap the two characters they point at, then step inward. Stop when the pointers meet or cross. Every position is touched once, and the only extra storage is the one character being swapped.
+Pointers at both ends swap the characters they point at, then step inward, stopping when they meet or cross. Every position is touched once; the only extra storage is one character.
 
 The implementation
 
@@ -51,33 +51,33 @@ The implementation
         println("{}", text.asView());
     }
 
-Two details matter here: the types and the mutability. The loop counters are `isize`, signed, because `j--` must reach zero and stop. An unsigned counter would wrap to a huge value on the final decrement and crash. The operations go through `String`, whose `at` and `atApply` give read and overwrite access. A `str` would not compile here, and that is no inconvenience. It is the type system telling you that reversing needs ownership of the bytes, not a view of them.
+Two details: types and mutability. The counters are `isize` because `j--` must reach zero and stop; unsigned would wrap and crash. The operations go through `String`, whose `at` and `atApply` give read and overwrite access. A `str` would not compile, the type system telling you reversing needs ownership of the bytes, not a view.
 
 The cost
 
-Time is linear: the loop runs about half the length, and each iteration does constant work (two reads, two writes). Space is constant, no matter how long the string. Compare the build-a-new-string approach: also linear in time, but linear in extra space. This is the first problem where two pointers buy a space improvement, not a time one. Both kinds of win are real.
+Time is linear: about half the length, constant work per iteration. Space is constant. The build-a-new-string approach is also linear in time but linear in extra space; here two pointers buy a space improvement, not a time one.
 
 Edge cases and a variation
 
-The empty string and the single-character string exit the loop immediately, which is correct. A string of even length ends with `j < i`. A string of odd length ends with `i == j` on the middle character, which has nothing to swap with, so the loop stops. The variation: reverse the words in a sentence rather than the characters. "the sky is blue" becomes "blue is sky the". The classic trick is elegant. First reverse the whole string, then reverse each word back. Two applications of the primitive above, and the word problem is solved without a second buffer.
+Empty and single-character strings exit immediately. Even lengths end with `j < i`; odd lengths end with `i == j` on the middle character, which has nothing to swap. Variation: reverse the words in a sentence ("the sky is blue" becomes "blue is sky the") by reversing the whole string, then each word back, with no second buffer.
 
 25.2 Valid Palindrome
 
 The problem
 
-Given a string, decide whether it reads the same forwards and backwards, considering only letters and digits and ignoring case. So `"A man, a plan, a canal: Panama"` is a palindrome.
+Decide whether a string reads the same forwards and backwards, considering only letters and digits and ignoring case. `"A man, a plan, a canal: Panama"` is a palindrome.
 
 Picture this
 
-Two readers, one at each end of a sentence. Both ignore punctuation. Neither cares about uppercase. Each reads a character; if the two characters differ, the answer is no. If they meet in the middle having agreed on everything, the answer is yes. The punctuation between them is simply skipped.
+Two readers at each end ignore punctuation and case. If their characters differ, the answer is no; if they meet having agreed on everything, yes.
 
 Brute force
 
-First strip the string of everything that is not a letter or digit and lowercase the rest, producing a cleaned copy. Then compare that copy to its own reverse. Two passes and an allocation. It works, and the cleaning step is error-prone (did you remember all the punctuation?). Reversing the cleaned copy also doubles the space for no reason.
+Strip everything but letters and digits, lowercase, then compare the copy to its reverse. Two passes and an allocation, and the cleaning step is error-prone.
 
 The better approach
 
-Two pointers, one from each end, advancing past anything that is not alphanumeric and comparing the survivors with case folded. No copy is made. The punctuation is skipped as the pointers travel. This is 24.1's skeleton with two changes: skip non-alphanumeric characters before comparing, and compare lowercase forms instead of swapping.
+Pointers from each end advance past non-alphanumeric characters and compare survivors with case folded. No copy. This is 24.1's skeleton with two changes: skip non-alphanumeric before comparing, and compare lowercase instead of swapping.
 
 The implementation
 
@@ -99,33 +99,33 @@ The implementation
         return true;
     }
 
-The inner `while` loops are the new idea, and they are worth reading slowly. Each advances a pointer past characters that should not be compared. The condition `i < j` appears inside them too, so a string that is all punctuation, with no alphanumeric character at all, cannot run the pointers past each other and off the end. This guard-inside-the-guard is the detail most first attempts get wrong, and it only fails on inputs like `"..."` or `"   "`.
+The inner `while` loops advance past characters that should not be compared. Their `i < j` condition stops an all-punctuation string from running the pointers past each other and off the end, a detail first attempts miss on inputs like `"..."`.
 
 The cost
 
-Time is linear: each pointer moves inward and never retreats, so total movement is bounded by the length of the string, even though there are nested loops. Space is constant: two indices, no allocation. This is a recurring surprise with two pointers. Loops nested in the source do not necessarily mean a nested cost, if the inner loop draws from a shared budget.
+Time is linear: each pointer moves inward and never retreats, so total movement is bounded by the length despite nested loops. Space is constant. Loops nested in the source need not mean nested cost if the inner loop draws from a shared budget.
 
 Edge cases and a variation
 
-The empty string and a single character are palindromes; the loop handles both. `"0P"` is not a palindrome, because `0` and `P` are different after folding (neither is punctuation to skip). The Unicode caveat belongs here in bold. This code compares bytes, so it is correct for ASCII and wrong for text with accented letters or emoji, whose UTF-8 encodings are multiple bytes. Chapter17 explains the fix, decode with `nextCodepoint` and compare codepoints. It matters because a byte-by-byte comparison splits a multi-byte character and compares its halves, which is meaningless. The variation: allow the deletion of at most one character to make the string a palindrome, a classic follow-up solved by trying both skips when the two pointers disagree.
+Empty and single-character strings are palindromes. `"0P"` is not, since `0` and `P` differ after folding. This code compares bytes, so it is correct for ASCII and wrong for accented letters or emoji, whose UTF-8 encodings are multiple bytes; Chapter17 explains the `nextCodepoint` fix. Variation: allow deleting at most one character, solved by trying both skips when the pointers disagree.
 
 25.3 Two Sum in a Sorted Array
 
 The problem
 
-Given an array sorted in ascending order and a target value, find the two positions whose values add up to the target. Assume exactly one such pair exists.
+Given a sorted array and a target, find the two positions whose values add to the target. Assume exactly one pair exists.
 
 Picture this
 
-Two people stand at the ends of a number line, each holding a number, and they want their two numbers to sum to a target. If the sum is too small, the only way to raise it is to move the left person rightward, to a bigger number. If the sum is too big, move the right person leftward, to a smaller one. Because the line is sorted, each move is the unique sensible one, and the pair converges on the answer.
+Two people at the ends of a sorted number line want their numbers to sum to a target. Too small: move the left person rightward to a bigger number. Too big: move the right person leftward. Each move is the unique sensible one.
 
 Brute force
 
-Try every pair: for each i, scan every j after it and check the sum. About n² / 2 additions. It ignores the one piece of information the problem gave you, that the array is sorted, and that is the tell that the intended solution uses ordering.
+For each i, scan every j after it: about n² / 2 additions. It ignores that the array is sorted, the tell that the intended solution uses ordering.
 
 The better approach
 
-Two pointers, left and right. Compute the sum of the two values. If it equals the target, return the positions. If it is too small, no pair involving the smallest value and any value at or below the right pointer can reach the target except by advancing the left pointer, so advance `i`. If it is too big, advance `j` leftward. Each step eliminates one candidate entirely, so the pointers cross after at most n steps.
+Two pointers, left and right. If the sum equals the target, return the positions. If too small, advance `i`; no pair with the smallest value can reach the target otherwise. If too big, move `j` leftward. Each step eliminates one candidate, so the pointers cross after at most n steps.
 
 The implementation
 
@@ -152,29 +152,29 @@ The implementation
         return out;
     }
 
-The comparison widens the sum to `i64` before checking it. If both values are large `i32`s, their sum can overflow a 32-bit integer and wrap to a small number. Then the "too small" branch fires when the true sum was "too big." Widening the arithmetic is the smallest, cheapest guard against a whole class of silent bug.
+The sum is widened to `i64`: two large `i32`s can overflow and wrap, making the "too small" branch fire when the true sum was "too big." The cheapest guard against a silent bug.
 
 The cost
 
-Time is linear: each iteration moves one pointer one step inward, so at most n iterations. Space is constant. The brute force was quadratic. The improvement comes entirely from using the sortedness to decide which pointer must move, so each comparison rules out an entire row or column of the hypothetical table of pairs.
+Time is linear: each iteration moves one pointer inward, at most n iterations. Space is constant. Sortedness decides which pointer must move, so each comparison rules out a whole row or column of the pair table.
 
 Edge cases and a variation
 
-Fewer than two elements cannot contain a pair; the loop returns an empty vector, which the caller can read as "none found." The problem guarantees a pair exists, but a robust version should not assume it. Equal values are fine: `[3, 3]` with target 6 returns positions 0 and 1, since `i < j`. The variation that connects this chapter to the next: the same problem on an *unsorted* array cannot use two pointers, because no ordering justifies a move. Instead you keep a hash map from value to the position where you saw it and, for each number, ask whether its complement is already in the map. That is Chapter26's opening problem. The contrast is the lesson: sorted permits two pointers, unsorted demands hashing.
+Fewer than two elements returns an empty vector. Equal values are fine: `[3, 3]` with target 6 returns 0 and 1, since `i < j`. Variation: on an *unsorted* array, two pointers fail because no ordering justifies a move. Use a hash map from value to position and ask whether each number's complement was already seen, Chapter26's opening problem. Sorted permits two pointers; unsorted demands hashing.
 
 25.4 Remove Duplicates from a Sorted Array
 
 The problem
 
-Given a sorted array, remove the duplicates in place so each value appears once, and return the new length. The elements beyond the new length do not matter.
+Given a sorted array, remove duplicates in place so each value appears once, and return the new length. Elements beyond it do not matter.
 
 Picture this
 
-You are packing a shelf from left to right, and the items arrive already sorted, so copies of any item sit adjacent. Keep a "write hand" pointing at the next empty slot and a "read eye" scanning every item. Whenever the read eye finds an item different from the last one you kept, place it under the write hand and advance the hand. The read eye passes over the duplicates and never places them.
+Items arrive sorted, so copies sit adjacent. A write hand points at the next slot; a read eye scans. When the eye finds an item different from the last kept, place it and advance the hand.
 
 The better approach
 
-Two indices, one reading, one writing, both starting after the first element. The read index visits every element. The write index advances only when the current element differs from the last one written. Because the array is sorted, the last written value is exactly what to compare against: no set, no memory, just one comparison. At the end, the write index is the count of distinct values, and everything from it onward can be discarded.
+Two indices, read and write, both starting after the first element. The write index advances only when the current element differs from the last written. Sortedness means the last written value is the right comparison: no set, no memory. At the end, the write index is the distinct count.
 
 The implementation
 
@@ -196,33 +196,33 @@ The implementation
         return k;
     }
 
-Vegetarians, note the comparison: compare the current read value against `v->at(k - 1)`, the last value we kept, not against the previous read position `v->at(i - 1)`. They are usually the same, but not always. After a write, the two positions diverge, and comparing against the last kept value is the correct invariant. The final `pop` loop trims the vector down to the distinct count. A `Vec` has no `truncate` method, so shrinking to a length is an explicit sequence of pops; the loop does the job in constant time per removed element.
+Compare against `v->at(k - 1)`, the last value kept, not `v->at(i - 1)`. They usually match, but after a write they diverge; the last kept value is the correct invariant. The final `pop` loop trims the vector, since a `Vec` has no `truncate`.
 
 The cost
 
-Time is linear: one pass, one comparison and occasionally one write per element. Space is constant, two indices and no allocation, which is the entire point of an in-place problem. The pop loop is also linear in the number of duplicates removed, so the total stays linear.
+Time is linear: one pass, one comparison and occasionally one write per element. Space is constant, no allocation, the point of an in-place problem. The pop loop is linear in duplicates removed, so the total stays linear.
 
 Edge cases and a variation
 
-An empty array returns zero; a single-element array returns one. All-equal input leaves one element and returns one. The variation: allow each value to appear at most twice, keeping the second occurrence but not the third. The write-pointer pattern is unchanged. Only the count compared against changes, from "differs from the last kept" to "differs from the value two positions back in the kept prefix." Problems like this are all the same skeleton with a different predicate. Recognizing the skeleton is worth more than memorizing the solution.
+Empty returns zero; one element returns one; all-equal leaves one and returns one. Variation: allow each value at most twice, keeping the second but not the third. The write-pointer pattern is unchanged; only the predicate changes, comparing against the value two positions back in the kept prefix. These are all the same skeleton with a different predicate.
 
 25.5 Move Zeroes
 
 The problem
 
-Given an array, move every zero to the end while keeping the relative order of the nonzero elements, in place.
+Move every zero to the end in place, keeping the relative order of nonzero elements.
 
 Picture this
 
-A conveyor belt carries items past a worker whose job is to slide all the empty boxes to the far end without disturbing the order of the full ones. The worker keeps a hand on the next open slot on the left; each time a full box comes by, it goes under that hand and the hand moves on. When the belt ends, every slot to the right of the hand is filled with empty boxes.
+A worker slides empty boxes to the far end without disturbing the full ones. A hand marks the next open slot on the left; each full box goes under it and the hand moves on. The tail is then filled with zeroes.
 
 Brute force
 
-Collect the nonzero elements into a second list in order, then write them back into the original followed by the right number of zeroes. Linear, but it allocates a second array the size of the first.
+Collect the nonzero elements in order into a second list, then write them back followed by zeroes. Linear, but allocates a second array.
 
 The better approach
 
-The write-pointer pattern again, with the predicate "is nonzero." Walk the array with a read index. Whenever the value is nonzero, write it at the write index and advance the write index. When the scan ends, the first `k` positions hold all the nonzero values in their original order, and every position from `k` onward gets a zero. One pass to move the values, one pass to fill the tail.
+The write-pointer pattern with the predicate "is nonzero." Whenever a value is nonzero, write it at the write index and advance. At the end, the first `k` positions hold the nonzero values in order, and the rest get zero.
 
 The implementation
 
@@ -242,33 +242,33 @@ The implementation
         }
     }
 
-This version has a subtle property for free, and a common interview follow-up asks about it explicitly: the relative order of the nonzero elements is preserved, because the read pointer visits them in order and the write pointer accepts them in the same order. If order did not matter, a faster swap-based version touches each element once, but that is not required here.
+Order is preserved because the read pointer visits nonzero elements in order and the write pointer accepts them in that order. If order did not matter, a swap-based version would touch each element once.
 
 The cost
 
-Time is linear: one full scan plus a second scan of the tail, so at most twice the length in the worst case. Still linear. Space is constant. The second pass is the honest price of overwrite-and-fill rather than swap: you visit the tail once to zero it. The swap-based alternative avoids that second pass when order is not required, but it needs a branch the order-preserving version does not.
+Time is linear: one full scan plus a tail scan, at most twice the length. Space is constant. The second pass is the price of overwrite-and-fill rather than swap; the swap-based alternative avoids it when order does not matter.
 
 Edge cases and a variation
 
-An array with no zeroes does one pass and then sets an empty tail, which is correct. An array that is all zeroes keeps `k` at zero and zeroes the whole array, also correct. The variation: move all instances of a given value to the end, or move the even numbers to the front. Same skeleton, different predicate; the only line that changes is the `if`. A harder variant, "sort the array by parity while preserving the relative order within each group," needs a two-pass version, because the write pointer must first count the odds to know where one group ends and the other begins.
+No zeroes: one pass and an empty tail. All zeroes: `k` stays zero and the whole array is zeroed. Variation: move a given value to the end, or evens to the front, same skeleton with a different `if`. Sorting by parity while preserving within-group order needs two passes, since the write pointer must first count the odds.
 
 25.6 Merge Two Sorted Arrays
 
 The problem
 
-Given two sorted arrays, merge them into the first, which has enough empty space at its end to hold both. Do not allocate.
+Merge two sorted arrays into the first, which has room at its end for both. Do not allocate.
 
 Picture this
 
-Two stacks of numbered cards, each already in order, and an empty table to the right. Fill from the left and you overwrite cards you have not read yet. But the empty space is at the *right*, so work backwards. Look at the largest remaining card in each stack and place the larger one in the rightmost empty slot. The biggest card of all must end up at the far right, so placing it there is safe, and everything else shifts into place behind it.
+Two sorted stacks and empty space at the *right*. Work backwards: place the larger of the two largest remaining cards in the rightmost empty slot. The biggest card must end up at the far right, so this is safe.
 
 Brute force
 
-Copy both arrays into a fresh buffer and sort it. That is O((m+n) log(m+n)), it allocates, and it squanders the fact that both inputs are already sorted.
+Copy both into a fresh buffer and sort: O((m+n) log(m+n)), allocates, and squanders the sortedness.
 
 The better approach
 
-Three pointers, all walking backwards. Index `i` sits at the last real element of the first array, `j` at the last element of the second, and `k` at the last slot of the combined region. At each step, take the larger of `a[i]` and `b[j]`, write it at `k`, and step that source pointer back. When the second array is exhausted, the first array's remaining elements are already in place. That is a small optimization: it avoids a redundant copy of the first array's front.
+Three pointers walking backwards: `i` at the last real element of the first array, `j` at the last of the second, `k` at the last combined slot. Write the larger of `a[i]` and `b[j]` at `k` and step that source back. When the second array is exhausted, the first array's leftovers are already in place.
 
 The implementation
 
@@ -291,29 +291,29 @@ The implementation
         }
     }
 
-The loop condition is `j >= 0`, not `i >= 0 && j >= 0`, and that asymmetry is deliberate. Once the second array is exhausted, the leftovers of the first array already sit at the front of `a` in the correct order, so nothing is left to do. Loop until both run out instead, and you copy values onto themselves, which is harmless but pointless. The `i >= 0` guard inside the condition protects the read of `a[i]` when the first array runs out before the second, a case that happens when the first array is empty.
+The loop condition is `j >= 0`, not both, deliberately: once the second array is exhausted, the first array's leftovers already sit in order at the front. The `i >= 0` guard protects the `a[i]` read when the first array runs out first.
 
 The cost
 
-Time is linear in the combined length: each iteration places exactly one element, and there are `m + n` elements. Space is constant. The backwards direction lets us avoid allocation, and it works because the destination is larger than the source and consumes the source from the same end it fills from.
+Time is linear: each iteration places one element, and there are `m + n`. Space is constant. Working backwards avoids allocation because the destination is larger and consumes the source from the same end it fills from.
 
 Edge cases and a variation
 
-Merging with an empty second array leaves the first untouched; merging with an empty first array copies the second into place. The variation that shows the pattern's breadth: merge k sorted arrays. Pairwise merging is O(k · N · log k) in the worst case, but a min-heap that always yields the smallest front element does it in O(N log k). That is what Chapter16's `PriorityQueue` is for. It is the bridge from this chapter to the data-structure chapters.
+An empty second array leaves the first untouched; an empty first copies the second into place. Variation: merge k sorted arrays. Pairwise merging is O(k · N · log k), but a min-heap yielding the smallest front does it in O(N log k), which is Chapter16's `PriorityQueue`.
 
 25.7 Sort Colors (the Dutch National Flag)
 
 The problem
 
-Given an array containing only 0s, 1s, and 2s, sort it in place in a single pass.
+Given an array of only 0s, 1s, and 2s, sort it in place in one pass.
 
 Picture this
 
-The name comes from the three bands of the Dutch flag. Imagine a row of buckets and three hands. A "left" hand owns everything that should be 0, a "right" hand owns everything that should be 2, and a "middle" eye has not yet decided about the element it is looking at. When the eye sees a 0, it throws it to the left region and grows it. When it sees a 2, it throws it to the right region. When it sees a 1, that element is already home, and the eye moves on. The regions grow toward each other until they meet, and the whole row is sorted.
+Three regions, like the flag's bands. A left hand owns the 0s, a right hand owns the 2s, and a middle eye scans. A 0 goes left and grows that region; a 2 goes right; a 1 is already home. The regions grow toward each other until they meet.
 
 Brute force
 
-Count how many 0s, 1s, and 2s there are in one pass, then overwrite the array with that many of each. Two passes, linear, and honestly fine. It is not one pass as required, and it does not generalize to a large number of distinct values.
+Count the 0s, 1s, and 2s in one pass, then overwrite. Two passes, linear, fine, but not the required single pass and it does not generalize to many distinct values.
 
 The better approach
 
@@ -324,7 +324,7 @@ Three pointers: `low` is the boundary after the region of 0s, `high` is the boun
     - if it is 2, swap it with the element at `high`, retreat `high`, and do
       not advance `mid`.
 
-The last line is the one to understand. After swapping with `high`, the element now at `mid` is one we have never examined; it came from the unprocessed right end. So we must look at it again rather than step over it.
+After swapping with `high`, the element now at `mid` came from the unprocessed right end and has never been examined, so we must look at it again rather than step over it.
 
 The implementation
 
@@ -356,33 +356,33 @@ The implementation
         }
     }
 
-The `mid <= high` condition, with `high` inclusive, is the workhorse. The region between `mid` and `high` is exactly the part not yet processed; when `mid` passes `high`, nothing is left. Every iteration either shrinks that region or advances `mid` into territory whose status is already known. So the loop terminates in a single pass.
+`mid <= high`, with `high` inclusive, marks the unprocessed region. When `mid` passes `high`, nothing is left; every iteration shrinks that region or advances `mid` into known territory, so one pass suffices.
 
 The cost
 
-Time is linear, and not just asymptotically. This is a true single pass: each element is examined a constant number of times and swapped at most once. Space is constant, three indices. Counting sort takes two passes, so the improvement is a factor of two in array traversals. Small, but the single-pass property is what the problem asks for and what makes the pattern reusable.
+Time is linear, and a true single pass: each element is examined a constant number of times and swapped at most once. Space is constant, three indices. Counting sort takes two passes; the single-pass property is what makes the pattern reusable.
 
 Edge cases and a variation
 
-An array with only one distinct value leaves all pointers in place and does nothing. All 0s advance `low` and `mid` together to the end. The subtle bug to avoid is advancing `mid` after a 2-swap; test it on `[2, 0, 1]` and you will see the unprocessed element arrive at `mid`. The variation: sort four or five distinct small values. The Dutch flag does not extend trivially to more colors; the number of boundary pointers grows awkwardly. For more than a handful of values, the honest answer is the counting approach of the brute force. Knowing where a technique stops scaling is as valuable as knowing the technique.
+One distinct value leaves the pointers in place. All 0s advance `low` and `mid` together. Avoid advancing `mid` after a 2-swap; test `[2, 0, 1]`. Variation: four or five values does not extend trivially, since boundary pointers grow awkwardly; beyond a handful, use counting sort.
 
 25.8 Container With Most Water
 
 The problem
 
-Given wall heights at positions along a line, choose two walls that together with the line form a container holding the most water. The container's area is the distance between the walls times the height of the shorter wall.
+Given wall heights along a line, choose two walls forming the container that holds the most water: distance times the shorter wall's height.
 
 Picture this
 
-You are looking at a skyline. Pick two buildings; the water they hold is limited by the shorter of the two, and the width is how far apart they are. Moving a building inward always reduces the width, so the only way to gain is to find a taller shorter-wall. The shorter wall is the one worth abandoning.
+On a skyline, water is limited by the shorter building and width by the distance. Moving inward always reduces width, so the shorter wall is the one worth abandoning.
 
 Brute force
 
-Check every pair of walls, compute the area, keep the maximum. n² / 2 area computations, each constant work. Correct, and the baseline.
+Check every pair, compute the area, keep the maximum: n² / 2 constant-work computations.
 
 The better approach
 
-Two pointers at the ends, the widest possible container. Compute its area. Now move the pointer at the *shorter* wall inward. Why that one? The current width is the maximum achievable for this pair, and the height is capped by the shorter wall. Keep the shorter wall and move the taller one inward, and the width only shrinks while the cap stays the same, so it cannot beat what we have. Moving the shorter wall inward is the only move that can find a taller cap. Repeat until the pointers meet.
+Start with pointers at the ends, the widest container. Compute its area, then move the pointer at the *shorter* wall inward. Moving the taller one only shrinks the width with the same cap, so it cannot improve. Repeat until the pointers meet.
 
 The implementation
 
@@ -409,33 +409,33 @@ The implementation
         return best;
     }
 
-All the arithmetic is `i64`, so even the largest possible area, a width near a billion times a height near a billion, cannot overflow. The move rule is the heart of the proof, worth restating: when we discard the shorter wall, we discard every container that could have used it, and none of them could have beaten the best already recorded. That is why the algorithm is allowed to be greedy.
+All arithmetic is `i64`, so the largest possible area cannot overflow. The move rule is the proof: discarding the shorter wall discards every container that could have used it, and none could beat the best already recorded. That is why greed is safe.
 
 The cost
 
-Time is linear: each iteration moves one pointer inward, so exactly `n - 1` iterations. Space is constant. The quadratic brute force collapses to linear because the move rule lets us throw away a whole family of candidate pairs without checking them.
+Time is linear: each iteration moves one pointer inward, so `n - 1` iterations. Space is constant. The move rule discards a whole family of candidate pairs without checking them.
 
 Edge cases and a variation
 
-Fewer than two walls yields an area of zero, which the loop returns naturally. Equal-height walls let us move either pointer; moving one is correct, because the other can be the shorter wall for the next candidate. The variation: return which two walls achieved the maximum, not just the area. Keep the indices whenever the best updates. A second variation: the "trapping rain water" problem just below looks similar, two walls and water, but asks for the total water trapped across all the gaps, not the best single container, and its two-pointer rule is subtly different.
+Fewer than two walls yields zero, which the loop returns. Equal heights allow moving either pointer. Variation: return the indices of the best walls, updating them whenever the best improves. The next problem, "trapping rain water," looks similar but asks for total water across all gaps, with a subtly different rule.
 
 25.9 Trapping Rain Water
 
 The problem
 
-Given an elevation map as an array of wall heights, compute how much rainwater is trapped in the valleys after a rainstorm.
+Given wall heights, compute how much rainwater is trapped after a storm.
 
 Picture this
 
-After a storm, water collects in every dip of a skyline, each basin filled to the level of the lower of its two bounding walls. Picture a cross-section of a mountain range. The water sits in the valleys up to the height of the shorter wall that encloses each valley. The amount above any one hill is the water level at that hill minus the hill's own height, and the water level at a point is the smaller of the tallest wall to its left and the tallest wall to its right.
+Water collects in every dip up to the lower of its two bounding walls. At each point, the water level is the smaller of the tallest wall to its left and the tallest to its right; the water above is that level minus the point's height.
 
 Brute force
 
-For each position, scan left to find the maximum height and scan right to find the maximum. The water above that position is the smaller of the two maxima minus the position's height, when positive. Three nested-ish scans give O(n²). It is the most direct translation of the definition and the easiest place to start.
+For each position, scan left and right for the maxima; the water is the smaller maximum minus the height, when positive. O(n²), the most direct translation of the definition.
 
 The better approach
 
-Two pointers with two running maxima, one from the left and one from the right. Here is the key insight: if the tallest wall seen so far on the left is shorter than the tallest seen so far on the right, then the water level at the left pointer is governed entirely by the left maximum. The right side is known to have a wall at least as tall, so it will never be the binding constraint. That means we can add `leftMax - height[i]` at the left pointer with confidence, and move it inward. Mirror the logic on the right. One pass, no per-position scanning.
+Two pointers with running left and right maxima. If the left maximum is shorter than the right, the water level at the left pointer is governed entirely by the left maximum, since the right side has a wall at least as tall. Add `leftMax - height[i]` and move inward; mirror on the right. One pass.
 
 The implementation
 
@@ -471,33 +471,33 @@ The implementation
         return water;
     }
 
-The condition `hi < hj` chooses which side to process, and the choice is exactly the insight above: the side with the smaller wall is the side whose water level is settled, because the other side already offers a taller wall. The `if (hi >= leftMax)` branch distinguishes a new high wall, which traps nothing above itself, from a valley position, which traps the difference.
+`hi < hj` processes the side with the smaller wall, whose water level is settled because the other side offers a taller wall. The `hi >= leftMax` branch distinguishes a new high wall (traps nothing) from a valley (traps the difference).
 
 The cost
 
-Time is linear: the pointers move toward each other and each position is processed once. Space is constant: two maxima and an accumulator. The O(n²) brute force becomes O(n) by precomputing the running maxima on the fly instead of rescanning, the same "carry it forward" idea as the running sum of Chapter24.
+Time is linear: pointers move inward and each position is processed once. Space is constant, two maxima and an accumulator. Computing the maxima on the fly replaces rescanning, the same "carry it forward" idea as Chapter24's running sum.
 
 Edge cases and a variation
 
-An empty array or a single position traps nothing. A monotonically increasing or decreasing skyline traps nothing, because there is no valley; the code handles this because every position either sets a new maximum or contributes a zero difference. The variation: the two-pointer rule here and the one in 24.8 look alike but answer different questions, and mixing them up is a common mistake. In 24.8 we move the shorter wall because we are optimizing one container. Here we move the side with the smaller maximum because we are accumulating water everywhere. Write both and compare the move rules side by side; the difference in the problem statement is exactly the difference in the rule.
+Empty or single-position input traps nothing. A monotonic skyline traps nothing, since every position either sets a new maximum or contributes zero. The move rule here differs from 24.8: there we move the shorter wall to optimize one container; here we move the side with the smaller maximum to accumulate everywhere. Compare them side by side.
 
 25.10 Longest Common Prefix
 
 The problem
 
-Given a list of strings, find the longest prefix shared by every one of them. For `["flower", "flow", "flight"]` the answer is `"fl"`; for `["dog", "racecar", "car"]` it is the empty string.
+Find the longest prefix shared by a list of strings. For `["flower", "flow", "flight"]` it is `"fl"`; for `["dog", "racecar", "car"]`, the empty string.
 
 Picture this
 
-Lay the words out in a column, top to bottom, and read down the first character of each, then the second, then the third. As long as every word agrees on a column, that column belongs to the answer. The first column where any two words disagree ends the prefix. You never need to compare whole words; you compare one column at a time.
+Lay the words in a column and read down each character position. As long as every word agrees on a column, it belongs to the prefix; the first disagreement ends it. Compare one column at a time, not whole words.
 
 Brute force
 
-Take every pair of words, find their shared prefix, and repeatedly shorten a running answer to the smallest one seen. It is `O(n · L)` in the worst case, but it rebuilds strings along the way and compares words that do not need comparing. It also duplicates work: two words that agree with the first word already agree with each other.
+Take every pair, find their shared prefix, and shorten a running answer. `O(n · L)` in the worst case, but it rebuilds strings and compares words unnecessarily; two words agreeing with the first already agree with each other.
 
 The better approach
 
-Use the first word as the candidate prefix and shrink it. For each later word, compare it character by character against the candidate and cut the candidate down to the matching length. Once the candidate is empty, nothing more can be added and the scan can stop. This is the *vertical scan*, and it makes at most one pass over each word up to the current prefix length.
+Use the first word as the candidate prefix and shrink it. For each later word, compare character by character and cut the candidate to the matching length. Stop once it is empty. This vertical scan makes at most one pass over each word up to the current prefix.
 
 The implementation
 
@@ -520,25 +520,25 @@ The implementation
         return first.slice(0, limit);
     }
 
-`limit` is the only state, and it only ever shrinks, which is why the total work is bounded by the length of the shortest word times the number of words at the very worst, and usually far less. The returned `str` is a view into the first word's bytes, so no new memory is allocated at all; the caller's list must outlive the result, which the borrowed `str` type makes explicit.
+`limit` is the only state and only shrinks, so the worst-case work is the shortest word's length times the word count, usually far less. The returned `str` is a view into the first word's bytes, so nothing is allocated; the caller's list must outlive it, which the borrowed type makes explicit.
 
 The cost
 
-Time is `O(n · L)` in the worst case, where `L` is the answer length: each word is scanned only up to the current prefix, and the prefix shrinks. Space is constant, one index and one length, because the answer is a view rather than a copy. A binary-search refinement halves the number of comparisons, but only pays off with truly enormous strings.
+Time is `O(n · L)` in the worst case, where `L` is the answer length: each word is scanned only to the current prefix, which shrinks. Space is constant, one index and one length, since the answer is a view. Binary search halves comparisons but pays off only for enormous strings.
 
 Edge cases and a variation
 
-An empty list returns the empty string, and a single-word list returns that word in full. If any word is empty, the empty string is the shared prefix and the loop stops immediately. This compares bytes, so Unicode text with accented letters or emoji is compared as its UTF-8 encoding, which is correct for prefix purposes but treats a partial multibyte sequence as a character; Chapter17's codepoint decoding is the fix. The variation: longest common *suffix*, by scanning each word from the back with a `limit` that counts from the end. The skeleton is identical; only the direction of the index and the meaning of `limit` change.
+An empty list returns the empty string; a single-word list returns that word. If any word is empty, the shared prefix is empty and the loop stops. This compares bytes, correct for prefix purposes but splitting multibyte characters; Chapter17's codepoint decoding is the fix. Variation: longest common *suffix*, scanning from the back with `limit` counting from the end. Same skeleton, reversed direction.
 
 25.11 Rotate an Array by k
 
 The problem
 
-Rotate an array to the right by `k` places, in place. So `[1, 2, 3, 4, 5, 6, 7]` rotated right by 3 becomes `[5, 6, 7, 1, 2, 3, 4]`.
+Rotate an array right by `k` places, in place: `[1, 2, 3, 4, 5, 6, 7]` becomes `[5, 6, 7, 1, 2, 3, 4]`.
 
 Picture this
 
-Cut a deck of cards and move the bottom `k` cards to the top. The obvious way is to repeatedly take the last card and move it to the front, `k` times, but that shuffles the whole deck `k` times over. The neat way is to flip the whole deck upside down, then flip each of the two piles back the right way up. Reversal plus reversal gives rotation, and it touches every card exactly twice.
+Move the bottom `k` cards to the top. Instead of rotating one card at a time, flip the whole deck, then flip each of the two piles back. Reversal plus reversal gives rotation and touches every card twice.
 
 Brute force
 

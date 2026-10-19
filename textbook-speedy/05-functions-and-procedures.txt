@@ -2,17 +2,17 @@ Chapter5: Functions & Procedures
 
 5.1 Functions as the Building Blocks
 
-Think of a program as a recipe book. The whole book is the program, but nobody flips through one enormous paragraph to cook a meal: the book is divided into named recipes, each recipe is divided into named steps, and the steps call on smaller named actions, preheat the oven, dice the onion, fold the batter. A function is that same division applied to code. It is a named, callable unit of behavior. It takes inputs, does work, and returns a result.
+A program is like a recipe book divided into named recipes, which call smaller named steps. A function is that division applied to code: a named, callable unit that takes inputs, does work, and returns a result.
 
-Everything a Coral program does happens inside functions. The entry point of a program is a function. The standard library is a collection of functions and methods. Your program is the composition of its own functions with the library's. When you read a Coral program, most of what you are reading is functions: their names, their inputs, their return types, and how they call each other. This chapter is about that composition, how functions are declared, how arguments get from the caller into the function, what a function can hand back, and how small functions combine into larger programs.
+Everything in a Coral program happens inside functions: the entry point, the standard library, and your own composition of functions. This chapter covers declaration, argument passing, return values, and composition.
 
-The philosophy of Coral shows up in its functions in concrete ways. A function's signature, the line that names it, is written out explicitly, its types are visible on the page, and what it does to the outside world is the caller's business. No hidden machinery sits in a call. Between the call and the function's body there is nothing but a jump: the program hands control to the function, the function runs, control comes back. A Coral function is what a C function is, made safer by the type system and made more expressive by generics, methods, and traits. Everything in this chapter builds from that starting point.
+A function's signature is explicit, its types visible, and no hidden machinery sits in a call. Between call and body there is nothing but a jump. A Coral function is a C function made safer by types and more expressive by generics, methods, and traits.
 
-Two things deserve emphasis up front, because both surprise newcomers. First, functions come in many shapes in Coral: plain functions, generic functions, variadic functions that accept any number of arguments, methods attached to structs, static methods that build values, and extern declarations that call into C. They share the same syntax and the same rules; the differences are small and additive, and this chapter introduces them one at a time. Second, every one of these shapes follows the same type-first syntax you have seen for variables: the type comes first. You already know how to write the pieces. A function declaration is just a bigger example of the same habit.
+Functions come in many shapes: plain, generic, variadic, methods, static methods, and extern declarations. They share the same syntax and rules, and all follow type-first: the type comes first.
 
 5.2 Declaration
 
-A function declaration states the function's name, its parameters and their types, and its return type. The syntax is the type-first syntax of the whole language: the return type comes first, then the name, then the parameter list in parentheses, then the body in braces.
+A function declaration states the name, parameters and types, and return type. The return type comes first, then the name, parameter list, and body.
 
     u64 countLines(str text)
     {
@@ -22,28 +22,28 @@ A function declaration states the function's name, its parameters and their type
         return lines;
     }
 
-If function declarations are new to you, read this one top to bottom as a sentence: "a u64 called countLines that takes a str." Everything before the name is the kind of answer it gives; everything inside the parentheses is what you must hand it.
+Read this as "a u64 called countLines that takes a str." Everything before the name is the answer's type; everything in parentheses is what you hand it.
 
-Read that first line out loud and you get the whole story: "an unsigned 64-bit count, called countLines, takes a string view." The return type leads, that is the type-first principle applied to functions. The reader does not have to search the body to learn what the function produces; the return type is the first thing on the line, and it is the shape of every answer this function can give. If you later read a call to countLines and wonder what it could possibly return, the answer is in the declaration: something you can store in a u64.
+The return type leads, so the reader does not search the body to learn what the function produces. A call to countLines returns something storable in a u64.
 
-Walk through the body line by line, because it exercises a lot of the language at once. `u64 lines = 1;`, we start the count at one rather than zero. Why? Think about what "number of lines" means: a file "hello\nworld\n" has two lines. If you count only the newline characters you get two, which happens to be right for this file, but the final line with no trailing newline, just "hello\nworld", has one newline and is still two lines. Starting at one and counting the newline separators gives the right answer in both cases. It is easier to understand "one more than the number of newline characters" than it is to remember a special case for trailing newlines.
+`u64 lines = 1;` starts at one because "number of lines" is one more than the number of newline separators; the last line need not end with a newline. This is easier than special-casing trailing newlines.
 
-The loop is the plain for-loop from the control-flow chapter: `u64 i = 0;` initializes a counter, `i < text.len` is the run condition, `i++` steps it. Inside, `text.ptr[i]` reads the i-th character of the text. Here you can see how a str works: it is a pair of a pointer and a length. `.ptr` is the pointer to the characters, `.len` is how many there are. The loop walks the pointer field and compares each byte against the ASCII value of a newline. (You might wonder why str exists instead of just passing char* and a length separately, that is a question for the data-structures chapter; for now, treat it as "a string with its length attached.")
+The loop is the plain for from the control-flow chapter: `u64 i = 0;` initializes the counter, `i < text.len` is the run condition, and `i++` steps it. `text.ptr[i]` reads the i-th character. A str is a pointer and a length: `.ptr` is the characters and `.len` is how many. The loop compares each byte to a newline.
 
-The declaration says everything about the passing in one line: this function takes a string view and returns a count. The reader does not need to search for the meaning; everything is spelled out before the body.
+The declaration says everything: a string view in, a count out, before the body.
 
-A function that returns nothing is declared with void as its return type. Such a function does work and does not produce a value: it prints, it modifies what it was given, it releases a resource. void is the explicit statement that there is no value, not "a value of an unknown kind," just none. In Coral, void functions are not mysterious; they declare plainly that the caller should not expect an answer, and the compiler will reject any attempt to use their result.
+A function returning nothing uses void. It prints, modifies, or releases something, and the compiler rejects any attempt to use its result. void means no value, not an unknown kind.
 
     void printGreeting(str name)
     {
         println("Hello, {}!", name);
     }
 
-Notice how printing fits together with the formatted print family you met in chapter 1: println takes a format string and then one argument per {} placeholder, so here the name fills the single placeholder and a newline is appended. The parameter list declares each parameter with its type. Parameters are the function's inputs, and each one is a local variable in the function's scope, initialized with the argument passed at the call site. That last sentence matters, and 5.6 picks it apart: the parameter is not a reference back to the caller's variable. It is a fresh variable that starts out holding a copy.
+println takes a format string and one argument per {} placeholder, so name fills the placeholder and a newline is appended. Parameters are the function's inputs and are local variables initialized from the arguments. A parameter is a fresh copy, not a reference to the caller's variable (5.6).
 
 5.3 Generic Function Syntax
 
-Functions that must work for many types use generic syntax. A generic function introduces type parameters with angle brackets, and the type parameters are available throughout the parameter list, the return type, and the body.
+Generic functions work for many types. They introduce type parameters in angle brackets, available in the parameter list, return type, and body.
 
     pub T max<T>(T a, T b)
     {
@@ -51,37 +51,37 @@ Functions that must work for many types use generic syntax. A generic function i
         return b;
     }
 
-Compare this to a non-generic version and the value shows immediately. Without generics you would have to write maxU64, maxI64, maxF64, maxF32, one copy per type, and then, when someone defines a brand-new type with a comparison, you cannot write a max for it at all without editing the library. The generic version is one function that works for any type that supports `>`.
+Without generics you would write maxU64, maxI64, maxF64, and so on, one copy per type, and a new type would need library edits. The generic version works for any type supporting `>`.
 
-The generic function uses the same type-first form as an ordinary function, with the type parameters in angle brackets after the name. The return type leads, and it may be written in terms of the type parameters: here it is T, the same T that appears in the parameters. The whole promise is "$max of T and T returns T, whatever T is." The type parameters are placeholders, nothing more. When you call max with two u64s, the compiler substitutes u64 for T everywhere and produces a function exactly as if you had written maxU64 by hand. When you call it with two f64s, you get a separate copy specialized for f64. This substitution is called specialization, and it is discussed in detail in 5.29, because it is the key to how generics stay fast.
+The generic form is type-first, with type parameters in angle brackets after the name. The return type may use them: here it is T. The promise is "max of T and T returns T." Type parameters are placeholders: calling with u64 substitutes u64 everywhere and produces a specialized function. This is specialization (5.29), the key to fast generics.
 
-A note for C programmers: this is not C's `_Generic` macro dispatch, which selects among fixed branches you must enumerate. The compiler does not need an existing case for your type, the body is typechecked against your actual type, and if the comparison works, you get a function. This is also not C++ templates seen from a distance: Coral's generics are a language feature with real syntax and real checking, not preprocessor text manipulation.
+For C programmers: this is not `_Generic` dispatch among enumerated branches, and not C++ template text manipulation. It is a language feature with real syntax and checking against your actual type.
 
-Generics are central to the standard library, and once you start noticing them you will see them everywhere. The higher-order operations on collections (filter, map, reduce, all generic over their element type), the Option and Result machinery (generic over the value they carry), the smart pointer types (generic over the pointee), and every container (Vec<T>, Deque<T>, Map<K,V>) are all generic. Each works for whatever element type it is given. Generics let the library be written once and used for every type, without either the code duplication of a language without them or the runtime type checking of a language that boxes everything.
+Generics are central to the library: filter, map, and reduce; Option and Result; smart pointers; and every container (Vec<T>, Deque<T>, Map<K,V>). They avoid both code duplication and runtime boxing.
 
 5.4 Invocation
 
-Calling a function is writing its name followed by a parenthesized argument list. The arguments are evaluated, matched to the parameters in order, and the function runs.
+A call writes the function's name followed by a parenthesized argument list. Arguments are evaluated, matched to parameters in order, and the function runs.
 
     u64 n = countLines(doc);
 
-In plain words, a call is how you use a function: you write its name, supply the values it asked for in the parentheses, and the value it returns flows back to you. If a function returns a value, you almost always store it or use it immediately, which is why the call sits on the right-hand side of an assignment.
+A call is how you use a function: name it, supply the values, and the return value flows back. Return values are usually stored or used immediately.
 
-The call must match the declaration: the right number of arguments, each of the declared parameter type. The compiler checks the match, and a mismatch is an error. If you pass a str where the function expects a u64, or pass five arguments to a two-parameter function, the program will not build. This is the type system operating at the boundary of the call, it enforces the signature you read in the declaration. You can look at a call and know it is correct, because the check happened before the program ever ran.
+The call must match the declaration: the right number of arguments and each of the declared type. A mismatch is a compile error, checked before the program runs.
 
-A function call is an expression, and its value is the function's return value. That means a call can be used anywhere an expression can be used: assigned to a variable, passed as an argument, composed into a larger expression, or returned from another function. This is what makes small functions composable. If you have a function that returns a vector, and another that takes a vector, then `process(build())` threads a value from the first into the second without a temporary variable in between. The standard library composes calls freely, building larger operations from smaller ones, and the readability comes from the same property that made the declarations readable: every call says what it takes and returns right at the call site.
+A call is an expression, so it can be assigned, passed, composed, or returned. This makes small functions composable: `process(build())` threads a value without a temporary.
 
-The composition is a pipeline on one line when each step is short:
+A pipeline on one line when each step is short:
 
     u64 averageBytes = mean(fetchAllocations());   // build, then summarize, in one line
 
-The call reads inside out: fetchAllocations produces a vector, mean consumes it, and the u64 result lands in the variable. Neither intermediate needs a name, because what each call takes and returns is stated in its signature, visible at the call site. When a step is long enough that the one line stops reading clearly, the library writes the temporary instead; the readability is the point, and the named intermediate is its price when the composition gets long.
+The call reads inside out: fetchAllocations produces a vector, mean consumes it, and a u64 lands in the variable. No intermediate needs a name because the signatures are visible. When a line stops reading clearly, name the temporary.
 
-The cost of a call is a matter of explicit fact, not hidden abstraction. A call pushes arguments, jumps, and returns. To a first approximation, that is exactly three things. The compiler knows the cost and optimizes around it; small, hot functions may be inlined, and a call may cost nothing at all. But the language never hides the call from you. What you read is what runs. Want a guarantee that a call costs nothing? Ask for it explicitly with inline, the subject of the next section.
+A call pushes arguments, jumps, and returns, roughly three things. The compiler knows the cost and may inline small hot functions, but the language never hides the call. For a guarantee that it costs nothing, use inline.
 
 5.5 Inline Functions
 
-An inline function is a function the compiler expands at each call site: instead of emitting a call-and-return, it copies the function's body right where the call is and substitutes the arguments. The #[[inline]] attribute marks a function for this treatment.
+An inline function is expanded at each call site: the body is copied where the call is, with arguments substituted. The #[[inline]] attribute marks it.
 
     #[[inline]] void criticalEnter()
     {
@@ -95,15 +95,15 @@ An inline function is a function the compiler expands at each call site: instead
         }
     }
 
-The bare-metal memory module's critical sections are the canonical example. criticalEnter disables interrupts and criticalExit re-enables them, and the whole body is a few machine instructions. A call to such a function would push arguments, jump, execute, and return, four actions whose entire purpose is the few instructions executed in the middle. The inline expansion removes the call overhead entirely: the caller's code contains the instructions, and nothing is pushed or jumped.
+The bare-metal critical-section functions are the canonical example. criticalEnter disables interrupts and criticalExit re-enables them, and the body is a few machine instructions. A real call would add push, jump, and return around them.
 
-The #[[inline]] attribute states the intent in the declaration, and it is used where the expansion actually matters, not as decoration. The critical section functions must be inline for a subtle but important reason: they bracket an operation at the instruction level. Between the disable and the enable there should be only the instructions the author wrote. If criticalEnter were a real call, then criticalExit would start with a call instruction, and the tiny window between whoever disables and the call that exits would include the call machinery, adding instructions to the critical section. The inline expansion preserves the exact code sequence the author wrote, and in a critical section, exactness is the point.
+The attribute states intent where expansion matters. The critical-section functions must be inline because they bracket an operation at the instruction level: between disable and enable there should be only the instructions the author wrote. A call would add call machinery inside the critical section.
 
-Inlining is a trade, and without the attribute the trade is the compiler's to make. The compiler may inline any small, hot function it thinks is worth it, and its cost model decides. The #[[inline]] attribute is the explicit statement that a particular function must be inlined, and it is reserved for the functions where the expansion is essential to what the function means, like the interrupt-bracketing example above. You will rarely need it in application code; it belongs to the places where a call's overhead would change behavior, not just its speed.
+Inlining is a trade. Without the attribute, the compiler decides from its cost model. The attribute is the explicit statement that a function must be inlined, reserved for cases where expansion is essential, like interrupt bracketing. Application code rarely needs it.
 
 5.6 Parameter Passing
 
-Coral passes parameters by value. Each parameter is a copy of the argument: the function receives its own variable, initialized with the argument's value, and modifying the parameter does not modify the caller's variable.
+Coral passes parameters by value. Each parameter is a copy of the argument: the function gets its own variable, and modifying it does not modify the caller's.
 
     void increment(u64 x)
     {
@@ -114,24 +114,24 @@ Coral passes parameters by value. Each parameter is a copy of the argument: the 
     increment(counter);          // counter is still 40
     println("{}", counter);      // prints 40
 
-If your mental model is "the function can see counter," correct it now: the function cannot see counter at all. It has a local variable also named x (the name is only meaningful inside the function), initialized to 40, and it happily increments that local to 41 and then discards it. The caller's counter is untouched. This is exactly the behavior of C, and Coral keeps it because it is simple, predictable, and fast. The caller and the callee are separated at the boundary: a function cannot corrupt the caller's data through its parameters, because it does not have the caller's data, only copies.
+The function cannot see counter. It has a local x initialized to 40, increments it to 41, and discards it; counter is untouched. This is C's behavior, simple, predictable, and fast: a function cannot corrupt caller data through parameters because it only has copies.
 
-In plain words, passing by value is like photocopying a page and handing over the copy. The function can scribble all over its copy and your original is untouched. It is safe and predictable, and it is the default for a reason.
+Passing by value is like photocopying a page: the function can scribble on its copy and your original is untouched.
 
-The copy cost is real for large values, and the language is honest about it. If a parameter is a 100-byte struct, the caller copied 100 bytes to make the call. There is no hidden "this is big, so I will secretly pass a pointer" optimization that leaves you guessing when mutation shows up and when it does not. Coral has one model: value means copy.
+The copy cost is real for large values. A 100-byte struct parameter copies 100 bytes. There is no hidden "pass a pointer because this is big" optimization, so Coral has one model: value means copy.
 
-The cost is visible in the code when a struct grows, which is the point of showing it: the difference between passing a value and passing a pointer is the difference between a few kilobytes of copying and one address. Here the same touch written both ways makes the size of the visit visible:
+The cost is visible when a struct grows. Passing a value and passing a pointer differ by kilobytes of copying versus one address:
 
     struct BigBuf { u8 data[2048]; }
 
     void touch(BigBuf b)         { b.data[0] = 1; }   // copies 2048 bytes on the call
     void touchPtr(BigBuf* b)     { b->data[0] = 1; }  // copies one address
 
-The first version pays a two-kilobyte copy per call and then modifies only its own copy, so the caller's buffer is untouched, a silent no-op from the caller's point of view. The second version pays an address and changes the caller's buffer. The signature says which is which: the star is the memo that the caller's memory is involved. When a struct is large and the function only reads, the pointer version is the honest structure: the copy is skipped, and the star says the function may look but not keep.
+The first version copies two kilobytes and modifies only its copy, a silent no-op to the caller. The second pays an address and changes the caller's buffer. The star is the memo that the caller's memory is involved. For large read-only structs, a pointer avoids the copy.
 
-When a function must modify the caller's data, or when copying is expensive, the caller passes a pointer. A pointer parameter gives the function access to the caller's memory, and through it the function can read and modify the pointed-to value. Pointer parameters are written explicitly with the star type, so the call site and the signature both make the aliasing visible.
+When a function must modify the caller's data or copying is expensive, the caller passes a pointer. The pointer parameter gives access to the caller's memory, and the star makes the aliasing visible in both signature and call.
 
-Where passing a value is like handing over a photocopy, passing a pointer is like giving someone the address of the original. They can now write in your notebook, so the star in the parameter type is the warning label: "I may change your data." The one question that resolves almost every case is: do I want this function to be able to change the caller's value? If yes, pass a pointer; if no, pass the value.
+Passing a value is like handing over a photocopy; passing a pointer is like giving the address of the original. The star warns: "I may change your data." Ask whether the function should change the caller's value: if yes, pass a pointer; if no, pass the value.
 
     void readLine(str* out, Buffer* buf)
     {
@@ -139,9 +139,9 @@ Where passing a value is like handing over a photocopy, passing a pointer is lik
         *out = line;
     }
 
-The pointer parameter is the "by reference" model, but it is expressed through the type system rather than through a hidden language mechanism. There is no pass-by-reference keyword in Coral, because the pointer is the mechanism, and it is a mechanism the language makes explicit. A function that takes pointers signals, in its signature, that it may reach into the caller's memory. The reader sees the stars and knows what the function can touch: out is where an answer goes, buf is where an answer is read from.
+This is by-reference behavior expressed through the type system, not a hidden mechanism. There is no pass-by-reference keyword because the pointer is the mechanism. The stars show what the function can touch: out is where an answer goes, buf is where it is read from.
 
-The two modes are distinguished in the signature, and a worked example shows the difference. A function that must exchange two values takes pointers, because exchanging requires reaching the caller's variables:
+A swap needs pointers because exchanging requires reaching the caller's variables:
 
     void swap(u64* a, u64* b)
     {
@@ -155,30 +155,30 @@ The two modes are distinguished in the signature, and a worked example shows the
     x.push(40);
     swap(&x.data[0], &x.data[1]);   // x is now [40, 20]
 
-The call passes addresses, and the function modifies the vector's elements through the pointers: tmp saves the first value, then a is overwritten with b's value, then b with the saved one. Had swap taken values, it would have exchanged its own copies and the caller's elements would be untouched, a failure that would be invisible at the call site and infuriating to debug. The pointer parameters make the mutation visible in both the signature and the call, and the star in the type is the guarantee that the caller's memory is the function's business.
+The call passes addresses, and the function modifies the vector's elements. Had swap taken values, it would have exchanged copies and left the caller's elements untouched, a failure invisible at the call site.
 
-The language deliberately avoids the exotic parameter-passing modes that other languages have invented. There is no call-by-copy-restore, where the function receives a copy and writes it back on return; that mode hides a second copy and a write-back that surprises. There is no call-by-name, where the argument is re-evaluated on every use; that mode makes a parameter mean different things at different points in the body. Coral passes values or pointers, both visible in the signature, and both exactly what they appear to be. When in doubt, ask yourself: do I want the function to be able to change this? If yes, pass a pointer. If no, pass the value. That one question resolves most of the confusion beginners have with parameter passing.
+Coral avoids exotic parameter modes: no copy-restore with its hidden write-back, no call-by-name with re-evaluation. It passes values or pointers, both visible. Ask whether the function should change the value; that resolves most confusion.
 
 5.7 Parameter Lists and Arguments
 
-The parameter list is a fixed sequence of typed parameters. The arguments at a call site are matched to parameters positionally, in order. There are no default parameters in Coral: a function declares every parameter it needs, and every call must supply every argument. There are no named arguments either: the argument list carries no names, and the meaning of each argument comes from its position.
+The parameter list is a fixed sequence of typed parameters, matched positionally. There are no default parameters and no named arguments: every call supplies every argument, and position carries the meaning.
 
-The absence of default and named parameters is a deliberate simplicity, in the same spirit as the other omissions of the language. A function has one signature, and a call is a sequence of values in that signature's order. You never have to check which arguments are required, which are optional, or what a name means in the current call. The cost is that a function cannot offer a convenient subset of its parameters; the gain is that every call states its arguments in full, and every signature is exactly one signature.
+This simplicity means one signature per function. You never check which arguments are optional or what a name means in the current call. The cost is no convenient subset; the gain is that every call states its arguments in full.
 
-The standard library works comfortably under this rule. Functions that might otherwise take several optional parameters instead take exactly the values they need, and callers pass all of them. Consider Vec<T>::withCap(usize capacity), there is no "withCap and optional initial count" variant; if you want pre-filled storage you build it yourself, and the construction is visible. The verbosity of a few extra arguments is the price of signatures that always say everything. In a language where saying things fully matters more than keystrokes, the fixed parameter list is the right trade.
+The library works comfortably under this rule. Vec<T>::withCap(usize capacity) has no optional variant; if you want pre-filled storage you build it yourself. A few extra arguments buy signatures that always say everything.
 
-There are no spread or splat operators in Coral, and there is no need for them. A spread operator unpacks a collection into an argument list at the call site, usually to build variadic calls dynamically. Coral's variadic calls (next section) are checked per call by the compiler, and the argument list is written out, not assembled at runtime. When a collection of values must be passed, it is passed as a collection, a vector or an array parameter, and the function iterates it. The unpacking that spread operators do is expressed as an explicit loop or an explicit slice, which is the same information without hidden magic.
+There are no spread or splat operators. Variadic calls are checked per call and written out. To pass a collection, pass it as a vector or array and iterate; unpacking is an explicit loop or slice.
 
 5.8 Variadic Functions
 
-A function whose last parameter can accept any number of arguments is variadic. Coral's variadic functions end their parameter list with a value pack, written `... args`, which collects the trailing arguments into a typed, indexable pack inside the body.
+A variadic function accepts any number of trailing arguments. Coral ends the parameter list with a value pack, `... args`, which collects them into a typed, indexable pack.
 
     pub void vaprint(... args)
     {
         for (var arg : args) _fprintOne(&out, arg);
     }
 
-This is the shape of the standard library's vaprint, from std/io/ios.crl. The `... args` in the parameter list declares a pack of values, each keeping its own type. Inside the body the pack is iterated with the ranged for, for (var arg : args), and each argument is handed to _fprintOne, which knows how to format a single value. (The formatted print and println functions are the comptime-format-string family from chapter 1; vaprint is the value-variadic sibling that takes its values with no format string at all.)
+This is the standard library's vaprint from std/io/ios.crl. The pack keeps each argument's type. The body iterates it with the ranged for and hands each to _fprintOne. (println and print use format strings; vaprint takes values with no format string.)
 
 The call sites show the flexibility:
 
@@ -186,21 +186,21 @@ The call sites show the flexibility:
     vaprint("value", x);
     vaprint("done");
 
-Each call has a different number of arguments, and the compiler instantiates the function for each call's argument list. The variadic function is typechecked like any other: each argument must be printable, and the function fails to compile if an argument's type has no print operation. The generality is not unchecked; it is checked per call. If you pass something that cannot be formatted, the compiler tells you, at the call site, not at runtime while the program is running.
+Each call has a different argument count, and the compiler instantiates the function per call. Each argument must be printable, and the function fails to compile otherwise. Generality is checked per call, at the call site, not at runtime.
 
-The variadic pattern is how Coral handles the problem other languages solve with varargs. In C, a printf-style variadic is an untyped blob that the callee reinterprets, and a mismatch between a format specifier and an argument is a runtime error, your program prints garbage or crashes at the wrong moment. Coral's value pack carries each argument with its type all the way into the body, and the compiler checks them. The standard library's printing is built this way, and the pattern extends to any operation that wants a heterogeneous list of values.
+C's printf-style variadic is an untyped blob reinterpreted by the callee, so a format mismatch is a runtime error. Coral's value pack carries each argument's type into the body and the compiler checks them.
 
-A note on what variadic does not have: Coral's variadics are not dynamic. The pack is a typed collection of distinct typed values, and each argument keeps its type into the body, that is precisely what lets the compiler check printability at compile time. There is also no way to "splat" a vector into a variadic call at runtime; the pack is a compile-time concept.
+Coral's variadics are not dynamic. The pack is a typed collection of distinct typed values, and there is no runtime way to splat a vector into a call; the pack is a compile-time concept.
 
 5.9 Return Values
 
-A function returns a value with the return statement. The return statement is an explicit exit: it evaluates its expression, if any, and returns it to the caller. The value's type must match the function's declared return type, and the compiler checks the match at every return.
+return evaluates its expression and returns it to the caller, exiting the function. The value's type must match the declared return type, checked at every return.
 
-In plain words, `return` does two things at once: it hands a value back, and it stops the function right there. Any code after a `return` that actually runs does not execute. A function that declares a return type but forgets to return a value on some path is a compile error, not a surprise at runtime.
+`return` hands back a value and stops the function. A function that declares a return type but misses a path is a compile error, not a runtime surprise.
 
-A function that returns void exits with a bare return, or by reaching the end of its body. A function with a return type must return a value on every path that reaches the end of the body, and the compiler checks that the paths are covered. There are no implicit returns in Coral: the value that comes out is the value that a return statement named. A function cannot silently return the last expression's value, because a function should not silently do anything. If you write a function whose body ends without a return, and it declares a return type, the compiler will tell you that a path exists that produces nothing.
+A void function exits with a bare return or by reaching the end. A typed function must return a value on every path, checked by the compiler. There are no implicit returns: the value that comes out is the one a return named.
 
-A function returns a single value. When the work produces several related values, the function returns a type that carries them. The standard library defines the Pair struct for exactly this, two values, each with a name, combined into one return value.
+A function returns a single value. When work produces several related values, return a type that carries them. The library defines Pair for two named values:
 
     pub struct Pair<T, U>
     {
@@ -208,9 +208,9 @@ A function returns a single value. When the work produces several related values
         U second;
     }
 
-A function that produces a minimum and a maximum, or a value and a flag, or a pointer and a length, returns a Pair. The named fields carry meaning that an unnamed tuple would not: first and second say what the values are. Coral has no tuple types, and the reason is the same reason it has no implicit returns: unnamed aggregates are a way of carrying values without saying what they mean. The Pair struct is the explicit form of a two-value return, and it scales, a function that needs more structure returns a struct that names all of it.
+A function producing a minimum and maximum, or a value and a flag, returns a Pair. Named fields carry meaning an unnamed tuple would not. Coral has no tuple types: unnamed aggregates carry values without saying what they mean. A struct names all of it.
 
-Here is a Pair-carrying function in action, a single pass that finds both the smallest and the largest value in a vector:
+A Pair-carrying function finding both the smallest and largest value in one pass:
 
     pub Pair<u64, u64> minMax(const Vec<u64>* v)
     {
@@ -226,23 +226,23 @@ Here is a Pair-carrying function in action, a single pass that finds both the sm
         return out;
     }
 
-The function walks the vector once, tracking the smallest value seen in out.first and the largest in out.second. The return hands back both at once, and the caller reads them by name, result.first for the minimum, result.second for the maximum. There is no ambiguity about which slot holds which.
+The function walks the vector once, tracking the smallest in out.first and the largest in out.second. The caller reads them by name, with no ambiguity.
 
-The single-return rule composes with the error-handling types of the previous chapter. A function that can fail returns a Result, which is a single value carrying either success or error. A function whose answer may be absent returns an Option, which is a single value carrying presence or absence. The types make the failure and absence part of the return itself, which is what the previous chapter established. The single value is not a limitation; it is the discipline that makes every return complete.
+The single-return rule composes with error types. A fallible function returns a Result; a function whose answer may be absent returns an Option. Both are single values carrying the outcome, making every return complete.
 
-Also worth knowing: in the standard library, a function that can fail produces a Result, while a function that can simply find nothing produces an Option. The choice of which to use is a real design decision, and the rule of thumb the library follows is: Result for "this is an error and here is what kind," Option for "this value may simply not exist."
+The library's rule: Result for "this is an error and here is what kind," Option for "this value may simply not exist."
 
 5.10 The Noreturn Function
 
-A small class of functions never returns to the caller. The noreturn property is declared with the #[[noreturn]] attribute, and the signature states it outright.
+A small class of functions never returns. The #[[noreturn]] attribute declares it in the signature.
 
     #[[noreturn]] extern void exit(i32 code);
 
-The exit function terminates the program and does not come back. The #[[noreturn]] attribute states this in the signature, and the compiler can rely on it: after a call to a noreturn function, the code is unreachable, and the compiler says so. Code that follows a noreturn call without any way to be reached is an error, because the annotation makes it dead code.
+exit terminates the program and does not come back. The compiler can rely on the attribute: after a noreturn call, code is unreachable, so following code that cannot be reached is an error.
 
-The noreturn property is part of the type-first philosophy. A function's signature says not only what it produces, but that it produces nothing and returns nothing. The reader sees #[[noreturn]] and knows the call does not come back, and the compiler uses the same knowledge. The annotation is used where a function must never return: process termination, a startup routine that hands off to the operating system, an internal error path that aborts. Each is a function whose exit is the end, and each says so in its signature.
+This is type-first philosophy: the signature says not only what is produced but that the call never returns. It is used for process termination, startup handoff, and abort paths.
 
-For a beginner, the practical use is in early-error paths. If a program cannot start without its configuration, the loader has to give up, there is no sensible "return" for "the config file does not exist and the program cannot run." A noreturn abort path means the loader does not have to invent a value to return:
+A common use is early-error paths. If a program cannot start without its config, the loader has no sensible value to return:
 
     #[[noreturn]] void die(str why)
     {
@@ -257,11 +257,11 @@ For a beginner, the practical use is in early-error paths. If a program cannot s
         }
     }
 
-Callers then write if (!loadConfig()) die("no config"), and the compiler understands that after die the normal flow of the function is gone: there is no obligation to return a value after that call, and any code you place there is flagged as unreachable. That may sound like bookkeeping, but it silently removes a whole class of bugs where a program continues running after it has already decided to die, continuing past a "this can never succeed" point and crashing later, confusingly, somewhere else.
+Callers write if (!loadConfig()) die("no config"), and the compiler knows normal flow ends there. This removes a class of bugs where a program continues after deciding to die and crashes confusingly later.
 
 5.11 Scope
 
-The scope of a name is the region of the program in which it is visible. Coral uses lexical scope: a name is visible from its declaration to the end of the block that contains it, and inner blocks can see the names of the blocks around them.
+The scope of a name is where it is visible. Coral uses lexical scope: a name is visible from declaration to the end of its block, and inner blocks see outer names.
 
     void process(Buffer* b)
     {
@@ -274,17 +274,17 @@ The scope of a name is the region of the program in which it is visible. Coral u
         // total is visible here; i and value are not
     }
 
-The variable total is declared in the function body and is visible throughout it. The variables i and value are declared in the loop body and are visible only there; the function cannot see them outside the loop. Each name's scope is exactly the block that declares it, and the block's nesting determines what the code can see.
+total is visible throughout the function body. i and value are declared in the loop and visible only there. Each name's scope is exactly its declaring block.
 
-If that sounds like C's scoping, it is, Coral inherits this model directly, and if you come from C you already know the rules. The important consequence for function design is that scope is pure text. You can determine what any name refers to by looking at where it appears in the source, not by wondering who called the function.
+This is C's scoping, inherited directly. The consequence for function design is that scope is pure text: you can determine what a name refers to by where it appears, not by who called the function.
 
-Lexical scope is the scoping model the language was built around. The alternative, dynamic scope, resolves a name against the calling context rather than the declaring context, so the meaning of a name changes with who calls the function. Dynamic scope was tried and abandoned by the languages that tried it, and the reason is the reason that matters to a systems language: it makes the meaning of a name unknowable without knowing the call stack. A function that uses a dynamic name behaves differently depending on who calls it, and a function that is correct with one caller can break with another. Lexical scope makes every name mean what the text says it means, which is the only kind of meaning a language can rely on.
+The alternative, dynamic scope, resolves names against the calling context, so a name's meaning changes with the caller. That makes a name unknowable without the call stack and lets a correct function break with a new caller. Lexical scope makes every name mean what the text says.
 
-The practical consequence is that a function is a sealed unit. Its parameters and locals are its own, its name resolution is fixed by the text, and nothing about the caller can change what the function means. The function can be moved, renamed, or called from anywhere, and its behavior is unchanged. This is the property that makes functions the building blocks: they build because they are sealed.
+A function is a sealed unit: its parameters and locals are its own, and name resolution is fixed by the text. It can be moved, renamed, or called anywhere with unchanged behavior. That is what makes functions building blocks.
 
 5.12 Local Variables
 
-A function's locals are the variables it declares, and their lifetime is tied to the function's execution. Each local comes into being at its declaration, is initialized by its declaration, and dies when the function exits.
+A function's locals are the variables it declares, and their lifetime is tied to its execution. Each comes into being at its declaration, is initialized there, and dies when the function exits.
 
     u64 scan(str text, u8 target)
     {
@@ -297,21 +297,21 @@ A function's locals are the variables it declares, and their lifetime is tied to
         return count;
     }
 
-The local count exists for the function's whole body, initialized to zero. The local c exists for one iteration of the loop, initialized to the current character. The initialization is part of the declaration; a local is never uninitialized in Coral, because a declaration without an initial value is the explicit statement that the variable is a placeholder, to be filled before use. The compiler knows this and checks it.
+count exists for the whole body, initialized to zero. c exists for one iteration, initialized to the current character. Initialization is part of the declaration; a local is never uninitialized, because a declaration without a value is an explicit placeholder to fill before use, and the compiler checks it.
 
-The lifetime of a local is exactly its scope. The storage is reclaimed when the scope exits, and a pointer to a local is only meaningful inside the scope. This is the same rule as C, and it is the source of the one classic mistake: returning a pointer to a local. Coral does not paper over the mistake with machinery; it makes the mistake legible, the returned pointer names a value whose storage is gone, and the failure shows up at the first use after the scope, caught by the discipline of the rule and found by the tools. The standard library's methods that return pointers document that the pointer is valid only while the container lives. The rule is simple: a local's lifetime ends at the end of its scope, and nothing outlives it. The same boundary is where a local that defines the @drop method dies into its release: at the end of the scope, exactly where the stack reclaims the storage, the compiler injects the type's drop, so the automatic teardown lands at the one moment the value's life provably ends, once, on every exit path, with no call site written.
+A local's lifetime is its scope. Storage is reclaimed at scope exit, and a pointer to a local is meaningful only inside it. Returning a pointer to a local names storage that is gone, and the failure appears at first use. The library documents that returned pointers are valid only while the container lives. A local with @drop is released at scope end, once, on every exit path.
 
 5.13 Higher-Order Functions
 
-A function that takes a function as an argument, or returns a function, is a higher-order function. Coral supports higher-order functions through function pointers, and the standard library is full of them.
+A higher-order function takes a function as an argument or returns one. Coral supports them through function pointers, and the library is full of them.
 
-Wait, "higher-order" is a scary phrase, but the idea under it is ordinary. You already know you can pass data into a function: an integer, a string, a struct. A higher-order function is simply a function that has a function for data, you pass behavior into a function the same way you pass numbers. Instead of the function knowing what to do with each element, the caller supplies what to do.
+Passing a function is like passing data: the caller supplies behavior instead of the function knowing what to do with each element.
 
-A function type is written like a function declaration without the name: the return type, the parameter types in parentheses, and the result. The collection operations take predicates and transformations as function-type parameters.
+A function type is a declaration without the name: return type and parameter types. Collection operations take predicates and transformations as function-type parameters.
 
     pub Vec<T> filter<T>(const Vec<T>* v, bool(T) pred)
 
-The parameter pred has type bool(T): a function that takes a T and returns a bool. The filter function calls pred on each element and keeps the elements for which it returns true. Look at how the pieces sit in the type: the shape "bool(T)" is a complete description, given a T, produce a bool. The higher-order structure lets the caller say what filtering means for the current collection:
+pred has type bool(T): a function taking a T and returning a bool. filter calls it on each element and keeps those that return true. The caller says what filtering means for the collection:
 
     Vec<u32> nums = Vec<u32>::new();
     nums.push(1); nums.push(2); nums.push(3); nums.push(4);
@@ -329,14 +329,14 @@ The parameter pred has type bool(T): a function that takes a T and returns a boo
     bool isShort(str w) { return w.len <= 2; }
     Vec<str> short = iter::filter(&words, isShort);    // [a, the, of]
 
-Each caller passes a different predicate, and filter behaves accordingly. The collection operation is written once, and the caller's function supplies the collection-specific behavior. This is the pattern of the whole iter module: map transforms each element, filter keeps the ones that match, reduce folds the collection to a single value, forEach runs an action on each element, any and all test the elements against a predicate, find returns the first match, countIf counts the matches. Each is a higher-order function, and each separates the mechanics of the walk from the meaning of the operation.
+Each caller passes a different predicate, and filter behaves accordingly. The iter module follows the same pattern: map, filter, reduce, forEach, any, all, find, and countIf all separate the walk from the operation's meaning.
 
     pub Vec<U> map<T, U>(const Vec<T>* v, U(T) fn)
     pub T reduce<T>(const Vec<T>* v, T init, T(T, T) fn)
 
-The map function takes a transformation and returns a new collection of transformed elements. The reduce function takes a combining function and folds the collection. These are the functional operations that other languages advertise; Coral has them because they are useful, not because they are fashionable, and they are implemented with the same explicit loops as everything else.
+map takes a transformation and returns a new collection; reduce takes a combining function and folds to one value. These are the functional operations other languages advertise, implemented with the same explicit loops as everything else.
 
-Here is the whole trio working on one small example, a list of temperatures in Celsius that we want to convert to Fahrenheit, then total:
+The whole trio on one example: convert Celsius temperatures to Fahrenheit, then total them.
 
     Vec<f64> celsius = Vec<f64>::new();
     celsius.push(0.0); celsius.push(20.0); celsius.push(37.0); celsius.push(100.0);
@@ -349,22 +349,22 @@ Here is the whole trio working on one small example, a list of temperatures in C
     f64 avg = total / fahr.count();                  // 102.65
     println("average: {}", avg);
 
-Three operations, three calls, and the same shape throughout: pass a data collection and a function, get back a result. Note that none of this required any looping in the calling code. The looping lives inside filter, map, and reduce, once, shared by every caller.
+Three operations, three calls, the same shape: pass a collection and a function, get a result. No looping appears in the calling code; the looping lives inside the operations, once, shared by callers.
 
-The same gesture covers sorting, which the collections chapter leans on constantly. The vector's sortBy method takes a comparison function, a rule for "which of two records comes first", and the call reads like handing the sort its rule:
+Sorting uses the same gesture. sortBy takes a comparison rule for "which comes first":
 
     bool byAge(Record a, Record b) { return a.age < b.age; }
     people.sortBy(byAge);   // sorts people by the byAge rule
 
-A function passed like this is not called at the line where it appears; it is handed over. Somewhere inside sortBy there is a parameter typed bool(Record, Record), and inside a loop the sort calls that parameter whenever it must compare two records: if (less(b, a)). You write the rule, and the collection applies it on every comparison. Nothing about the transaction is magical, byAge is an ordinary function, and passing it is naming it. That is all a "function pointer" means so far: the name of a function, passed as data, and the receiver calls it later.
+A passed function is not called at the line where it appears; it is handed over. sortBy has a parameter typed bool(Record, Record) and calls it on every comparison. byAge is an ordinary function, and passing it is naming it: that is all a function pointer means so far.
 
 5.14 Closures and Their Absence
 
-A closure is a function that carries captured state: a function value that remembers the values of the surrounding scope it was created in. Coral does not have closures, and the absence is a design decision worth understanding, because it shapes how higher-order functions are used.
+A closure is a function that carries captured state from its surrounding scope. Coral has no closures, a design decision that shapes how higher-order functions are used.
 
-A function pointer in Coral carries only the function's address. It has no captured environment, no hidden state. The iter operations take functions, and those functions cannot remember values from the caller's scope; they receive everything they need through their parameters. This is why the collection operations thread context explicitly, passing what the function needs as arguments.
+A Coral function pointer carries only the function's address: no captured environment, no hidden state. Functions cannot remember the caller's scope; they receive everything through parameters.
 
-To make this concrete: in a language with closures you could write a "make counter" function:
+In a language with closures you could write a counter that remembers its own n:
 
     // (not Coral) -- closure-style counter
     makeCounter() {
@@ -372,7 +372,7 @@ To make this concrete: in a language with closures you could write a "make count
         return () => ++n;      // captures n
     }
 
-Each call to this imagined counter function would remember and update its own n. Coral cannot do that, a returned function pointer is just an address, with no place to store "my n." The Coral way is to make the state a parameter and pass it explicitly:
+Coral cannot do that: a returned function pointer is just an address with nowhere to store "my n." The Coral way is to make the state a parameter:
 
     void bumpCounter(u64* n)
     {
@@ -383,15 +383,15 @@ Each call to this imagined counter function would remember and update its own n.
     bumpCounter(&n);   // n is 1
     bumpCounter(&n);   // n is 2
 
-The state that a closure would capture, the counter, becomes an argument, and the function's signature states it honestly: "I need a u64 to bump." The reader sees what each function uses, because the function's dependencies are visible in its signature.
+The state a closure would capture becomes an argument, and the signature states it honestly. The reader sees what the function uses.
 
-The reason for the absence is the reason behind several of Coral's choices: closures require machinery. A closure needs a hidden allocation for its environment, a way to keep that environment alive, and a calling convention that passes the environment with the call, and all of that is hidden state. Coral's philosophy is that a function is what its signature says: a code address, with everything else passed explicitly. The pattern is more verbose than a closure, and it is also more honest: you never have to wonder what a passed function secretly remembers.
+Closures require machinery: a hidden allocation for the environment, a way to keep it alive, and a calling convention that passes it. Coral's philosophy is that a function is what its signature says. The pattern is more verbose and more honest: you never wonder what a passed function remembers.
 
 5.15 Recursion
 
-A function that calls itself is recursive. Recursion is how Coral expresses problems that are naturally nested: tree traversals, parsers, and divide-and-conquer algorithms all recurse.
+A function that calls itself is recursive. Recursion expresses naturally nested problems: tree traversals, parsers, and divide-and-conquer algorithms.
 
-For a beginner, recursion is easiest to trust by working a tiny example first. Here is the classic factorial, written for u64:
+The classic factorial:
 
     u64 fact(u64 n)
     {
@@ -399,9 +399,9 @@ For a beginner, recursion is easiest to trust by working a tiny example first. H
         return n * fact(n - 1);
     }
 
-Follow what happens for fact(4). fact(4) returns 4 * fact(3). Before it can complete, fact(3) runs: 3 * fact(2). Before that completes, fact(2) runs: 2 * fact(1). fact(1) hits the base case (n <= 1) and returns 1, no further call. Now the pending multiplications unwind: fact(2) = 2 * 1 = 2, fact(3) = 3 * 2 = 6, fact(4) = 4 * 6 = 24. Two things make this work: a base case that stops the chain (without it, only a stack overflow awaits), and the fact that each call has its own locals, there are four separate n's in flight during fact(4), one per call, each with a different value. That last point is why recursion works at all: recursive calls do not overwrite each other; they stack.
+For fact(4), each call waits on the next until fact(1) hits the base case and returns 1, then the multiplications unwind: 2, 6, 24. Two things make it work: a base case that stops the chain, and each call having its own locals. Recursive calls do not overwrite each other; they stack.
 
-The standard library's tree traversal is the canonical example. The pre-order traversal visits a node, then visits each child, recursively:
+The library's pre-order tree traversal is the canonical example:
 
     void _preOrder(TreeNode<T>* node, void(T) fn)
     {
@@ -410,11 +410,11 @@ The standard library's tree traversal is the canonical example. The pre-order tr
             self._preOrder(node->children.at(i), fn);
     }
 
-The function calls itself for each child. The recursion mirrors the structure: a tree is a node with child trees, and visiting the tree is visiting the node and visiting each child tree. The recursive code is the direct expression of the recursive data, and the direct expression is the readable one. (This is a private helper in the std tree module, the leading underscore marks it internal, and it shows the idiom in full: a public entry method that can accept empty trees, a private recursive walker that assumes a real node.)
+The function recurses for each child. The recursion mirrors the data: a tree is a node with child trees. The leading underscore marks a private helper; the public entry handles empty trees.
 
-Recursion works because each call has its own locals. Each recursive call pushes a new stack frame with its own node parameter and its own loop counter, and when the call returns, the previous frame's state is intact. The depth of the recursion is limited by the stack, and a recursion that goes too deep overflows it. The stack limit is a real limit, and recursive functions that can go deep, like a search over a large tree, are written with that limit in mind. The standard library balances recursion with iteration: the tree traversals recurse over the tree's depth, while the same module's linear operations iterate over the elements. Depth recurses; length iterates. That sentence is a useful rule to carry around: ask yourself whether the recursion nests with the data structure's depth (good, a tree) or merely counts through a long list (bad, use a loop).
+Each call pushes a frame with its own node and loop counter, and the previous frame is intact on return. Depth is limited by the stack, so deep recursion overflows it. The library balances recursion with iteration: depth recurses, length iterates.
 
-Two more small recursions are worth reading, because each shows a different reason a recursion ends. Euclid's algorithm, recursion with the remainder operator, shows a recursion whose depth is genuinely tiny and whose base case is the natural end of the work:
+Euclid's algorithm shows a recursion whose depth is tiny and whose base case is the natural end:
 
     u64 gcd(u64 a, u64 b)
     {
@@ -422,9 +422,9 @@ Two more small recursions are worth reading, because each shows a different reas
         return gcd(b, a % b);
     }
 
-Walk gcd(48, 18): 48 % 18 is 12, so the call becomes gcd(18, 12); 18 % 12 is 6, so gcd(12, 6); 12 % 6 is 0, so the base case returns 6, and 6 is the largest number that divides both. The recursion shrinks the operands at every step, so its depth is bounded by the sizes of the numbers, not by the count of iterations, and the base case is not an arbitrary stop but the mathematical end of the algorithm. Note also where the recursive call sits: it is the entire return value, with nothing left to do when it returns, tail position, which is the subject of the next section.
+For gcd(48, 18): 48 % 18 is 12, then gcd(18, 12), then gcd(12, 6), then 12 % 6 is 0 and the base case returns 6. The operands shrink every step, so depth is bounded by the numbers. The recursive call is the entire return value, tail position.
 
-The other classic shape is the structure-counting recursion. A tree's node count is one for the node itself plus the counts of its two subtrees, and the code is exactly that sentence:
+Structure-counting recursion: a tree's node count is one for the node plus the counts of its subtrees.
 
     u64 countNodes(TreeNode* node)
     {
@@ -432,17 +432,17 @@ The other classic shape is the structure-counting recursion. A tree's node count
         return 1 + countNodes(node->left) + countNodes(node->right);
     }
 
-The null check is the base case, and it applies at every level: an empty subtree contributes zero, a leaf contributes one plus two zeros. The depth of the recursion is the tree's depth, the same bound the section's rule names, and if the tree is balanced, the recursion is shallow regardless of how many nodes it holds. Both examples reinforce the one idea the tree traversal showed in miniature: the recursive code is the data's shape, and reading the shape is reading the code.
+The null check is the base case at every level: an empty subtree contributes zero, a leaf contributes one. Depth is the tree's depth, so a balanced tree is shallow regardless of node count. The recursive code is the data's shape.
 
 5.16 Tail Calls and Accumulators
 
-A tail call is a call made as the last thing a function does, immediately before returning its result. A recursive function whose recursive call is a tail call is called tail-recursive, and a language that optimizes tail calls can run such a recursion in constant stack space.
+A tail call is a call made as the last thing a function does before returning. A tail-recursive function can run in constant stack space when the language optimizes tail calls.
 
-If recursion is new to you, the worry is depth: every unfinished call holds a little memory (a stack frame), so a recursion that goes very deep can run the machine out of room. A tail call is the special case where the call is the very last thing the function does, so there is nothing left to remember, and the compiler can reuse the same frame, letting the recursion run as long as it likes without growing.
+Every unfinished call holds a stack frame, so deep recursion can exhaust memory. A tail call is the special case where nothing remains to remember, so the compiler can reuse the frame.
 
-Coral supports tail-call optimization as a compiler transformation. A function whose recursive call is in tail position can be turned into a loop, reusing the same stack frame instead of pushing a new one, so a tail-recursive function runs with a flat stack. The compiler's optimizer is deliberately simple, and the transformation applies where the compiler can see it is safe; the programmer's part is writing the recursion in a form that can be transformed.
+Coral supports tail-call optimization. A call in tail position can be turned into a loop reusing the frame, so the recursion runs with a flat stack. The optimizer is simple and applies where safe; write the recursion in transformable form.
 
-The accumulator pattern is how a recursion is made tail-recursive. The accumulating value is passed forward as an extra parameter, so the recursive call returns the accumulated result directly instead of waiting to combine results on the way back.
+The accumulator pattern makes a recursion tail-recursive: pass the accumulated value forward as an extra parameter, so the call returns it directly.
 
     u64 sumRange(u64 n, u64 acc)
     {
@@ -450,42 +450,42 @@ The accumulator pattern is how a recursion is made tail-recursive. The accumulat
         return sumRange(n - 1, acc + n);
     }
 
-Compare this with the factorial above. In factorial, the recursive call is `n * fact(n - 1)`, the function cannot return immediately, because it still has to multiply by n when the call comes back. That is a non-tail call; the multiplication is work that waits. In sumRange, the recursive call is the entire return value: `return sumRange(...)`. There is nothing left to do when the call returns, the caller's frame can be recycled, and the compiler can turn the whole thing into a loop that reassigns n and acc and jumps back.
+In factorial, `n * fact(n - 1)` cannot return immediately; it must multiply after the call. In sumRange, the recursive call is the entire return value, `return sumRange(...)`, so the frame can be recycled and the compiler can turn it into a loop reassigning n and acc.
 
-Each call passes the running total, and the final call returns it. The recursion is a loop in recursive clothing, and the compiler can run it as a loop. The accumulator pattern is a common idiom because it converts a recursion that uses stack depth into one that uses a parameter, and the parameter's type makes the accumulation explicit.
+Each call passes the running total, and the final call returns it. The recursion is a loop in recursive clothing.
 
-Coral does not require tail-recursive style. The tree traversal recurses in non-tail position, combining the traversal of each child with the traversal of the node, and it runs fine because its depth is the tree's depth, which is modest. The accumulator pattern and tail-call optimization are tools, used when a recursion must go deep, and skipped when the recursion naturally matches the structure it walks.
+Coral does not require tail-recursive style. The tree traversal recurses non-tail and runs fine because its depth is the tree's depth. Use the accumulator when a recursion must go deep.
 
 5.17 Generators, Lazy Sequences, and the Iterator Protocol
 
-Some languages have generators: functions that can pause, yield a value, and resume where they left off. A generator is written like a function, but it produces a sequence lazily, one value at a time, with the yield keyword marking the pause points. Coral does not have generators, and there is no yield statement in the language.
+A generator is a function that can pause, yield a value, and resume. Coral has no generators and no yield statement.
 
-The reason is the same reason Coral does not have closures: a generator is a function with hidden state. A generator needs a frame that survives across calls, a suspended stack, and a protocol for resuming it. The suspended state is hidden from the signature, and a function whose execution is spread across many calls is a function whose behavior is not fully visible.
+The reason is the same as for closures: a generator has hidden state, a frame that survives calls and a suspended stack. That state is invisible in the signature.
 
-Coral's answer to lazy sequences is the iterator protocol, introduced in the previous chapter. A type implements the protocol, and the ranged for drives it. The iterator produces values on demand, computing each element as the loop asks for it, which is exactly the laziness generators provide, and the state is stored explicitly in the iterator object, not hidden in a suspended frame. The iterator is a value, its type is known, and its state is visible.
+Coral's answer is the iterator protocol. A type implements it, and the ranged for drives it. The iterator computes each element on demand, providing the same laziness, with state stored explicitly in the iterator object.
 
     for (var line : file.lines())
     {
         // each line is read on demand as the loop reaches it
     }
 
-Here file.lines() does not build a list of every line up front. It returns an iterator that knows how to produce the next line when asked. If the file has a million lines and the loop breaks after ten, the other 999,990 lines are never materialized. That laziness, compute only what the loop actually touches, is the practical value generators advertise, and the iterator protocol delivers it with the state out in the open.
+file.lines() does not build a list up front. It returns an iterator that produces the next line when asked, so breaking after ten lines leaves the other 999,990 unmaterialized. The laziness is real, with state in the open.
 
-The iterator protocol covers the ground that generators cover. Lazy sequences are iterators that compute on each step. Stateful iteration is an iterator that carries its state in its fields. The bidirectional communication that some generators support, sending a value into the generator as it runs, is not part of the protocol, and Coral does not need it; the operations that need to feed values into a stream use explicit function parameters, which say what the values are and when they are sent.
+The protocol covers what generators cover: lazy sequences compute on each step, and stateful iteration carries state in fields. Bidirectional sends are not part of the protocol; operations that feed values use explicit parameters.
 
 5.18 Async, Await, and Threads
 
-Some languages have async and await: keywords that mark functions as asynchronous, with an event loop and futures or promises in the runtime, and a cancellation and backpressure machinery behind them. Coral does not have async or await, and there is no event loop in the language.
+Some languages have async and await, with an event loop, futures, cancellation, and backpressure. Coral has neither, and no event loop in the language.
 
-The reason is architectural. Async and await are a model for concurrency that grafts suspension onto functions, and the graft requires the hidden state that Coral refuses: suspended frames, a scheduler, and a runtime that decides which task runs when. The language's answer to concurrency is threads, and the thread machinery is explicit, which is the subject of a later chapter. A Coral program that needs to do work concurrently spawns threads, and the threads communicate through the explicit synchronization mechanisms the language provides.
+Async and await graft suspension onto functions, requiring hidden suspended frames, a scheduler, and a runtime. Coral's concurrency is threads, with explicit synchronization, covered in a later chapter.
 
-The absence of async and await is a trade, and the trade is consistent with everything in this chapter. An async function's signature does not say whether it suspends, how long it runs, or whether it can be cancelled. A Coral thread function has a plain signature: it takes what it needs and returns what it produces. The concurrency is built from functions and explicit threads, with no keyword that changes what a function means. The costs are real, the model is less convenient for the I/O-bound patterns async serves best, and the language accepts the costs for the explicitness.
+The trade is consistent: an async signature does not say whether it suspends, how long it runs, or whether it can be cancelled. A Coral thread function has a plain signature. The model is less convenient for I/O-bound work, and the language accepts the cost for explicitness.
 
 5.19 Mutual Recursion
 
-Two functions that call each other are mutually recursive. Each is recursive through the other: the first calls the second, which calls the first. The pattern appears in parsers that alternate between two kinds of construct, and in state machines where the states call each other.
+Two functions that call each other are mutually recursive. The pattern appears in parsers alternating between constructs and in state machines whose states call each other.
 
-The classic pedagogical example is deciding whether a number is even or odd:
+The classic example decides whether a number is even or odd:
 
     bool isEven(u64 n)
     {
@@ -499,19 +499,19 @@ The classic pedagogical example is deciding whether a number is even or odd:
         return isEven(n - 1);
     }
 
-isEven(3) → isOdd(2) → isEven(1) → isOdd(0) → false. The two functions hand control back and forth, and the recursion is only stopped by the base case n == 0.
+isEven(3) calls isOdd(2), then isEven(1), then isOdd(0), returning false. Only the base case n == 0 stops the alternation.
 
-Mutual recursion requires that each function know the other's declaration. Coral collects the module's declarations before typechecking, so functions can call each other in any order within the module. The function written first can call the function written later, and the compiler resolves the call against the module's declarations. The property removes a C annoyance, where the order of declarations matters, and it comes from the language's compile model: the module is known before any function is checked.
+Mutual recursion requires each function to know the other's declaration. Coral collects a module's declarations before typechecking, so functions can call each other in any order, removing C's declaration-order annoyance.
 
-Mutual recursion works like ordinary recursion, with each call pushing a frame. The stack depth is the depth of the call chain, and a deeply nested alternation can be as deep as the chain it follows. The same stack discipline applies, and the same guidance: depth recurses, and deep alternations are better expressed as explicit state or loops.
+It works like ordinary recursion, pushing a frame per call. Stack depth is the call chain's depth, and the same guidance applies: deep alternations are better expressed as explicit state or loops.
 
 5.20 Methods and the self Receiver
 
-A method is a function attached to a type. Where an ordinary function is a named operation in a module, a method is a named operation on a value of the type that owns it. The standard library is built from methods: a vector has push and pop, a string has find and append, a Result has isOk and unwrap. The type groups its operations, and the operations share the type's rules.
+A method is a function attached to a type: a named operation on a value of that type. The library is built from methods such as push, pop, find, append, isOk, and unwrap.
 
-If you have never met methods, the difference is only in how you call them. `lengthOf(text)` is a plain function that takes a value; `text.length()` is a method called on the value itself. The value before the dot is the one the method works on, and inside the method that value goes by the name `self`.
+The difference is only in the call. `lengthOf(text)` is a plain function taking a value; `text.length()` is a method called on the value itself. Inside the method, that value is named `self`.
 
-Methods are declared inside the type's definition, after the fields. The declaration form is the type-first form of every function: the return type leads, then the name, then the parameters.
+Methods are declared inside the type's definition, after the fields, in the same type-first form: return type, name, parameters.
 
     pub struct Vec<T>
     {
@@ -527,19 +527,19 @@ Methods are declared inside the type's definition, after the fields. The declara
         }
     }
 
-This is the actual shape of the vector in the standard library, three fields, data pointer, length, capacity, with push written the way it really is: grow if needed, store the value, bump the length.
+This is the vector's real shape: data pointer, length, capacity, with push growing if needed, storing the value, and bumping the length.
 
-The method body refers to the value it was called on through the self keyword. In push, self is the vector the method was called on: self.len is the vector's length, self.data is its storage, self.cap is its capacity. The method reads and modifies the fields of the receiver through self, and every push call operates on the specific vector it was given.
+The body reaches the receiver through self: self.len, self.data, self.cap. Each push operates on the vector it was called on.
 
-The self keyword is part of the language, recognized by the compiler and resolved to the receiver of the current method. It is the way a method says "the value I was called on." Without self, a method could not name its own fields; with self, the receiver is always explicit, and a reader can tell at a glance which assignments touch the receiver and which touch locals.
+self is a keyword resolved to the current method's receiver. Without it a method could not name its own fields; with it, the receiver is always explicit.
 
-The receiver is not passed implicitly as a hidden argument. A method call like v.push(x) passes v to push the same way a call passes any value: v is the receiver, x is the argument, and both are named in the call. The receiver is visible at the call site, which is the point. There is no hidden state in a method call beyond the receiver itself, and the receiver is written in the call.
+The receiver is not a hidden argument. v.push(x) passes v as the receiver and x as the argument, both named in the call. There is no other hidden state.
 
 5.21 The Receiver and self
 
-Every method has a receiver: the value it was called on, named self inside the body. Coral's receiver is implicit, it does not appear in the parameter list, and a method reaches the receiver's fields with the dot, as in self.len or self.data. The receiver is the one thing a method gets that an ordinary function does not.
+Every method has a receiver, named self inside the body. It does not appear in the parameter list, and a method reaches its fields with the dot. It is the one thing a method gets that an ordinary function does not.
 
-Because self is always the receiver, a method never writes it as a parameter. push takes only its value, and self is understood:
+Because self is always the receiver, a method never writes it as a parameter. push takes only its value:
 
     void push(T val)
     {
@@ -547,7 +547,7 @@ Because self is always the receiver, a method never writes it as a parameter. pu
         self.len++;
     }
 
-A method that must modify the receiver simply assigns through self, as push does. A method that only reads the receiver can say so with the const method form, so the compiler enforces that it does not mutate:
+A method that modifies the receiver assigns through self. A read-only method can say so with the const form, which the compiler enforces:
 
     #[[const]]
     usize count() { return self.len; }
@@ -556,15 +556,15 @@ or, equivalently, the trailing form:
 
     usize count() const { return self.len; }
 
-Both spellings mark the method const: the body may read self but may not write through it, and a caller reading the signature knows the call cannot change the receiver.
+Both spellings mark the method const: the body may read self but not write through it, and a caller knows the call cannot change the receiver.
 
-The receiver is not a hidden argument. A call like v.push(x) names its receiver v and its argument x at the call site; the receiver is written in the call, and there is no other state passed behind the scenes. This is the same explicitness the rest of the language insists on: the thing the method acts on is visible in the code that calls it.
+The receiver is visible at the call site, consistent with the language's explicitness.
 
 5.22 Static Methods and Constructors
 
-A method that belongs to the type rather than to a value of the type is a static method. Static methods are declared with the static keyword, and they are called through the type name rather than through a value.
+A static method belongs to the type rather than a value. It is declared with the static keyword and called through the type name.
 
-In plain words, a static method is something the type can do when you do not yet have a value to work on. "Make me a new vector with this capacity" happens before any vector exists, so it belongs to the type itself. You call it with `::`, as in `Vec<u32>::withCap(16)`, where the `::` is the sign that no particular value is involved.
+A static method is something the type can do before a value exists. "Make me a new vector with this capacity" happens before any vector exists. Call it with `::`, as in `Vec<u32>::withCap(16)`, the sign that no particular value is involved.
 
     static Vec<T> withCap(usize capacity)
     {
@@ -575,22 +575,22 @@ In plain words, a static method is something the type can do when you do not yet
         };
     }
 
-Walk this one, because it is the pattern behind what this section calls a type's constructor, the code that builds a value of the type, a term borrowed from the class languages, where a constructor is the special method that runs when an object is created. There is no hidden "constructor runs automatically" anywhere. withCap is an ordinary static method: it allocates storage for capacity elements, sets the length to zero, records the capacity, and returns the value as a single struct literal. The type name in the signature, static Vec<T> withCap, tells the reader this is a factory: it returns a Vec. Notice alloc<T>(capacity): the standard library's allocator is generic, allocating capacity elements of T at once, and it is imported from std::mman, this is the real code from the std, not a sketch.
+withCap is the pattern behind a constructor, the code that builds a value. There is no automatic constructor. withCap allocates capacity elements, sets length zero, records capacity, and returns a struct literal. The type name in `static Vec<T> withCap` says it returns a Vec. alloc<T>(capacity) is generic and imported from std::mman; this is real std code.
 
-The static method has no receiver. It does not operate on a value of the type; it creates one, or it provides operations that do not need an instance. The most important use of static methods is construction: a type's constructors are static methods that build and return a value of the type.
+A static method has no receiver. It creates a value or provides an operation that needs no instance. Its most important use is construction.
 
-Construction in Coral is explicit. A type has no special constructor syntax, no operator for building a value. The constructors are static methods with ordinary names, and each takes the values it needs and returns the built value. The vector has new, which builds an empty vector, and withCap, which preallocates capacity. A variant value such as a Result or an Option is built with a variant literal instead, naming the case and its fields directly. Each constructor is called through the type name.
+Construction is explicit: no special syntax, no constructor operator. Constructors are static methods with ordinary names. Vec has new and withCap; variants such as Result and Option are built with variant literals naming the case and fields. Each constructor is called through the type name.
 
     Vec<u32> v = Vec<u32>::withCap(16);
     String greeting = String::from("hello");
     Result<u64, i32> ok = Result<u64, i32>::Ok { .value = 7 };
     Option<u64> none = Option<u64>::None;
 
-The double-colon call names the type and the constructor. The type is part of the call, which is why the call is unambiguous: withCap is the vector's constructor, and the type name says which vector. The double-colon is the static call, and it is how constructors and other type-level methods are invoked throughout the standard library.
+The double-colon call names the type and constructor, so withCap is unambiguously the vector's. This is how constructors and type-level methods are invoked throughout the library.
 
 5.23 Method Blocks
 
-Methods are not only declared inside a type's definition. An extend block declares methods for a type outside the type's definition, and the type named after the extend keyword says which type the methods belong to.
+Methods can also be declared outside a type's definition in an extend block, which names the type the methods belong to.
 
     pub extend User
     {
@@ -600,11 +600,11 @@ Methods are not only declared inside a type's definition. An extend block declar
         }
     }
 
-The block names the type and declares its methods. The receiver inside the methods is the same implicit self as always. The methods inside behave exactly like methods declared in the type: they have the same self receiver, the same dispatch, and the same behavior.
+The block names the type and declares its methods. The receiver is the same implicit self, and the methods behave exactly like those declared inside the type.
 
-Extend blocks keep a type's definition focused on its fields and keep related methods grouped by concern. A type defined in one module can have methods declared in another, and the standard library uses the pattern to attach operations to types while keeping the type's core small. The block is the same syntax the trait implementation blocks use, which is the subject of the next section, and the symmetry is deliberate.
+Extend blocks keep a type's definition focused on fields and group related methods by concern. A type in one module can have methods in another, and the library uses this to keep core types small. The syntax matches trait implementation blocks.
 
-A worked example makes the motivation visible. Suppose you define a point type in one module and want a distance method without reopening the type's definition. In the same module, or another one, you write:
+A point type with a distance method defined outside its definition:
 
     pub extend Point
     {
@@ -616,11 +616,11 @@ A worked example makes the motivation visible. Suppose you define a point type i
         }
     }
 
-The reader who opens Point.crl sees the fields and nothing else; the reader who wants its behavior finds the methods grouped in the block. Definition separated from behavior, each in the place that makes the code easiest to navigate.
+Point.crl shows the fields; the behavior is grouped in the block. Definition and behavior are separated into the places easiest to navigate.
 
 5.24 Traits
 
-A trait is a promise a type makes: a named set of method signatures it agrees to implement. Traits give Coral the abstraction of interfaces and type classes, expressed in the type-first style of the language.
+A trait is a promise a type makes: a named set of method signatures it agrees to implement. Traits give Coral interfaces and type classes in type-first style.
 
     trait Serializable
     {
@@ -628,11 +628,11 @@ A trait is a promise a type makes: a named set of method signatures it agrees to
         u64 deserialize(const u8* buffer);
     }
 
-In plain words, a trait is a checklist of abilities, and a type "signs up" by providing every method on the list. You can then write code that works with any type that signed up, without knowing which type it is. It is how a library can say "give me anything that can be printed" instead of enumerating every printable type.
+A trait is a checklist of abilities, and a type signs up by providing every method. Code can then work with any type that signed up, without knowing which type it is.
 
-The trait makes its promise without an implementation. serialize takes a buffer and returns the number of bytes written; deserialize reads from a buffer. The signatures are the whole promise: a type that implements the trait must provide methods with these signatures, and the compiler checks the match.
+The trait states the promise without an implementation. serialize takes a buffer and returns bytes written; deserialize reads from one. The signatures are the whole promise, and the compiler checks the match.
 
-A trait is implemented for a type by an extend block that names the trait after a colon. The block names the type, the trait, and provides the method bodies.
+A type implements a trait in an extend block naming the trait after a colon. The block names the type, the trait, and provides the bodies.
 
     pub extend User : Serializable
     {
@@ -646,9 +646,9 @@ A trait is implemented for a type by an extend block that names the trait after 
         }
     }
 
-The colon names the pair: the type before it, the trait after it, so User extends Serializable. The methods use the same implicit self receiver as any other method, and each body fulfills the trait for the User type. The type has the trait, and the compiler can verify that the block implements every method the trait declares.
+The colon names the pair: User extends Serializable. The methods use the implicit self, and the compiler verifies that every trait method is implemented.
 
-Traits are the language's ad-hoc polymorphism. A function that works for many types can be written against a trait, calling the trait's methods, and it works for every type that supplies them. Coral does not spell that requirement as a bound on a parameter, there is no `T : Shape` clause. The requirement is the operations the body names, and the compiler checks them where the function is used. The most direct way to take "any shape" is the trait object, the `any Trait` type from Chapter6:
+Traits are the language's ad-hoc polymorphism. A function written against a trait works for every type supplying its methods. Coral does not spell the requirement as a bound; there is no `T : Shape`. The requirement is the operations the body names, checked where the function is used. The direct way to take "any shape" is a trait object, the `any Trait` type from Chapter6:
 
     trait Shape
     {
@@ -667,78 +667,78 @@ Traits are the language's ad-hoc polymorphism. A function that works for many ty
         return best;
     }
 
-Here the parameter is `const Vec<any Shape>*`: a vector of trait objects. The body may call exactly the methods `Shape` declares, and no others, because `any Shape` is a window that frames those methods. A generic form, `largestArea<T>(const Vec<T>* shapes)`, would compile as well; its body is checked when it is instantiated, and every `T` that has `area` works while a `T` that lacks it is rejected at the instantiation.
+The parameter is `const Vec<any Shape>*`: a vector of trait objects. The body may call exactly the methods `Shape` declares, because `any Shape` is a window framing those methods. A generic `largestArea<T>(const Vec<T>* shapes)` would also compile, checked at instantiation; every `T` that has `area` works, and a `T` without it is rejected.
 
-The difference between the two forms is where the requirement lives and what it costs. The trait-object form states the requirement in the signature and dispatches through the trait's table at run time. The generic form discovers the requirement in the body and monomorphises to direct calls, with no table at all. Neither is a bound on a type parameter; one is a concrete type you choose to accept, the other is a body that asks for what it needs.
+The difference is where the requirement lives and its cost. The trait-object form states it in the signature and dispatches through the trait's table at run time. The generic form discovers it in the body and monomorphizes to direct calls with no table.
 
-The implementation blocks and the trait declaration form a pair. The trait states what it asks of a type; the block states how a type fulfills it; the function that uses it states, in its signature, that it accepts the trait. Each piece is a named declaration with a visible signature, and the compiler checks the connections: the block against the trait, and the use against the trait.
+Trait declaration, implementation block, and use form a pair of promises, each a named declaration with a visible signature, and the compiler checks the connections.
 
 5.25 Method Dispatch: Static and Dynamic
 
-The way a call chooses which function runs is method dispatch. Coral's dispatch is static by default: a method call on a value of a known type resolves to the method defined for that type, and the compiler resolves it at compile time. There is no lookup at runtime, no table walk, no hidden indirection. The call is the function, chosen when the code is compiled.
+Method dispatch is how a call chooses which function runs. Coral's dispatch is static by default: a call on a value of known type resolves at compile time, with no runtime lookup or table walk.
 
-The static dispatch comes from the type system. A method call is a call on a value of a known type, and the type determines the method. The compiler resolves the call against the type's methods, checks the types, and emits a direct call. The reader sees the call and the type and knows which function runs, and the compiler makes the same decision at the same place. The same resolution handles generic specialization: when a generic method is instantiated for a concrete type, the trait method call resolves to that type's implementation, statically, at compile time.
+The type system drives static dispatch. The compiler resolves the call against the type's methods, checks types, and emits a direct call. Generic specialization works the same way: a trait method on a concrete instantiation resolves statically.
 
-Dynamic dispatch happens where the language stores behavior in data: function pointers. A struct whose fields are function pointers, the hash maps' stored comparison function, the memory chapter's allocator table, dispatches through the table when a stored function is called. The dispatch is dynamic because the function is a field, and the field can be any function that matches the type. This is the vtable model in its explicit form: the table of function pointers is a struct, its fields are the methods, and a call through a field is an indirect call through the table. The dispatch is explicit because the field is in the struct, and the reader sees the function table and knows that calls through it vary at runtime.
+Dynamic dispatch happens where behavior is stored in data: function pointers. A struct of function pointers, a hash map's comparison function, or an allocator table dispatches through the stored function, which can vary at runtime. This is the vtable model in explicit form: the table is a struct, its fields are methods, and a call through a field is indirect.
 
-The absence of multiple dispatch is a deliberate consequence. Coral has no mechanism where a call chooses its function by the runtime types of several arguments simultaneously, because Coral's methods are attached to a single receiver type and its generic functions are resolved statically. The behaviors that other languages route through multiple dispatch are expressed in Coral through traits and generics, resolved at compile time.
+Coral has no multiple dispatch, where a call chooses by the runtime types of several arguments. Methods attach to one receiver type, and generics resolve statically. Behaviors routed through multiple dispatch are expressed with traits and generics at compile time.
 
 5.26 Overloading and Its Absence
 
-The term overloading, in the strict sense, means several functions sharing a name, with the call choosing among them by its arguments. Coral does not have this kind of overloading, and the reason is the same as the reason for the other deliberate omissions: a name should mean one thing.
+Overloading means several functions share a name and the call chooses by arguments. Coral does not have it: a name should mean one thing.
 
-A Coral function's name identifies the function, and the signature pins down what that name means. Without overloading, a call is unambiguous by name alone: the name names the function, and the argument types must match its one signature. There is no step where the compiler picks among candidates, and no case where the reader must infer which function a name means from the call's shape. The name and the function are one, which is the property that keeps calls readable.
+A function's name identifies it, and its signature pins the meaning. A call is unambiguous by name, and argument types must match the one signature. There is no candidate selection and no inference of which function a name means.
 
-The work that overloading does in other languages is done in Coral by generics and by naming. A function that must work for several types is generic, like the iter operations, and the type parameters express the variety. Functions that do genuinely different things get different names, like find and findIndex, and the names say what the functions find. The type system carries the generality that overloading would otherwise provide, and the names carry the distinction that overloading would otherwise hide.
+Generics and naming do overloading's work. A function for several types is generic, and genuinely different functions get different names, such as find and findIndex. The type system carries the generality; the names carry the distinction.
 
 5.27 Generics and Specialization
 
-Generic functions are compiled by specialization. When a generic function is called with concrete types, the compiler instantiates the function for those types: it copies the body with the type parameters replaced by the concrete types, and it typechecks the body against those types. Each instantiation is a complete, concrete function.
+Generic functions compile by specialization. When called with concrete types, the compiler instantiates the body with the type parameters replaced and typechecks it against those types. Each instantiation is a complete, concrete function.
 
-The specialization is where the generic function's checks happen. When max is called with two u64s, the compiler checks that the body, with T replaced by u64, is valid: that the comparison exists, that the returns match. When max is called with two f64s, the same check runs for f64. The same generic body is checked per concrete type, and a call with a type that does not support the comparison fails at the call site. The generality is not unchecked; each use is checked on its own terms.
+Specialization is where checks happen. Calling max with two u64s checks the body with T as u64; calling with f64 checks it again. A type lacking the comparison fails at the call site. Generality is checked per use.
 
-Specialization is also where generics get their performance. Each instantiation is a concrete function with concrete types, and the compiler optimizes it as it optimizes any concrete function. The comparison in a specialized max is the hardware comparison, not a call through a table. A generic collection operation specialized for u64 is a u64 loop, with the loop optimizer's full attention. The cost of generality is paid once, at compile time, and the runtime cost is zero.
+Specialization is also where performance comes from. Each instantiation is concrete and optimized like hand-written code. The comparison is a hardware comparison, not a table call. The cost of generality is paid at compile time; runtime cost is zero.
 
-The cost of specialization is code size. Each instantiation is real code, and many instantiations of a large generic function are many copies. The standard library accepts the cost because the alternative, a single generic body with runtime type handling, is slower. The language's position is the consistent one: the compile-time cost buys the runtime speed, and the compiler's job is to pay it well.
+The cost is code size: each instantiation is real code, and many instantiations of a large function are many copies. The library accepts this because a single runtime-typed body would be slower. Compile-time cost buys runtime speed.
 
 5.28 The Extern Boundary
 
-Functions that live outside Coral, in C libraries or the operating system, are declared with the extern keyword. An extern declaration states a function's name and signature, and the compiler trusts the declaration, generating a call to the external symbol.
+Functions outside Coral, in C libraries or the operating system, are declared with extern. An extern declaration states the name and signature, and the compiler trusts it, generating a call to the external symbol.
 
-In plain words, `extern` is how Coral calls a function that somebody else wrote, usually in C or the operating system. You are promising the compiler that the function exists and has the signature you wrote; it cannot check the outside code, so the promise rests on you. This is the doorway between Coral and the rest of the system.
+`extern` calls a function someone else wrote, usually in C or the OS. You promise that it exists with the signature you wrote; the compiler cannot check outside code.
 
     extern i32 pthread_mutex_init(void* mutex, const void* attr);
 
-The extern declaration is a promise the Coral code depends on: the external function exists, has the declared signature, and behaves as its signature says. The compiler cannot check the external function's body, so the responsibility rests on the declaration and the person writing it. The signature is the interface, and the interface is all either side knows.
+The declaration is a promise the Coral code depends on. The compiler cannot check the external body, so responsibility rests on the declaration and its author. The signature is the interface, and that is all either side knows.
 
-Extern declarations are the bridge to the C world, and the standard library uses them heavily: the process operations call POSIX functions, the threading calls pthread functions, the file and memory operations call libc. Each extern declaration names the C symbol and its Coral signature, and each call through the bridge checks against that signature. The language's own functions and the external functions meet at the boundary of a declared signature, and the rule is the same everywhere in Coral: types in, types out, nothing hidden.
+Extern declarations bridge to C, and the library uses them heavily: POSIX for processes, pthreads for threading, libc for files and memory. Each names the C symbol and its Coral signature, and each call checks against it.
 
-Inline extern declarations let a function declare an external function it needs directly in its body, keeping the declaration next to its use. The declaration is local to the function, and the call is checked against it. This keeps FFI declarations scoped when a function needs one external call and does not want the declaration at module level.
+Inline extern declarations let a function declare an external function in its body, keeping the declaration next to its use and scoped to the function.
 
 5.29 Composition and Design
 
-The patterns of this chapter compose into a style. Functions are the building blocks, and the blocks are built from the philosophy: explicit signatures, everything typed, no hidden machinery.
+The chapter's patterns compose into a style: explicit signatures, everything typed, no hidden machinery.
 
-Three habits make a Coral codebase pleasant to read. They are worth stating as rules, because they are the difference between code that explains itself and code that demands a guided tour.
+A few habits make a Coral codebase pleasant to read.
 
-First, write small functions with honest signatures. A function with a u64 return, a str parameter, and a clear name can be read in one line and trusted without opening its body. A function named validateConfig that returns void is a warning sign: it probably prints its own errors and has no way to signal failure to its caller, which is exactly what Result is for.
+First, write small functions with honest signatures. A u64 return, a str parameter, and a clear name can be trusted without opening the body. A void validateConfig is a warning sign: it probably prints its own errors and cannot signal failure, which is what Result is for.
 
-Second, let the return type set the expectation. void for "did a thing," Option for "may be absent," Result for "can fail, and here is what kind of failure," a value or struct for "this is the answer." The return type is the first line of the function's documentation, and it is checked by the compiler, so it can never drift out of sync with the body.
+Second, let the return type set expectations: void for "did a thing," Option for "may be absent," Result for "can fail," and a value or struct for "this is the answer." The return type is the first line of documentation, checked by the compiler.
 
-Third, thread state through parameters, never around them. No closures means the state a function needs is in its signature. That feels like a limitation when you first hit it, and it removes a whole class of surprises: you can always see where a function gets its data, because it comes in through the parameter list.
+Third, thread state through parameters, never around them. No closures means the needed state is in the signature, so you can always see where a function gets its data.
 
-Fourth, prefer iteration for flat problems and recursion for nested ones. A long list is a loop; a tree is a function calling itself. The depth-recurses, length-iterates rule keeps stack use proportional to the structure rather than the input size.
+Fourth, prefer iteration for flat problems and recursion for nested ones. A long list is a loop; a tree is a function calling itself. Depth recurses, length iterates.
 
-Fifth, use higher-order functions where they name an operation, not where they show off. The iter module exists because "filter these" is a clearer sentence than five lines of handwritten loop, but only when the predicate is already a named function. Passing a freshly invented callback into a one-off call is often better written as a plain loop, and the standard library itself models this restraint.
+Fifth, use higher-order functions where they name an operation, not to show off. "Filter these" is clearer than a handwritten loop when the predicate is already a named function. A freshly invented callback for a one-off call is often better as a plain loop.
 
-Those habits are not rules enforced by the compiler; they are patterns the library demonstrates and the language rewards. Code written this way reads top to bottom: the signature says what runs, the body says how, and the caller, you, next week, never has to reverse-engineer a hidden effect.
+These are not compiler-enforced rules but patterns the library demonstrates and the language rewards. The signature says what runs, the body says how, and the caller never reverse-engineers a hidden effect.
 
 5.30 What a Function Is: Names and Abstraction
 
-We have spent a chapter on the mechanics of functions: how they are declared, called, specialized, and composed. It is worth closing with the reason the mechanics exist at all.
+We have covered how functions are declared, called, specialized, and composed. Here is why the mechanics exist.
 
-A function is, first of all, a name. Before countLines existed, "count the lines" was an action you described in prose and performed by hand. After it exists, it is a word you can say, and every call site is a sentence built from words like it. Naming is the cheapest abstraction there is, because names are free, and it is the most important one, because a good name carries the whole meaning of the function.
+A function is first a name. Before countLines existed, "count the lines" was prose and handwork. Afterward it is a word, and every call site is a sentence built from such words. Naming is the cheapest abstraction, and the most important, because a good name carries the function's meaning.
 
-A function is also a boundary. Everything inside the braces is the function's own world, its parameters, its locals, its temporary values. Everything outside is the caller's world. The boundary is where the signature stands, and the signature is the only thing either side needs to know. This is why functions can be written by one person and used by another, written once and called a thousand times, written this month and understood next year. The boundary is what makes that possible.
+A function is also a boundary. Inside the braces is the function's world; outside is the caller's. The signature stands at the boundary and is all either side needs to know. That is why functions can be written by one person and used by another, written once and called a thousand times.
 
-And a function is a unit of trust. When a function is small, named well, and typed honestly, you can believe it does what it says, because you can read everything it might do. That trust is transitive: a big program is a web of small trustworthy functions, each doing one thing, each checked by the compiler against its neighbors. That, in the end, is what this chapter has been building toward, not the syntax of functions, but the reason the syntax exists: so that a program can be many small things you understand instead of one big thing you hope works.
+And a function is a unit of trust. Small, well named, and honestly typed, it can be believed because you can read everything it might do. A big program is a web of small trustworthy functions, each checked against its neighbors: many small things you understand instead of one big thing you hope works.

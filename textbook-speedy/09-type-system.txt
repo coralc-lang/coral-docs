@@ -2,51 +2,51 @@ Chapter9: The Type System
 
 9.1 Where Rigor Lives
 
-Rigor lives in a language's type system, and Coral's rigor lives in its types. The type-first principle has surfaced in every chapter of this book, because it is Coral's answer to a whole class of bugs: a typechecked program is one whose mistakes were found before it ran. This chapter completes the principle. It covers the types Coral has, how the compiler checks them, and the boundaries the language draws around what it will and will not infer.
+Rigor lives in a language's type system, and Coral's rigor lives in its types. A typechecked program is one whose mistakes were found before it ran. This chapter covers the types Coral has, how the compiler checks them, and the boundaries around what it will infer.
 
-The philosophy is plain, and it governs everything here: Coral is statically typed, the types are explicit, and the compiler checks every program against its types before the program ever runs. No runtime type dynamism. No runtime type tags on values. No reflection, no runtime type errors. The types are checked at compile time, and the checked program runs without them. The rigor sits at the front of the pipeline, and the front of the pipeline is where it belongs.
+Coral is statically typed, the types are explicit, and the compiler checks every program before it runs. No runtime type dynamism, no type tags on values, no reflection, no runtime type errors. The rigor sits at the front of the pipeline.
 
-Come from a dynamically typed language like Python or JavaScript and you have met types, but you met them at the wrong time. In a dynamic language a variable can hold a number, then a string, then a whole object, and the operations you perform on it are checked line by line as the program runs. The same code path that works with a number fails with a string, and the failure lands on a user's machine, not on your desk. Coral moves that check from runtime to compile time: a variable's type is decided once, spelled at the declaration, and every use is verified before the program is allowed to run. What a dynamic language discovers by crashing, Coral discovers by refusing to compile. Come from C and the philosophy is the one you already half-believe, C is statically typed too, but the difference is in the details. C's `void*` lets you slip a type past the compiler; C's implicit conversions let integers quietly change width. Coral closes both doors, and this chapter explains what it closes, what it keeps, and why.
+Come from Python or JavaScript and you have met types at the wrong time: a variable holds a number, then a string, and the failure lands on a user's machine. Coral decides a variable's type once, at the declaration, and verifies every use before the program runs. Come from C and the philosophy is familiar, but C's `void*` slips a type past the compiler and its implicit conversions change width. Coral closes both doors.
 
-Worth making concrete before the details, because "rigor" is an abstract word until it has a body. Take the small, ordinary bug: a function computes a monthly average, and a caller hands it the year-to-date total by mistake. In a language where both are just "numbers," the mistake is invisible. The function runs, the average is wrong, and the report prints a number nobody cross-checked. In a typed language that same mistake is usually two different types or two mismatched signatures, and the compiler stops the build at the line where they meet. The whole chapter turns on the difference between those two endings. The type is the program's own description of what a value is; the compiler is the reader that checks every line against the description before anyone runs it.
+Take the ordinary bug: a function computes a monthly average, and a caller hands it the year-to-date total. Where both are just "numbers," the mistake is invisible. In a typed language the mismatch stops the build at the line where the two meet.
 
 9.2 Type Declarations
 
-A type is declared, and the declaration is a named statement in the module. Those declarations are the type declarations of the language: `struct`, `variant`, `union`, `enum`, `trait`, `typedef`, and `distinct`. Each one names a type and states what it is, and the compiler collects them all before it checks a single line of code.
+A type is declared, and the declaration is a named statement in the module. The type declarations are `struct`, `variant`, `union`, `enum`, `trait`, `typedef`, and `distinct`. Each names a type and states what it is, and the compiler collects them before checking any code.
 
-The `struct` is the product type, the one that holds several fields together. The `variant` and the `union` are the sum forms, and both carry payloads. A `variant` is a tagged union: each alternative bears its own fields plus a tag saying which alternative is live. A `union` is the untagged overlay, where the alternatives share one storage and the program itself keeps track of which is live. The `enum` is the simple sum type, whose value is one of several named alternatives that carry no payload. A `trait` names a set of methods a type may implement. The `typedef` names an existing type; the `distinct` declaration builds a new type from an existing one. Each is a way of building a type, and each gets its own section later in this chapter.
+The `struct` is the product type, holding several fields together. The `variant` and `union` are sum forms that carry payloads: a `variant` is a tagged union, a `union` the untagged overlay. The `enum` is the simple sum type, one of several named alternatives with no payload. A `trait` names methods a type may implement. The `typedef` names an existing type; `distinct` builds a new type from one.
 
-The declarations are type-first, like everything else in the language. Keyword first, then the name, then the body or the definition. The compiler reads the declaration, records the type, and from then on the name means the type. You will meet these keywords all over the standard library, `struct` for every collection, `variant` for the tagged result and option types, `distinct` for every platform handle, `enum` for the log levels and error kinds, `typedef` for every named function signature. Learning to read them is learning to read the standard library.
+The declarations are type-first: keyword, then name, then body or definition. The compiler records the type, and from then on the name means it. The standard library uses `struct` for collections, `variant` for result and option types, `distinct` for platform handles, `enum` for log levels and error kinds, and `typedef` for named function signatures.
 
 9.3 Primitive Types
 
-The primitive types are the fixed-width integers, the floating-point types, the boolean, and the character. They are the floor of the type system, every other type is built from them.
+The primitive types are the fixed-width integers, the floating-point types, the boolean, and the character. They are the floor of the type system; every other type is built from them.
 
-The integer types are the signed `i8`, `i16`, `i32`, and `i64`, and the unsigned `u8`, `u16`, `u32`, and `u64`. Each is a fixed width, the number in its name, and each represents the range of integers that width can hold. The signed types use two's complement, so an `i8` holds negative one hundred twenty-eight through one hundred twenty-seven, and a `u8` holds zero through two hundred fifty-five. The width is fixed by the type, and that is the whole point of the fixed-width design: an `i32` is thirty-two bits on every platform, so a program that depends on its width depends on a fact the type states.
+The integer types are the signed `i8`, `i16`, `i32`, and `i64`, and the unsigned `u8`, `u16`, `u32`, and `u64`. Each has a fixed width, the number in its name, and a range that width can hold. An `i32` is thirty-two bits on every platform, so a program that depends on its width depends on a fact the type states.
 
-If fixed-width types are new, think of each one as a container of a set size. A `u8` is a small cup that holds the numbers zero through 255; a `u64` is a large barrel. Pour in one more number than a cup can hold and the overflow does not spill on the floor, it wraps back around to zero, so the type's size is a budget you choose when you declare the variable.
+Think of each fixed-width type as a container of a set size. A `u8` is a small cup holding zero through 255; a `u64` is a large barrel. Overflow wraps around to zero, so the type's size is a budget you choose at the declaration.
 
-Come from C and this naming may feel like a revelation in miniature. Where C says `int`, Coral says `i32`, and the number is the truth: thirty-two bits, exactly, on every compiler and every machine. C's `int` is "at least sixteen bits, often thirty-two, larger than short", a moving target you cannot trust. A program built on `i32` can trust it absolutely. Come from JavaScript, where every number is a double until something overflows, and the fixed width is the whole game: you decide how big your numbers get, and the type enforces that decision. When the standard library counts elements it uses `usize`. When it stores a nanosecond count that can never be negative in principle but might in practice, it uses `i64` to be safe. The type names tell you exactly how much headroom you have.
+Where C says `int`, Coral says `i32`, and the number is the truth: thirty-two bits on every compiler and machine. C's `int` is a moving target. Come from JavaScript, where every number is a double until something overflows, and the fixed width is the whole game. The type names tell you exactly how much headroom you have.
 
-The floating-point types are `f32` and `f64`, single and double precision IEEE 754. The boolean type is `bool`, holding `true` or `false` and nothing else, no truthiness. An `if` requires a `bool`; it will not quietly accept an integer the way C does, and that one rule deletes an entire class of C bugs where `if (x = 5)` compiles and runs forever true. The character type is `char`, holding a 32-bit Unicode code point, as the core syntax chapter described. The byte type is `u8`, one byte of UTF-8 text. And `void` is the absence of a value, used for functions that return nothing and for generic pointers.
+The floating-point types are `f32` and `f64`, single and double precision IEEE 754. `bool` holds `true` or `false` and no truthiness; an `if` requires a `bool`, which deletes the C bug where `if (x = 5)` runs forever true. `char` is a 32-bit Unicode code point, `u8` is a byte, and `void` is the absence of a value.
 
-The primitive types are the units the compiler reasons about. It knows their sizes, ranges, alignment, and behavior, because each is a fixed, known type. The limits of the fixed widths are the limits of the types, and the `limits` module spells them out as constants. But the type itself states the most important limit: its name is its width, and its width is its range.
+The primitive types are the units the compiler reasons about, because each is fixed and known. It knows their sizes, ranges, alignment, and behavior, and the `limits` module spells out the limits as constants. The type's name is its width, and its width is its range.
 
-The width is not a theoretical detail. It is the budget the program lives within, and a concrete example makes the budget visible. A `u8` holds zero through 255. A counter that marches through temperatures, byte counts, or buffer offsets in a `u8` stops counting at 255: the next increment cannot be represented, so the value wraps to zero. In practice that makes a byte counter the wrong type for anything that can exceed two hundred fifty-five, a file's size, a list's length, a delay in milliseconds. The type's name is the warning, and you can read it in the declaration before the program ever runs. The standard library's instinct is to use `u64` for anything that counts, precisely because the budget is so roomy that the width never becomes the bug: four billion billion is not a real-world count of anything in one program. The width you choose is the risk you accept, and the fixed-width types make that choice visible and deliberate instead of accidental.
+The width is the budget the program lives within. A `u8` counter stops at 255 and wraps to zero, so it is the wrong type for a file's size, a list's length, or a delay in milliseconds. The standard library uses `u64` for anything that counts. The width you choose is the risk you accept, and the fixed-width types make it visible.
 
-Come from a scripting language and this is the first real difference in how work happens. A dynamic number grows until it cannot; a typed number is decided at the declaration, and the program's correctness depends on the decision matching the data. Keep this example in your head: a counter of lines in a file, declared `u64`, is safe for any file that exists. The same counter declared `u8` breaks at line two hundred fifty-six, silently, without a single error message. Fixed widths are not a restriction imposed on the programmer; they are knowledge handed to the reader. The width in the name says exactly how far the value may go, and the compiler checks the arithmetic that would go further.
+A dynamic number grows until it cannot; a typed number is decided at the declaration, and correctness depends on that decision matching the data. A line counter declared `u64` is safe for any file; declared `u8`, it breaks silently at line 256. Fixed widths are knowledge handed to the reader, and the compiler checks the arithmetic that would go further.
 
 9.4 Type Inference
 
 Coral is explicit about types, but it infers where explicitness buys nothing. Two mechanisms do the inferring: the `var` declaration and type parameters.
 
-The `var` declaration infers a variable's type from its initializer. A variable declared with `var` takes its type from the expression that initializes it, and the compiler substitutes the inferred type at the declaration. Ranged `for` loops use `var` for the loop variable, inferring each element's type from the collection being iterated:
+The `var` declaration infers a variable's type from its initializer, and the compiler substitutes that inferred type at the declaration. Ranged `for` loops use `var` for the loop variable, inferring each element's type from the collection:
 
     for (var arg : args) _fprintOne(1, arg);
 
-The variable `arg` is typed by the argument pack, one type per element, and the compiler knows that type before it checks the loop body. The `var` declaration is inference where the code fully determines the type; the compiler just fills it in.
+The variable `arg` is typed by the argument pack, one type per element, and the compiler knows that type before it checks the loop body. The `var` declaration is inference where the code fully determines the type.
 
-Coral uses no Hindley-Milner inference, and no global type inference reconstructs a program's types from its uses. Inference here is local and declaration-directed: a type is stated, or inferred from a stated expression, and the compiler never guesses a type across a whole program. The philosophy decides this. The type system's rigor comes from the types being visible, and a type the compiler guesses is a type the reader does not see. The `var` declaration infers at the point where the type is already written in the code, the initializer, so the reader sees the initializer and knows the type.
+Coral uses no Hindley-Milner inference, and no global inference reconstructs a program's types from its uses. Inference is local and declaration-directed: a type is stated, or inferred from a stated expression. A type the compiler guesses is a type the reader does not see, so inference happens only where the type is already written in the initializer.
 
 A worked example shows where inference stops. These declarations are explicit where it matters and inferred where the initializer decides:
 
@@ -55,21 +55,21 @@ A worked example shows where inference stops. These declarations are explicit wh
     var total = a + b;        // the type of a + b, which is the operand type
     var item = lookup(key);   // the return type of lookup
 
-Each `var` names its type through its initializer, and every initializer is a stated expression. A reader can retype each `var` just by reading the line, because the type is visible in the code it is inferred from. The compiler never assembles a type from a distant use, and the reader never has to run the inference to understand the program. Inference is a convenience for writing the obvious type, and the obvious type is always right there in the text.
+Each `var` names its type through its initializer, and every initializer is a stated expression. A reader can retype each `var` by reading the line. The compiler never assembles a type from a distant use, and the reader never has to run the inference to understand the program.
 
-A common beginner mistake is to read `var` as "this variable can hold anything" or "the type can change later." It cannot. `var count = 42u;` fixes `count` to the unsigned type of that literal for its whole life; a later `count = "hello";` is a type error, not a reassignment of meaning. `var` saves you from writing the type once, at the declaration, and never makes the type flexible after that.
+A common beginner mistake is to read `var` as "this variable can hold anything" or "the type can change later." It cannot. `var count = 42u;` fixes `count` to that unsigned type for its whole life; a later `count = "hello";` is a type error. `var` saves writing the type once, at the declaration, and never makes the type flexible.
 
 9.5 Generic Types
 
-A generic type takes other types as parameters. Before the syntax, the why. The syntax only makes sense against the problem it solves, and the problem is the tedium and danger of writing the same structure over and over.
+A generic type takes other types as parameters. The syntax only makes sense against the problem it solves: the tedium and danger of writing the same structure over and over.
 
-Picture the standard library without generics. A vector of u64s is a struct with three fields: a pointer to the elements, a length, and a capacity. A vector of string views has exactly the same shape, pointer, length, capacity, with the pointer's target type and the methods' parameter types changed. A vector of dates is the same again, names swapped. Without generics the library would write that struct out a third and fourth time, three copies of the same code, three copies of the same bug to fix three times. Or it would cheat with void pointers and casts, buying one shared copy at the price of every type check, on every element, on the way in and out of the vector. Neither is acceptable for a language whose rigor lives in the types.
+Without generics, a vector of u64s and a vector of string views would be separate structs with the same shape, or one struct cheating with void pointers and casts. The first means copies of the same bug to fix three times; the second gives up every type check. Neither suits a language whose rigor lives in the types.
 
-The generic is the third option. Write the structure once with a placeholder for the element type, then let the compiler stamp out a concrete version for each type the program actually uses. That placeholder is the type parameter. By convention the first is T, the second U, meaning "the element type, whatever it turns out to be." The generic declaration is a recipe, not a finished type. It becomes a real type the moment the program names the parameter.
+The generic is the third option. Write the structure once with a placeholder for the element type, then let the compiler stamp out a concrete version for each type used. The generic declaration is a recipe, not a finished type; it becomes real when the program names the parameter.
 
-If that still feels abstract, picture a cookie cutter. The cutter is shaped like a vector, but it has a hole where the element type goes. Pressing it into `u32` dough gives a `Vec<u32>`; pressing the same cutter into `str` dough gives a `Vec<str>`. One cutter, many cookies, and each cookie is a complete, ordinary type.
+Picture a cookie cutter shaped like a vector, with a hole where the element type goes. Pressing it into `u32` dough gives a `Vec<u32>`; pressing it into `str` dough gives a `Vec<str>`. One cutter, many complete, ordinary types.
 
-Here are three real recipes from the standard library. `Vec` comes from `collections/vec.crl`, `Pair` from `collections/iter.crl`, `Arr` from `collections/arr.crl`. Only a field has been elided, where the ellipsis shows; everything else is written exactly as it appears in the library:
+Here are three real recipes from the standard library. `Vec` comes from `collections/vec.crl`, `Pair` from `collections/iter.crl`, `Arr` from `collections/arr.crl`. Only a field is elided where the ellipsis shows:
 
     pub struct Vec<T>
     {
@@ -93,79 +93,79 @@ Here are three real recipes from the standard library. `Vec` comes from `collect
         ...
     }
 
-Read the three slowly, field by field. This is the whole idea of generics, and it fits in these lines.
+Read the three slowly, field by field. This is the whole idea of generics.
 
-`Vec` takes one parameter: the element type. That parameter shows up in the fields. `T* data` is a pointer to elements of whatever T is, and when the program uses `Vec<u32>` the line becomes `u32* data`, the length and capacity stay `usize`, and every method that mentions T follows the same substitution. The parameter is a knob the declaration leaves open, and the use turns it.
+`Vec` takes one parameter: the element type. `T* data` becomes `u32* data` for `Vec<u32>`, while length and capacity stay `usize`, and every method that mentions T follows the same substitution. The parameter is a knob the declaration leaves open, and the use turns it.
 
-`Pair` takes two parameters, the types of its two fields, and each field is one: `T first` and `U second`. Two knobs, and the use names both. A pair of a string view and a number is `Pair<str, u64>`, and the substitution fills both fields.
+`Pair` takes two parameters, the types of its two fields: `T first` and `U second`. A pair of a string view and a number is `Pair<str, u64>`, and the substitution fills both fields.
 
-`Arr` is the interesting one, because it takes two different kinds of parameters. The first, T, is a type: `T data[N]` is an array of elements of T. The second, N, is not a type at all. It is a *count*, a compile-time value, and the declaration shows the difference in its own syntax: a type parameter is named where a type goes, and a value parameter is named where a value goes, between the brackets of the array. `Arr<u8, 64>` is an array of sixty-four bytes, and the compiler knows the count before the program runs. The count is part of the type: `Arr<u8, 64>` and `Arr<u8, 128>` are two different types with two different sizes, and the compiler checks them as such.
+`Arr` takes two kinds of parameters. T is a type: `T data[N]`. N is a count, a compile-time value named where a value goes. `Arr<u8, 64>` is an array of sixty-four bytes, and the compiler knows the count before the program runs. `Arr<u8, 64>` and `Arr<u8, 128>` are different types with different sizes.
 
-A generic type becomes a real type at the use. `Vec<u32>` picks the element type. `Map<str, i64>` names the key type and the value type. `Arr<u8, 64>` names the element and the count. Writing the type name and putting arguments between the angle brackets is called instantiating the generic, and each instantiation is a complete, ordinary type, nothing about `Vec<u32>` is unfinished or provisional, and nothing is slower than a hand-written struct.
+A generic type becomes a real type at the use. `Vec<u32>` picks the element type, `Map<str, i64>` names key and value types, and `Arr<u8, 64>` names element and count. Naming the type with arguments between angle brackets is instantiating the generic, and each instantiation is a complete, ordinary type, no slower than a hand-written struct.
 
-Instantiation happens at compile time, so the arguments must be knowable at compile time. The count in `Arr<u8, N>` cannot be a value computed at runtime: `Arr<u8, someVariable>` fails the moment the compiler cannot know `someVariable`'s value while building. That is what "compile-time value" means in this chapter, and the compiler refuses to guess.
+Instantiation happens at compile time, so the arguments must be knowable then. `Arr<u8, someVariable>` fails the moment the compiler cannot know the value while building. That is what "compile-time value" means, and the compiler refuses to guess.
 
-Generic types compose, and composition is where they earn their keep. A vector of maps is `Vec<Map<str, u64>>`. A map of vectors is `Map<str, Vec<f64>>`. A pair of containers is `Pair<Vec<u8>, Vec<u8>>`. Read nested generics from the inside out: the innermost argument is the element, the next layer is the container, and each layer is a substitution into the layer around it. The standard library composes freely, a JSON value's object field is a vector of pairs of a string view and a `JsonValue`. Written once, the composition reads as its own description:
+Generic types compose. A vector of maps is `Vec<Map<str, u64>>`; a map of vectors is `Map<str, Vec<f64>>`. Read nested generics from the inside out: the innermost argument is the element, and each layer is a substitution into the layer around it. A JSON value's object field is a vector of pairs of a string view and a `JsonValue`:
 
     Vec<Pair<str, JsonValue>> fields;   // a JSON object's list of name-value pairs
 
-Read from the inside out, exactly as the paragraph above says: `JsonValue` is the element, `Pair` names it along with its string key, and `Vec` is the list. The type states the structure of a JSON object in one line. No comment needed, the nested generics are the description. The type system checks the composition layer by layer, and a mismatch at any layer is an error at that layer.
+Read from the inside out: `JsonValue` is the element, `Pair` names it with its string key, and `Vec` is the list. The type states the structure of a JSON object in one line. The type system checks the composition layer by layer, and a mismatch at any layer is an error there.
 
-Because each instantiation is its own type, the checks stay exact. A `Vec<u64>` is not interchangeable with a `Vec<str>`; a function that takes one will not accept the other. A void-pointer design would happily absorb that confusion at runtime. Here it is a compile error. The recipe is shared; the results are distinct.
+Because each instantiation is its own type, the checks stay exact. A `Vec<u64>` is not interchangeable with a `Vec<str>`, and a function that takes one will not accept the other. A void-pointer design would absorb that confusion at runtime; here it is a compile error. The recipe is shared; the results are distinct.
 
-Why this matters: this exactness is what stops the bug where a vector of the wrong element type is passed to a function written for another. In a void-pointer design that mistake is a runtime corruption; here it is a sentence in the error that names both container types at the line where they meet.
+This exactness stops the bug where a vector of the wrong element type is passed to a function written for another. In a void-pointer design that is runtime corruption; here it is a sentence naming both container types at the line where they meet.
 
-The same pattern covers the chapter's other generics. `Option<T>` is a recipe for "a T or nothing." `Result<T, E>` is a recipe for "a T or an E." `Map<K, V>` is a recipe for key-value storage. Each is a struct like the vec, with type parameters in its fields and methods, and each is instantiated, checked, and compiled the same way. The type parameter is how the language writes a structure once, honestly, instead of copying it forever.
+The same pattern covers the other generics. `Option<T>` is a recipe for "a T or nothing"; `Result<T, E>` for "a T or an E"; `Map<K, V>` for key-value storage. Each is a struct with type parameters in its fields and methods, instantiated and checked the same way.
 
 9.6 Monomorphization
 
-Generic types and functions are compiled by monomorphization: each use with concrete arguments produces a concrete instance. The compiler takes the generic definition, substitutes the concrete arguments for the parameters, and compiles the result as an ordinary, concrete type. `Vec<u32>` and `Vec<f64>` are two different compiled types, each generated from the one `Vec` definition.
+Generic types and functions are compiled by monomorphization: each use with concrete arguments produces a concrete instance. The compiler substitutes the arguments for the parameters and compiles the result as an ordinary type. `Vec<u32>` and `Vec<f64>` are two compiled types from one `Vec` definition.
 
-Watch one substitution happen, because the whole mechanism is just substitution. The generic definition has a field `T* data` and a method that takes a value of `T`. When the program uses `Vec<u32>`, the compiler writes out a copy of the definition with every `T` replaced by `u32`: the field becomes `u32* data`, the length and capacity stay `usize`, `push` takes a `u32`, `pop` returns a `u32`. That copy is now an ordinary struct, indistinguishable from one a programmer wrote by hand with u32 in all the right places, no hidden type, no runtime tag, no table saying what the elements are. When the same program uses `Vec<f64>`, the substitution runs again, producing a second ordinary struct with `f64` everywhere. One recipe, two finished types.
+The mechanism is just substitution. The generic definition has a field `T* data` and a method taking a `T`. For `Vec<u32>`, the compiler writes a copy with every `T` replaced by `u32`, with no hidden type, runtime tag, or element table. For `Vec<f64>`, the substitution runs again. One recipe, two finished types.
 
-Monomorphization is where the generic's checks happen. The compiler checks each instance against its arguments: the substituted body must be valid for the concrete type. It checks the same generic body once per concrete use, and a use with incompatible arguments fails at the use, the concrete type that breaks is the one that gets the error, on the line that named it. The generality is not unchecked; each instance is checked on its own terms. Write `Vec<str>`, and the vec's push copies by value, so the compiler instantiates the vec body with `str` standing in for T, checks that copies, comparisons, and storage all work for a string view, and only then lets the program continue.
+Monomorphization is where the generic's checks happen. The compiler checks each instance against its arguments: the substituted body must be valid for the concrete type. A use with incompatible arguments fails at the use, on the line that named it. Each instance is checked on its own terms.
 
-Monomorphization is also where generics get their performance. Each instance is a concrete type with concrete fields and concrete operations, and the compiler optimizes it like any other concrete type. A `Vec<u32>`'s push is a `u32` push: the machine's mov and a length increment, no indirection, no table lookup, no clever sharing with the f64 version. The compiled code is exactly what the compiler would have produced for a hand-written u32 vector. Generality in the source, specialization in the binary.
+Monomorphization is also where generics get their performance. Each instance has concrete fields and operations, and the compiler optimizes it like any other concrete type. A `Vec<u32>`'s push is a `u32` push, with no indirection and no table lookup. Generality in the source, specialization in the binary.
 
-The cost is code size. Each instance is real code, and every instance is paid for in the binary. A program that uses `Vec` with four element types carries four copies of the vec machinery; a program that uses a heavy generic function with fifty types carries fifty bodies. The standard library accepts that trade, speed and simplicity for size, because the alternative, one generic body consulting type information at runtime, is slower, and because most programs use a handful of instances, not fifty. It is the chapter's theme again: generics buy compiled specialization, and the specialization is code you can see in the binary.
+The cost is code size. Each instance is real code, and a program using `Vec` with four element types carries four copies of the machinery. The standard library accepts that trade, speed and simplicity for size, because the alternative, one body consulting type information at runtime, is slower, and most programs use a handful of instances.
 
-The compiler may share an instance when the arguments are the same. Two functions that both use `Vec<u32>` compile to the same `Vec<u32>`, and the compiler reuses the instance instead of duplicating it. The sharing is a compile-time detail, invisible in the program, and it is why a program with many generic uses does not necessarily grow without bound: the instances are unique types, not unique copies.
+The compiler may share an instance when the arguments are the same. Two functions that both use `Vec<u32>` compile to the same instance instead of duplicating it. The sharing is a compile-time detail, and it is why many generic uses do not grow the binary without bound: instances are unique types, not unique copies.
 
 9.7 Variance
 
-The guide's section on generics asks about variance: how a generic type relates to its arguments as the arguments relate to each other. Coral's answer is short, because the design chooses it. Coral's generics are invariant, and the language has no subtyping.
+The guide asks about variance: how a generic type relates to its arguments as the arguments relate to each other. Coral's answer is short, because the design chooses it. Generics are invariant, and the language has no subtyping.
 
-Variance concerns subtyping. If one type is a subtype of another, then a generic over the subtype and a generic over the supertype relate in some way. Coral has no subtyping, so the question has no subject. An `i32` is not a subtype of `i64`, a struct is not a subtype of another struct, and there is no inheritance hierarchy where one type is a kind of another. The absence of subtyping is the C model, and Coral keeps it because it is the simple model: a type is exactly what it is.
+Variance concerns subtyping. If one type is a subtype of another, a generic over the subtype and one over the supertype relate in some way. Coral has no subtyping, so the question has no subject. An `i32` is not a subtype of `i64`, and there is no inheritance hierarchy. A type is exactly what it is.
 
-The consequence: generics are invariant. A `Vec<i32>` is a `Vec<i32>`, and it is not interchangeable with a `Vec<i64>` or with a `Vec<i32>` of some "parent type," because there is no parent type. Invariance is what makes the generic checks straightforward. When a function takes a `Vec<i32>`, it receives a `Vec<i32>`, and the compiler checks the argument against the exact type. There is no covariance to reason about, because there is no subtyping to be covariant about. Come from Java or C#, where a `List<Circle>` can be passed where `List<Shape>` is expected, and that freedom is exactly what Coral does not give you. The reason is safety: with covariance, code could put a `Square` into what it believes is a `List<Shape>` and later find a `Circle` inside.
+The consequence: generics are invariant. A `Vec<i32>` is not interchangeable with a `Vec<i64>` or with a `Vec<i32>` of some parent type, because there is no parent type. When a function takes a `Vec<i32>`, the compiler checks the argument against that exact type. Come from Java or C#, where a `List<Circle>` can be passed where `List<Shape>` is expected, and that freedom is exactly what Coral does not give you: with covariance, code could put a `Square` into what it believes is a `List<Shape>`.
 
-The guide's other variance terms meet the same fate. Use-site variance, where a use of a generic names a relationship, and declaration-site variance, where the generic's definition declares one, both need a subtype relationship to describe. Coral has neither, and needs neither, because the type system is exact: types are what they are, and a generic over a type is a generic over exactly that type.
+Use-site and declaration-site variance both need a subtype relationship to describe. Coral has neither, and needs neither, because the type system is exact: a generic over a type is a generic over exactly that type.
 
 9.8 Where Requirements Are Checked
 
-The previous section's generic was unbounded: a `Vec<T>` works with any type at all, because it only stores and copies its elements and never asks them to do anything particular. But a generic function often needs its parameter to be able to do something, to have an `area`, to compare itself, to serialize itself, and then "any type" stops being a promise the body can trust. The function needs to say: I do not care which type you are, but you must be able to do this.
+The previous section's generic was unbounded: a `Vec<T>` works with any type because it only stores and copies its elements. But a generic function often needs its parameter to do something, to have an `area`, to compare, to serialize, and then "any type" stops being a promise the body can trust.
 
-Most languages answer with a bound written on the parameter, `T : Comparable`, `T : Shape`. Coral does not spell bounds. That is a deliberate narrowing, not an omission. Instead, the requirement is a property of the body, and the compiler checks it at each instantiation.
+Most languages answer with a bound written on the parameter, `T : Comparable`, `T : Shape`. Coral does not spell bounds. That is a deliberate narrowing: the requirement is a property of the body, checked at each instantiation.
 
-The problem turns concrete the moment a generic body calls a method on its parameter. Take a function that finds the largest area among a collection of shapes. The body calls `area()` on every element, and "shape" is a type parameter. Coral accepts the definition, the body is written against operations the parameter is expected to have, and defers the check to the instantiation. Instantiate the function for `Circle` and the compiler confirms that `Circle` has `area`. Instantiate it for a type without `area` and the compiler refuses, naming the type and the missing operation at the point of use. The body trusts the operation, and every use must supply it. A requirement that was only documentation would fail at runtime; an operation used in a generic body fails at compile time, on the line that broke it.
+The problem turns concrete when a generic body calls a method on its parameter. A function that finds the largest area calls `area()` on every element. Coral accepts the definition and defers the check to instantiation. Instantiate for `Circle` and the compiler confirms `area` exists; instantiate for a type without it and the compiler refuses, naming the type and the missing operation. A requirement that was only documentation would fail at runtime; an operation used in a generic body fails at compile time.
 
-So the "bound" in Coral is not a clause on the signature. It is the set of operations the body performs. That carries a cost and a benefit. The benefit: no bound grammar to learn, and the requirement is always exactly what the code uses, no more, no less. The cost: the requirement is invisible from the signature alone, so a reader learns it by reading the body, and a well-written generic documents its expectations in a comment.
+So the "bound" in Coral is not a clause on the signature. It is the set of operations the body performs. The benefit: no bound grammar to learn, and the requirement is exactly what the code uses. The cost: it is invisible from the signature, so a reader learns it from the body, and a well-written generic documents its expectations.
 
-When you do want a requirement visible in the signature, Coral's way is to pass the capability by value rather than name it as a bound. The standard library sorts a vector not by requiring a `Sortable` trait but by taking a comparison function as a parameter, `bool less(T, T)`. The signature then states, in the parameter list, exactly what the generic needs from its elements, and the caller supplies the knowledge. The trait object (`any Shape`) is the other way to put a capability into a type, but it is a concrete type you choose to accept, not a bound on a type parameter. Both make the requirement explicit. Neither is a `T : Trait` clause.
+To make a requirement visible in the signature, Coral passes the capability by value rather than naming it as a bound. The standard library sorts a vector by taking a comparison function, `bool less(T, T)`, so the parameter list states what the generic needs. A trait object (`any Shape`) is the other way to put a capability into a type, but it is a concrete type you choose to accept, not a bound on a parameter.
 
-Simply put, Coral does not write down what a generic needs; it checks what the body actually uses. If the body calls `area()`, then `area()` is the requirement, verified the moment the generic is used with a concrete type. The signature stays clean, and the body is the specification.
+Coral does not write down what a generic needs; it checks what the body actually uses. If the body calls `area()`, then `area()` is the requirement, verified when the generic is used with a concrete type. The signature stays clean, and the body is the specification.
 
 9.9 Type Aliases
 
-A type alias names an existing type. The `typedef` declaration creates the alias, giving a name to a type that already exists. The name is just an alternative spelling of the type.
+A type alias names an existing type. The `typedef` declaration gives a name to a type that already exists, and the name is just an alternative spelling.
 
     pub typedef SigHandler = void(i32);
 
-The `typedef` names the function type a signal handler has: a function taking an `i32` and returning nothing. `SigHandler` is shorthand for that type, and the two names mean the same type. The standard library uses `typedef`s to name function types, which show up throughout the library as parameters and fields. A `void(void*) func` is written plain when it is short, and given a `typedef` name when it is long or reused often.
+The `typedef` names the function type a signal handler has: a function taking an `i32` and returning nothing. `SigHandler` is shorthand for that type, and the two names mean the same type. The standard library uses `typedef`s to name function types that appear as parameters and fields.
 
-A `typedef` is a pure alias: it introduces no new type. A variable of type `SigHandler` and a variable of type `void(i32)` have the same type, and the two are interchangeable. The alias exists for the reader, so a complex type is named and readable, and for the writer, so the complex type is written once. The alias is the documentation of the type. That sets up the contrast with the next section: a `typedef` is the same type under a nicer name, so nothing is protected. A `distinct` is a new type under an honest name, so everything is.
+A `typedef` is a pure alias: it introduces no new type. A variable of type `SigHandler` and one of type `void(i32)` have the same type and are interchangeable. The alias exists so a complex type is named and written once. A `typedef` is the same type under a nicer name, so nothing is protected; a `distinct` is a new type under an honest name, so everything is.
 
-The standard library's most used handle is the generic pointer, worth meeting here because it appears throughout the language's conventions. A small helper module wraps a raw pointer in a struct of exactly one field, a `rawptr`:
+The standard library's most used handle is the generic pointer, worth meeting because it appears throughout the language's conventions. A small helper module wraps a raw pointer in a struct of exactly one field, a `rawptr`:
 
 
     pub struct Any
@@ -195,26 +195,26 @@ The standard library's most used handle is the generic pointer, worth meeting he
         return a;
     }
 
-The struct's point is twofold. First, the pointer gains a name and a home for its operations. The module's `wrap` function builds an `Any` from a `rawptr`. The `ptr` method reads the pointer back. `isNull` tests whether it holds null. The generic `as<T>` method returns the pointer viewed as `T*`, the typed extraction, the cast with the type named in the call, the thread function in the concurrency chapter reading its argument with `arg.as<SumJob>()`. Second, because the handle is its own type rather than a spelling of `void*`, nothing converts implicitly. A `rawptr` becomes an `Any` only through `wrap`, and an `Any` becomes a typed pointer only through `as<T>` or `ptr`. Every translation is written. That is the honest meaning of the name `any`: it holds anything, and the program states, at the boundary, what anything becomes. It is not `void*` protected, the struct carries no provenance, no bounds, no type tag. But unlike a `rawptr` it has a surface for the operations the handle needs, and unlike a `typedef`, that surface exists because the type is a distinct struct and not an alias.
+The struct's point is twofold. First, the pointer gains a name and a home for its operations: `wrap` builds an `Any` from a `rawptr`, `ptr` reads it back, `isNull` tests it, and `as<T>` returns the pointer viewed as `T*`. Second, because the handle is its own type rather than a spelling of `void*`, nothing converts implicitly. Every translation is written. It carries no provenance or type tag, but unlike a `rawptr` it has a surface for the operations the handle needs, and unlike a `typedef` that surface exists because it is a distinct struct.
 
 9.10 Distinct Types
 
-A distinct type creates a new type from an existing one. The `distinct` declaration names a type and states the type it is built from. The new type is not interchangeable with the base type, even though the two share a representation.
+A distinct type creates a new type from an existing one. The `distinct` declaration names a type and the type it is built from. The new type is not interchangeable with the base type, even though the two share a representation.
 
-The standard library is full of them, and they make a good introduction because each one exists for a real reason. These are the actual declarations from the library:
+The standard library is full of them, and each exists for a real reason. These are the actual declarations:
 
     pub distinct File = i32;         // io/fs.crl
-    pub distinct Dir = void*;        // io/fs.crl
+    pub distinct Dir = rawptr;        // io/fs.crl
     pub distinct TcpSocket = i32;    // io/net.crl
-    pub distinct Thread = void*;     // concurrent/thread.crl
+    pub distinct Thread = rawptr;     // concurrent/thread.crl
 
-A `File` is an `i32` under the hood, but it is not an `i32` in the type system. `TcpSocket` is an `i32` too. A file descriptor, a TCP socket, a process id, and a raw error integer can all be the same number, and a program that mixes them up has bugs. The distinct type makes the distinction real. A function that takes a `File` does not accept a raw `i32`, and it does not accept a `TcpSocket` either, even though both are `i32`s wearing different colors. The compiler refuses to pass a socket where a file is expected, and the confusion it refuses has ended many C programs.
+A `File` is an `i32` under the hood, but not an `i32` in the type system. `TcpSocket` is an `i32` too. A file descriptor, a TCP socket, a process id, and a raw error integer can all be the same number, and mixing them up has bugs. The distinct type makes the distinction real: a function that takes a `File` accepts neither a raw `i32` nor a `TcpSocket`.
 
-The distinct type is the newtype of other languages, and it is Coral's answer to the guide's question about newtypes. It wraps a representation and refuses to mix with it, and the compiler checks the distinction, so the confusion it prevents is prevented at compile time. It differs from a one-field `struct` in a subtle way. A `struct` creates a type whose fields you reach through `.field`. A `distinct` gives you back the base type's operations: you can compare two `File`s, pass a `File` to a function expecting the platform's `i32` through a cast, and otherwise treat the handle as the integer it is, just not a raw one.
+The distinct type is the newtype of other languages, and Coral's answer to the guide's question about newtypes. It wraps a representation and refuses to mix with it. It differs from a one-field `struct`: a `struct` gives fields reached through `.field`, while a `distinct` gives back the base type's operations. You can compare two `File`s and otherwise treat the handle as the integer it is, just not a raw one.
 
-A distinct type has its base type's representation, size, and layout, so it crosses the FFI boundary for free and costs nothing at runtime. The standard library uses it exactly there: the file, thread, and socket types are distinct wrappers around platform handles, so the library's API is typed while the platform's handles stay raw. When the library must hand the OS an int, it casts the distinct type to its base. The conversion is explicit, visible, and honest.
+A distinct type has its base type's representation, size, and layout, so it crosses the FFI boundary for free and costs nothing at runtime. The standard library uses it exactly there: file, thread, and socket types are distinct wrappers around platform handles, so the API is typed while the handles stay raw. When the library must hand the OS an int, it casts explicitly.
 
-A small story shows the distinct type doing its job, and it is the classic one. A program handles two kinds of numbers that look identical: a price in dollars and a price in euros, both `u64` cents. Written as plain u64s, nothing stops the program from adding a dollar price to a euro price, storing one where the other was expected, or comparing them as though they were the same currency. Each of those mistakes is a real bug, the kind that ships as a wrong invoice. Written as distinct types, the confusion becomes impossible:
+A small story shows the distinct type doing its job. A program handles two numbers that look identical: a price in dollars and a price in euros, both `u64` cents. Written as plain u64s, nothing stops adding a dollar price to a euro price. Written as distinct types, the confusion becomes impossible:
 
     pub distinct USD = u64;   // cents
     pub distinct EUR = u64;   // cents
@@ -223,27 +223,27 @@ A small story shows the distinct type doing its job, and it is the classic one. 
     EUR vat = EUR(700);
     EUR total = subtotal + vat;   // error: USD is not EUR
 
-The compiler rejects the addition line, which is the entire point: the values have the same bits, the same size, the same speed, and different types. A confusion the writer would have made silently is now a refusal, on the line that made it. The distinct type charges a small cost: saying which is which at every boundary. In exchange, you never pay the large cost of one currency mixed with another.
+The compiler rejects the addition line, which is the point: the values have the same bits, size, and speed, and different types. A confusion the writer would have made silently is now a refusal on the line that made it. The distinct type charges a small cost, saying which is which at every boundary, and saves the large cost of one currency mixed with another.
 
-In plain words, a `distinct` type is a sticky label. Under the label, `USD` is just a `u64`, and it costs nothing extra at run time. But the compiler reads the label, and it refuses to mix two values whose labels disagree. The label is the whole safety mechanism.
+In plain words, a `distinct` type is a sticky label. Under the label, `USD` is just a `u64`, and it costs nothing extra at run time. But the compiler reads the label and refuses to mix values whose labels disagree. The label is the whole safety mechanism.
 
 The other side of the distinct type is the boundary where the handle must become a raw integer for the platform. The library walks to the edge and casts:
 
     File cfg = openConfig();
     i32 raw = (i32)cfg;      // the distinct File, reduced to its base at the FFI boundary
-    libc.close(raw);
+    libc::close(raw);
 
-The cast is the visible translation the section promised. Inside the program the handle is a `File`; at the platform's edge it becomes the `i32` the platform wants, and the conversion is written in the code. Nothing converts on its own, section9.16 again, so the distinct type stays distinct until the line that says otherwise, and that line is a cast any reader can see. The boundary cast complements the currency refusal: the type keeps the program safe from itself, and it keeps the platform's door open with a written pass.
+The cast is the visible translation. Inside the program the handle is a `File`; at the platform's edge it becomes the `i32` the platform wants. Nothing converts on its own, so the distinct type stays distinct until the line that says otherwise, and that line is a cast any reader can see.
 
-That is the contrast with the previous section's typedef, and the two belong side by side. A `typedef` gives a complex type a shorter name, and the name is the same type: a `SigHandler` and its underlying function type are interchangeable, because the alias protects nothing. A `distinct` gives a new name a new identity, and it enforces that identity: a `USD` is not a `EUR`, even though both are u64s. The alias is a convenience for the reader; the distinct type is a safety boundary for the program. The standard library uses both, in the right places, `typedef` where a name is all that is needed, `distinct` where mixing must be impossible.
+The contrast with the previous section's typedef is worth keeping side by side. A `typedef` gives a complex type a shorter name, and the name is the same type, so the alias protects nothing. A `distinct` gives a new name a new identity and enforces it: a `USD` is not a `EUR`, even though both are u64s. The alias is a convenience for the reader; the distinct type is a safety boundary for the program.
 
-A common mistake is to reach for `distinct` when a `typedef` is all you wanted, or the other way around. Ask one question: must the two values be impossible to confuse? If yes, `distinct`; if you only wanted a shorter, clearer spelling of an existing type, `typedef`. Reaching for `distinct` everywhere adds casts at every boundary for safety you did not need, and reaching for `typedef` where safety was needed leaves the exact confusion you meant to prevent.
+A common mistake is to reach for `distinct` when a `typedef` is all you wanted, or the other way around. Ask one question: must the two values be impossible to confuse? If yes, `distinct`; if you only wanted a shorter spelling, `typedef`. Reaching for `distinct` everywhere adds casts for safety you did not need, and reaching for `typedef` where safety was needed leaves the confusion you meant to prevent.
 
 9.11 Opaque Types
 
-An opaque type hides its implementation. The user sees the type's name and its operations; the internals are not part of what the type shows you. "Opaque" is exactly the right word: you can see through glass to the mechanism, but an opaque type is frosted. You know its size and its behavior, never its insides.
+An opaque type hides its implementation. The user sees the type's name and its operations; the internals are not part of what the type shows you. You know its size and behavior, never its insides.
 
-In Coral the opaque pattern is a struct whose fields are a fixed block of storage, written for the implementation's benefit rather than the user's. `Regex` is the canonical example. This is the real declaration from `text/regex.crl`:
+In Coral the opaque pattern is a struct whose fields are a fixed block of storage, written for the implementation's benefit. `Regex` is the canonical example, and this is the real declaration from `text/regex.crl`:
 
     pub struct Regex
     {
@@ -254,13 +254,13 @@ In Coral the opaque pattern is a struct whose fields are a fixed block of storag
         usize findBufCap;
     }
 
-The regex holds eight void pointers and a handful of working fields: an opaque handle to the platform's compiled pattern, a flag saying whether `compile` has run, the number of capture groups, and a buffer for `find` results. The fields are storage, sized to hold the implementation, and the methods interpret that storage. `compile` writes the pattern in; `matches` reads it. The user of `Regex` never touches the storage. The user calls `compile`, `matches`, and `find`, and the type's meaning is its methods. Open `regex.crl` and you will see what goes inside `impl`, but no program that merely uses `Regex` ever needs to know. That is the point.
+The regex holds eight void pointers and a handful of working fields: an opaque handle to the platform's compiled pattern, a flag saying whether `compile` has run, the number of capture groups, and a buffer for `find` results. The fields are storage, and the methods interpret it. The user calls `compile`, `matches`, and `find`, and never touches the storage. That is the point.
 
-An opaque type is the boundary between a library and its clients. The library knows the implementation; the client knows the interface. Because the type hides the details, the library can change them, swap the eight pointers for two `u64`s, move the buffer elsewhere, without changing the type, and the client's code never depended on them. The opacity is encapsulation, expressed through the type. For the C programmer, the `rawptr impl[8]` pattern is the one from the classic "handle" APIs. `FILE*` is an opaque handle hiding exactly this idea. Coral just makes the handle a type you can name, size, and store by value.
+An opaque type is the boundary between a library and its clients. The library knows the implementation; the client knows the interface. Because the type hides the details, the library can change them without changing the type. The opacity is encapsulation expressed through the type. For the C programmer, `rawptr impl[8]` is the classic handle pattern behind `FILE*`, and Coral makes the handle a type you can name, size, and store by value.
 
 9.12 The Sum Type: Enums
 
-The enum is the sum type: a type whose value is one of a named set of alternatives. The alternatives are the variants, and the enum's value is exactly one variant at a time. It is called a "sum" type because a value is the sum of its possibilities. It is this, or it is that, exactly one at a time.
+The enum is the sum type: a type whose value is one of a named set of alternatives. The alternatives are the variants, and the value is exactly one at a time. It is a "sum" type because a value is the sum of its possibilities: this, or that, exactly one.
 
 Here is a real enum from the standard library: the log level from `io/log.crl`.
 
@@ -273,19 +273,19 @@ Here is a real enum from the standard library: the log level from `io/log.crl`.
         Fatal
     }
 
-A `LogLevel` value is one of the five levels, exactly. The enum names the variants, and the type's values are those variants. The enum is how Coral says "one of these": a log level is one of five, a file is one of the platform's kinds, an opcode is one of the instruction set, a JSON value is one of the kinds of JSON. Think of every time a dynamic program has checked `if (kind == "circle") ... else if (kind == "square")`. The strings carry the alternatives, and a typo quietly invents a new one. An enum removes the strings and the typos: the alternatives are written once, the compiler knows them all, and a value cannot be anything else.
+A `LogLevel` value is one of the five levels, exactly. The enum names the variants, and the type's values are those variants. It is how Coral says "one of these": a log level is one of five, an opcode one of the instruction set. Think of a dynamic program checking `if (kind == "circle")`. The strings carry the alternatives, and a typo quietly invents a new one. An enum removes the strings and the typos: the alternatives are written once, the compiler knows them all, and a value cannot be anything else.
 
-If you are new to enums, the plain version is this: an enum is a list of the only allowed values, written down once and given a name. Instead of remembering that the number 2 means "green," you write `TrafficLight::Green` and the compiler checks the spelling. The type is the list.
+If you are new to enums, the plain version is this: an enum is a list of the only allowed values, written once and given a name. Instead of remembering that 2 means "green," you write `TrafficLight::Green` and the compiler checks the spelling. The type is the list.
 
-A `variant` is the same idea with payloads. Where an enum's alternatives are bare names, a variant's alternatives each carry their own fields, so a variant value is a tag plus the data for that tag. The variants chapter develops them in full; here the enum stands in as the representative sum type, and the only difference is whether the alternatives carry data.
+A `variant` is the same idea with payloads. Where an enum's alternatives are bare names, a variant's alternatives each carry their own fields, so a variant value is a tag plus the data for that tag. The variants chapter develops them in full; here the enum stands in as the representative sum type.
 
-The enum is a tagged union in the sense that the type carries its alternatives, and it is the honest sum type: the alternatives are exhaustive, and a value is always one of them. The compiler knows them all, which is what makes exhaustive checking possible. A `switch` over an enum, described in the control flow chapter, is checked against the enum's variants, and a switch that misses one is reported. Exhaustiveness is the type system's rigor applied to the sum type: add a sixth level tomorrow, and every switch that handled the old five is flagged for the miss. A dynamic program simply does the wrong thing. Exhaustiveness is the sum type's superpower.
+The enum is the honest sum type: the alternatives are exhaustive, and a value is always one of them. The compiler knows them all, which makes exhaustive checking possible. A `switch` over an enum is checked against its variants, and one that misses a variant is reported. Add a sixth level tomorrow, and every switch that handled the old five is flagged. A dynamic program simply does the wrong thing.
 
     if (level == LogLevel.Error) { ... }
 
-The enum's variants are compared with the equality operator, and the compiler checks those comparisons. An enum value cannot be a variant that is not in the type, because the type's values are its variants, and the compiler knows every one.
+The enum's variants are compared with the equality operator, and the compiler checks those comparisons. An enum value cannot be a variant not in the type, because the type's values are its variants, and the compiler knows every one.
 
-The alternative the enum replaces shows why it deserves a type of its own. A protocol handler wants to say what it is reading: plain text, a JSON document, or raw bytes. Written with strings, the kind could be anything, "json", "Json", "JSON", a typo, a value from a file, and every comparison site must remember the exact spelling, forever, everywhere. Written as an enum, the alternatives exist once, the compiler knows them all, and the handler's `if (kind == ProtocolKind.Json)` is checked:
+A protocol handler wants to say what it is reading: plain text, a JSON document, or raw bytes. Written with strings, the kind could be anything: "json", "Json", a typo, a value from a file, and every comparison site must remember the exact spelling. Written as an enum, the alternatives exist once and the comparison is checked:
 
     pub enum ProtocolKind
     {
@@ -301,11 +301,11 @@ The alternative the enum replaces shows why it deserves a type of its own. A pro
         // Text needs no special branch: both others were visited
     }
 
-A value of the enum is one of the three, no more. The typos, the aliases, and the invented fifth format do not exist, because the type does not contain them. The compiler knows the alternatives, and the day a fourth format is added, every site that handles kinds becomes a compile-time question again, flagged by the very checks that once skipped over the unknown case. The enum is how the type system says "this value is one of these," with the list kept in one place and enforced everywhere.
+A value of the enum is one of the three, no more. The typos, aliases, and invented fifth format do not exist, because the type does not contain them. The day a fourth format is added, every site that handles kinds is flagged by the checks that once skipped the unknown case. The list is kept in one place and enforced everywhere.
 
 9.13 The Product Type: Structs
 
-The struct is the product type: a type that holds several values together, each with a name. It is called a "product" type because a value combines all its fields, a time is this many seconds and this many nanoseconds, and the combination carries every field at once. The struct is the shape of the language's data, and it is the collection of everything this book has built.
+The struct is the product type: a type that holds several values together, each with a name. It is a "product" because a value combines all its fields, a time is this many seconds and this many nanoseconds, and the combination carries every field at once. The struct is the shape of the language's data.
 
 This one is the `Timespec` from the time module:
 
@@ -315,23 +315,23 @@ This one is the `Timespec` from the time module:
         i64 nsec;
     }
 
-`Timespec` is the product of a second and a nanosecond. The struct's fields are the components, and the struct's value is the tuple of those components. The product type composes: a struct's fields are types, and a field can be a struct, a vector, an option, a result, an enum. `JsonValue` is a product of a type and the fields for each kind of value, and the product composes the sum, the vectors, and the strings into one type. An enum says which kind of JSON this is, and the fields hold whatever that kind needs, an `i64` for an integer, an `f64` for a float, a `Vec<str>` for a string array, exactly one of which is meaningful for the marked kind.
+`Timespec` is the product of a second and a nanosecond. The struct's fields are the components, and its value is the tuple of those components. The product type composes: a field can be a struct, a vector, an option, a result, or an enum. `JsonValue` is a product of a type and the fields for each kind of value. The enum says which kind of JSON this is, and the fields hold what that kind needs, exactly one of which is meaningful.
 
-The struct's fields are named, and the naming is the whole point. The unnamed product type, the tuple, exists in other languages, and Coral's chapter on functions explained why it does not exist here: an unnamed aggregate is a value without meaning. The struct names its fields, and the names carry the meaning. The product is built from named components, and those names are part of the type. `ts.sec` and `ts.nsec` tell a reader which is which without a comment; `ts[0]` and `ts[1]` would force everyone to guess.
+The struct's fields are named, and the naming is the whole point. The unnamed product type, the tuple, exists in other languages, but an unnamed aggregate is a value without meaning. `ts.sec` and `ts.nsec` tell a reader which is which without a comment; `ts[0]` and `ts[1]` would force everyone to guess.
 
-Why this matters: names are the cheapest documentation a type can carry. A reader who sees `ts.sec` never has to remember whether seconds come first; the field name answers before the comment is read. This is the same reason the chapter's `struct` is the product of choice for anything that will travel, the name is what survives the trip.
+Names are the cheapest documentation a type can carry. A reader who sees `ts.sec` never has to remember whether seconds come first; the field name answers before the comment is read. The name is what survives the trip.
 
 9.14 Null Safety
 
-The guide's section on null safety asks about nullable types and the operations around them. Coral's answer is a type it already has: the option type, described in the error handling chapter. Its answer about null is stated in the core syntax chapter.
+The guide asks about nullable types and the operations around them. Coral's answer is a type it already has: the option type. Its answer about null is stated in the core syntax chapter.
 
-A pointer in Coral can be null, and the pointer's type does not say whether it is. A `T*` may point at a `T`, and it may be null. This is the C model, and Coral keeps it because pointers are the raw memory interface, and the raw interface cannot promise non-null. When you hold a `void*` from the OS, or a pointer into a buffer the platform gave you, "may be null" is the honest truth. No amount of type machinery changes what the OS does.
+A pointer in Coral can be null, and the pointer's type does not say whether it is. A `T*` may point at a `T`, and it may be null. Coral keeps the C model because pointers are the raw memory interface, and the raw interface cannot promise non-null. When you hold a `void*` from the OS or a pointer into a platform buffer, "may be null" is the honest truth.
 
-The option type is the safe alternative when absence is a real possibility that should be checked. An `Option<T>` is either `Some`, carrying a `T`, or `None`, carrying nothing, and the type forces the caller to handle both. A map's lookup returns an option, and the caller handles `Some` and `None` before using the value. The option is checked absence, and the type makes the check visible. And it is a *value*, not a pointer: `Option<u64>` says plainly "I hold a number, or I hold nothing," and the compiler makes you look inside before you use the number. The pointer demands the same shape of reasoning, but the option spells it in the type instead of in a comment, and the compiler enforces what the comment only suggested. In `HashMap`, `Set`, and the many library lookup functions, the option is the language's own way of saying "look first, and handle both answers."
+The option type is the safe alternative when absence is a real possibility that should be checked. An `Option<T>` is either `Some`, carrying a `T`, or `None`, carrying nothing, and the type forces the caller to handle both. A map's lookup returns an option, and the caller handles both cases before using the value. The option is checked absence, and it is a value, not a pointer: `Option<u64>` says plainly "I hold a number, or I hold nothing," and the compiler makes you look inside.
 
-In plain words, an `Option` is a box that is either holding a value or visibly empty. A nullable pointer is different: it is a claim that something is at an address, and the claim can be wrong with no warning in the type. The `Option` puts the emptiness in the type, so an empty box is not a surprise you discover later, it is a fact the compiler makes you look at before you reach inside.
+In plain words, an `Option` is a box that is either holding a value or visibly empty. A nullable pointer is a claim that something is at an address, and the claim can be wrong with no warning in the type. The `Option` puts the emptiness in the type, so an empty box is a fact the compiler makes you look at before you reach inside.
 
-Worth walking through once, because it is the everyday shape of absent values in Coral. A phone directory maps names to numbers. Asking for a name that is not in the directory has no answer, and the lookup says so in its type:
+A phone directory maps names to numbers. Asking for a name that is not in the directory has no answer, and the lookup says so in its type:
 
     Option<u64> findNumber(str name);
 
@@ -341,40 +341,40 @@ Worth walking through once, because it is the everyday shape of absent values in
     else
         println("no such entry");
 
-The function returns no sentinel, no 0 meaning "not found," no null, no -1. It returns a value whose type says "a number, or nothing," and the `if` is where the program decides what each answer means. C's alternative is a return code plus an out-parameter, or a special value that could be a real phone number, or a null pointer that could be a real address. Every one is a convention the next programmer must learn by reading. The option is the same convention, written in the type and checked by the compiler, and a caller that forgets to look inside is refused at the call. Absence is not an accident of a value; it is the type's statement, and the type is checked.
+The function returns no sentinel, no 0 meaning "not found," no null, no -1. It returns a value whose type says "a number, or nothing," and the `if` decides what each answer means. C's alternative is a return code plus an out-parameter, a special value that could be a real number, or a null pointer that could be a real address. The option is the same convention written in the type and checked by the compiler, and a caller that forgets to look inside is refused at the call.
 
-Coral has no non-null assertion operator and no safe navigation operator. No symbol asserts a pointer is non-null mid-expression, and no operator navigates a chain of may-be-absent values. Their absence is the same choice as the absence of tuples and closures: operations are explicit methods, and the explicit methods are the readable form. The option's methods, `unwrap` with its assertion and `unwrapOr` with its default, cover the cases the operators serve, and they say what they do.
+Coral has no non-null assertion operator and no safe navigation operator. No symbol asserts a pointer is non-null mid-expression, and no operator navigates a chain of may-be-absent values. Their absence is the same choice as the absence of tuples and closures: operations are explicit methods. `unwrap` with its assertion and `unwrapOr` with its default cover the cases the operators serve, and they say what they do.
 
 9.15 What Coral Does Not Have
 
 The guide's type system section names several advanced types. Worth stating plainly which ones Coral does not have. The honesty is the point, and the boundaries are the design.
 
-No higher-kinded types. A Coral generic is parameterized by types and compile-time values, and no type takes a type constructor as a parameter. The higher-kinded abstractions, the functors and monads of type theory, do not exist here. This is neither accident nor lack: a `Vec<u32>` is a concrete, checkable, optimizable thing, and Coral chose the concrete thing over the abstraction you would stack on top of it.
+No higher-kinded types. A Coral generic is parameterized by types and compile-time values, and no type takes a type constructor as a parameter. The functors and monads of type theory do not exist here. A `Vec<u32>` is a concrete, checkable, optimizable thing, and Coral chose the concrete thing over the abstraction you would stack on top of it.
 
-No existential types. A type that hides its type argument, an option of some hidden `T`, is not a Coral type. Types are fully named, and a type's arguments are part of its name. When you see `Vec<...>` in a signature, the argument is written right there; no Coral type says "I am a vec of something, I just will not say what."
+No existential types. A type that hides its type argument, an option of some hidden `T`, is not a Coral type. Types are fully named, and a type's arguments are part of its name. When you see `Vec<...>` in a signature, the argument is written right there.
 
-No phantom types, types that parameterize a value without affecting its representation. No dependent types, types that depend on values. No refinement types, types that restrict a value by a predicate. A `u64` is a `u64`; Coral has no "positive u64" and no "even u64." A function that needs to enforce such a rule does what functions have always done: document it and check it.
+No phantom types, types that parameterize a value without affecting its representation. No dependent types, types that depend on values. No refinement types, types that restrict a value by a predicate. A `u64` is a `u64`; Coral has no "positive u64" and no "even u64." A function that needs such a rule documents it and checks it.
 
-Every absence is the same absence. Coral's types are concrete, named, and checked, and the advanced abstractions belong to languages that reason about types abstractly. Coral reasons about concrete programs, and its types are the concrete kinds. The guide's "if applicable" is the right tag: these types are not applicable, and the language does not pretend otherwise. For the beginner the absence is a mercy, no functor hieroglyphics to learn before the first program runs. For the C programmer it is a familiar floor, the one you already stand on, with safety added above it.
+Every absence is the same absence. Coral's types are concrete, named, and checked, and the advanced abstractions belong to languages that reason about types abstractly. Coral reasons about concrete programs. For the beginner the absence is a mercy, no functor hieroglyphics to learn before the first program runs; for the C programmer it is a familiar floor with safety added above it.
 
 9.16 Implicit Conversions
 
-The guide's section on type conversions asks for the full matrix of implicit coercions. Coral's matrix is empty, and the emptiness is the design.
+The guide asks for the full matrix of implicit coercions. Coral's matrix is empty, and the emptiness is the design.
 
-Coral does not inherit C's implicit conversion rules. Across the entire standard library, every conversion between distinct types is an explicit cast, and no operation leans on an implicit conversion. The codebase casts a `u32` to `u64` before a shift, casts a `char` to `u8` and then to `i32` for a memory fill, and casts seconds to `f64` before adding them to nanoseconds. The casts are everywhere, and the reason is that there are no implicit conversions to rely on. If you have ever debugged C code where a `short` silently wrapped into the sign bits of an `int`, or where `x / y` on integers truncated what you meant as a fraction, you have felt the cost of implicit conversion. Coral declines to charge it.
+Coral does not inherit C's implicit conversion rules. Across the standard library, every conversion between distinct types is an explicit cast. The codebase casts a `u32` to `u64` before a shift, and casts seconds to `f64` before adding them to nanoseconds. If you have debugged C where a `short` silently wrapped into the sign bits of an `int`, you have felt the cost of implicit conversion. Coral declines to charge it.
 
-The full matrix of implicit coercions is therefore empty. A `u8` does not convert to a `u16`. A `u32` does not convert to a `u64`. An `i32` does not convert to an `i64`, and an integer does not convert to a float. The widening conversions other languages perform silently are explicit casts in Coral, and so are the narrowing conversions. Nothing converts silently, because an invisible conversion is one that goes unnoticed, and an unnoticed conversion is a bug waiting for a value it cannot represent. The rule is strict and total, harder at first, easier forever after: the compiler never shuffles a value's type behind your back.
+The full matrix of implicit coercions is empty. A `u8` does not convert to a `u16`; a `u32` does not convert to a `u64`; an integer does not convert to a float. Widening and narrowing are both explicit casts. An invisible conversion goes unnoticed, and an unnoticed conversion is a bug waiting for a value it cannot represent. The compiler never shuffles a value's type behind your back.
 
-The one implicit adaptation is the literal. An integer literal takes the type its context requires: a plain `0` is a `u64` where a `u64` is expected, a plain `2` in `cap * 2` is a `u64`, and a plain `16` passed to an allocation function is the count the function expects. Literals adapt because a literal is a value the writer means, not a stored value with a fixed type, and this adaptation is the only implicit typing the language performs. And even this is a rule, not chaos: literals adapt, variables never.
+The one implicit adaptation is the literal. An integer literal takes the type its context requires: a plain `0` is a `u64` where a `u64` is expected. Literals adapt because a literal is a value the writer means, not a stored value with a fixed type. And even this is a rule: literals adapt, variables never.
 
-Here is the beginner trap this rule sets. Because a literal adapts, `u64 big = 5;` compiles fine. But a *stored* `u32` does not widen, so the next line does not:
+Here is the beginner trap this rule sets. Because a literal adapts, `u64 big = 5;` compiles fine. But a stored `u32` does not widen, so the next line does not:
 
     u32 small = 5;
     u64 big = small;      // error: u32 is not u64, write (u64)small
 
-The literal `5` could be either type, so it takes what the context asks. The variable `small` already has a type, and the compiler will not quietly change it for you. That is the whole distinction, and it catches people who expect "smaller numbers always fit in bigger boxes."
+The literal `5` could be either type, so it takes what the context asks. The variable `small` already has a type, and the compiler will not quietly change it. That distinction catches people who expect smaller numbers always to fit in bigger boxes.
 
-The empty matrix is the type-first principle applied to conversion. The rigor lives in the explicit casts: a program that converts is a program that says it converts. The reader sees every type change, and the compiler checks every one.
+The empty matrix is the type-first principle applied to conversion. The rigor lives in the explicit casts: a program that converts says it converts, the reader sees every type change, and the compiler checks every one.
 
 9.17 Explicit Conversions
 
@@ -386,37 +386,31 @@ The C-style cast is the type in parentheses before the expression:
     (char)('A' + digit - 10)
     (const T*)self.data
 
-The parenthesized type converts the expression to that type. The cast covers every conversion: widening and narrowing, sign changes, float to integer, integer to pointer, pointer to integer, and the pointer conversions. Each cast states its target type, and the compiler checks each for validity. When the standard library hands an OS call an integer, it writes `(i32)descriptor`; when it changes a shift width, it writes `(u64)hi`. The parentheses are everywhere, and their meaning never changes: "I know the type changes here, deliberately, now."
-
-    cast<u8*>(&raw)
-
-The `cast` is the same cast in a different syntax, naming the type argument with angle brackets. The two forms are the language's two styles, the C style and the generic style, and both appear in the standard library. The `cast<T>` form is a habit you inherit from the generics era of the codebase. A beginner reads the parenthesized form instantly; a veteran slots the angle brackets into the generic grammar.
-
-Explicit conversions put the responsibility on the writer. A narrowing conversion, one that can change the value, is written with a cast, and the cast is the writer's statement that the conversion is intended. The reader sees the cast and knows the type is changing on purpose. Visible conversions are the point: nothing converts silently, and everything that can lose data is marked.
+The parenthesized type converts the expression to that type. The cast covers every conversion: widening and narrowing, sign changes, float to integer, integer to pointer, pointer to integer, and pointer conversions. Each cast states its target type, and the compiler checks it for validity. The parentheses always mean the same thing: "I know the type changes here, deliberately, now." 
 
 9.18 Integer and Floating-Point Promotion
 
-The promotions deserve their own section because the guide names them, and Coral's answer is the empty one again. A Coral expression has no promotion step.
+The guide names the promotions, and Coral's answer is the empty one again. A Coral expression has no promotion step.
 
-C's integer promotions do not exist in Coral. A `char` does not widen to an `int` before arithmetic, and the narrow types do not widen to make room for an operation. No usual arithmetic conversion brings two operands of different types to a common type: a `u32` times a `u64` is not a `u64` times a `u64` unless the writer makes it one. In C, `a` and `b` of type `u32` multiply, and if the product overflows, the overflow is silent because `int` was busy promoting itself somewhere down the chain. Coral's arithmetic stays exactly in the type you declared, which makes overflow your responsibility and your eyes the overflow detector.
+C's integer promotions do not exist in Coral. A `char` does not widen to an `int` before arithmetic, and the narrow types do not widen to make room for an operation. No usual arithmetic conversion brings two operands of different types to a common type: a `u32` times a `u64` is not a `u64` times a `u64` unless the writer makes it one. Coral's arithmetic stays exactly in the type you declared, which makes overflow your responsibility.
 
-The standard library writes its mixed-type arithmetic explicitly. The random generator shifts the high half by casting it to `u64` first, `(u64)hi` shifted by `32u`, so the shift operates at `u64`. The duration conversions cast seconds to `f64` before the float arithmetic, so the arithmetic is float arithmetic. The rule the library follows is the rule the type system enforces: an operation's operands have one type, and the writer states it.
+The standard library writes its mixed-type arithmetic explicitly. The random generator shifts the high half by casting it to `u64` first, `(u64)hi` shifted by `32u`, so the shift operates at `u64`. The duration conversions cast seconds to `f64` before the float arithmetic. The rule is the type system's: an operation's operands have one type, and the writer states it.
 
-The suffixed literal is the shorthand. A shift by `32u` writes the literal's type into the literal, so the operation is uniform without a cast. A multiplication by two, where the literal adapts to its context, is uniform by adaptation. Suffixed and unsuffixed literals are the two ways a literal participates in typed arithmetic, and neither is a promotion. When you see `0xffffffffffffffff` in a mask, the literal's size spells the widening.
+The suffixed literal is the shorthand. A shift by `32u` writes the literal's type into the literal, so the operation is uniform without a cast. A multiplication by two, where the literal adapts to its context, is uniform by adaptation. Suffixed and unsuffixed literals are the two ways a literal participates in typed arithmetic, and neither is a promotion.
 
 The absence of promotion belongs to the same design as the empty coercion matrix. An expression's type is the type of its operands, and the operands' types are written. No hidden widening, no silent common type, no arithmetic whose result type surprises the reader. The rigor lives in what is written, and what is written is what runs.
 
 9.19 String Conversion
 
-The guide's section on conversions names string conversion protocols. Coral's string conversions are the functions of the formatting module and the view operations.
+The guide names string conversion protocols. Coral's string conversions are the functions of the formatting module and the view operations.
 
-A value converts to text through the formatting functions. The format functions handle integers, unsigned integers, and floats; the pad and join functions shape the text. The conversion is explicit, a function call that returns a string, and the function's name states what it does. `fmt::formatUint(255, 16, false)` builds the hexadecimal text `"ff"`, `fmt::formatInt` handles the signed forms, `fmt::formatFloat` the doubles. The standard library uses these everywhere it turns a number into a message, a counter into a log line, a byte count into a size, a nanosecond into a printed duration, and each is a plain call that says what it converts.
+A value converts to text through the formatting functions. The format functions handle integers, unsigned integers, and floats; the pad and join functions shape the text. The conversion is explicit, a function call that returns a string, and the function's name states what it does. `fmt::formatUint(255, 16, false)` builds `"ff"`, `fmt::formatInt` handles signed forms, and `fmt::formatFloat` the doubles.
 
-Text converts to a view or a string through the constructors. A string literal is a view, a C string is a view through `fromCstr`, and a buffer with a length is a view through `fromParts`. A view becomes a string through the string's `from` constructor, which copies the text into an owning buffer. The conversions are constructors, and the constructors are the explicit form. The two directions are the chapter's whole lesson: value-to-text is a formatting call, text-to-value is a parsing call, and nothing happens by multiplication or adjacency the way `"" + x` pretends to.
+Text converts to a view or a string through the constructors. A string literal is a view, a C string is a view through `fromCstr`, and a buffer with a length is a view through `fromParts`. A view becomes a string through the string's `from` constructor, which copies the text into an owning buffer. Value-to-text is a formatting call, text-to-value is a parsing call, and nothing happens by adjacency the way `"" + x` pretends to.
 
-The standard library's text conversions compose. The print functions convert their arguments to text and write them, using the formatting machinery per argument. The parsers convert text to values, using the parsing machinery. Each conversion is a named function, checked by the compiler, and each says in its signature what it converts and what it produces. The string conversion protocols are the functions, and the functions are explicit.
+The standard library's text conversions compose. The print functions convert their arguments to text and write them, using the formatting machinery per argument. The parsers convert text to values, using the parsing machinery. Each conversion is a named function, checked by the compiler, and each says in its signature what it converts and produces.
 
-A worked example ties the conversions together, the way real programs use them. A table of powers prints with the numbers right-aligned into columns of six characters, and every step is an explicit call:
+A worked example ties the conversions together. A table of powers prints with the numbers right-aligned into columns of six characters, and every step is an explicit call:
 
     for (u64 i = 1; i <= 10; i++)
     {
@@ -426,7 +420,7 @@ A worked example ties the conversions together, the way real programs use them. 
               fmt::padRight(fmt::formatUint(sq, 10, false), 6, ' '));
     }
 
-Each number converts with `fmt::formatUint`, which says what it does in its name, the value, the base, and whether the digits should be uppercase, and the columns are shaped with `fmt::padRight`, which pads the converted text to a width with a chosen padding character. Nothing in the line happens by magic. No string-concatenation operator pretends to turn a number into text, and no "add a string to a number" hides the conversion. The number becomes text because a function was called that makes text, and the reader sees both facts, convert, then pad, in the same line where they happen. The conversions are visible, and visibility is the point the chapter has been making since the empty matrix: a type change in Coral is never an accident, because it is never unspoken.
+Each number converts with `fmt::formatUint`, which says in its name, value, base, and case what it does, and the columns are shaped with `fmt::padRight`. Nothing happens by magic. No string-concatenation operator pretends to turn a number into text. The number becomes text because a function was called that makes text, and the reader sees convert and pad in the same line. A type change in Coral is never an accident, because it is never unspoken.
 
 9.20 Compile-Time Type Reasoning
 
@@ -438,9 +432,9 @@ The `comptime` block is Coral's compile-time machinery, and it gives the type sy
         if (T == f64) { ... }
     }
 
-The comparison `T == i32` asks whether the type parameter is `i32`, and the block selects the code for that case. The checks run at compile time, the compiler knows the type, and only the selected case is compiled. The `comptime` type dispatch is how the generic print functions select the formatting for each argument type, and it is the language's compile-time type reasoning. Inside a generic function, `T` is a compile-time fact, the compiler fills it in before the program runs, and `comptime` is the dialog box where the body says "if that fact is this, do this; if it is that, do that."
+The comparison `T == i32` asks whether the type parameter is `i32`, and the block selects the code for that case. The checks run at compile time, the compiler knows the type, and only the selected case is compiled. `comptime` type dispatch is how the generic print functions select the formatting for each argument type.
 
-Seeing the machinery in the actual shape the standard library uses helps, because the pattern is a recognizer: the print machinery checks the concrete type of each argument and chooses the formatter that knows that type. In miniature, the same recognizer looks like this:
+Seeing the machinery in the shape the standard library uses helps, because the pattern is a recognizer: the print machinery checks the concrete type of each argument and chooses the formatter that knows that type. In miniature, the same recognizer looks like this:
 
     comptime
     {
@@ -450,27 +444,27 @@ Seeing the machinery in the actual shape the standard library uses helps, becaus
         // no match: a compile-time error naming the type
     }
 
-When the compiler instantiates the print function for a `u64` argument, it evaluates the block with `T` known to be `u64`, takes the first branch, and compiles exactly that call, the other branches vanish before the program exists. No branch is decided by looking at a value at runtime. The decision is made about the type, at build time, and the surviving code is plain, direct, and fast. A reader meets `comptime` and knows the whole block is a build-time decision wearing the shape of a runtime decision.
+When the compiler instantiates the print function for a `u64` argument, it evaluates the block with `T` known to be `u64`, takes the first branch, and compiles exactly that call; the other branches vanish before the program exists. No branch is decided by looking at a value at runtime. The decision is about the type, at build time, and the surviving code is plain and fast.
 
-The `comptime` block is not reflection, because it does not run at runtime. The compiler resolves the type comparisons before the program runs, and the compiled program contains only the selected code. No runtime type tag, no runtime lookup, no value that carries its type. The `comptime` machinery is the type system's power at the compile-time stage, and the runtime stays clean of type machinery. A reader sees `comptime` and knows the code around it disappears before execution: what survives is exactly one branch, chosen by a fact the compiler already knows.
+The `comptime` block is not reflection, because it does not run at runtime. The compiler resolves the type comparisons before the program runs, and the compiled program contains only the selected code. No runtime type tag, no runtime lookup, no value that carries its type. What survives is one branch, chosen by a fact the compiler already knows.
 
 9.21 Static and Dynamic, and the Boundary
 
-The guide's section on dynamic typing aspects asks about reflection, runtime type checking, and the hazards of the `typeof` and `instanceof` operators. Coral has none of these, and the boundary is a real one, worth stating as such.
+The guide asks about reflection, runtime type checking, and the hazards of `typeof` and `instanceof`. Coral has none of these, and the boundary is a real one.
 
-Coral has no reflection. A running program cannot ask a value its type, enumerate a type's fields, or invoke a method by name, because the compiled program has no type information at runtime. No runtime type checking either, because the types are checked at compile time and nothing about them survives. No `typeof` and no `instanceof` operator, so the hazards they pose, reflection that reaches into a program's internals, runtime type errors that evade the compiler, do not exist because the operators do not exist. A dynamic program's `if (x instanceof Foo)` runs at 3 a.m. in production, and the "impossible" case is what the operators exist to catch. Coral's `x` already has one type, known at compile time, and the question is answered before the binary ships.
+Coral has no reflection. A running program cannot ask a value its type, enumerate a type's fields, or invoke a method by name, because the compiled program has no type information at runtime. No runtime type checking either, because the types are checked at compile time and nothing about them survives. No `typeof` and no `instanceof`, so reflection into a program's internals and runtime type errors that evade the compiler do not exist. A dynamic program's `if (x instanceof Foo)` runs at 3 a.m. in production; Coral's `x` already has one type, known at compile time.
 
-Coral is a statically typed language with no dynamic typing aspects, and the boundary is deliberate. The rigor is at compile time, the runtime is the compiled program, and the type system does not leak into it. The compiler answers whether a value has a type, or what type it has, before the program runs, and the answer is the type the program was checked against.
+Coral is a statically typed language with no dynamic typing aspects, and the boundary is deliberate. The rigor is at compile time, the runtime is the compiled program, and the type system does not leak into it. The compiler answers what type a value has before the program runs, and the answer is the type the program was checked against.
 
 9.22 Protocol-Oriented Design
 
-The guide's section on dynamic typing asks about duck typing and structural typing. Coral's answer is protocol-oriented design: behavior is defined by protocols, and the type system checks the protocols.
+The guide asks about duck typing and structural typing. Coral's answer is protocol-oriented design: behavior is defined by protocols, and the type system checks them.
 
-Duck typing is the runtime version of the idea that a value's behavior is what matters: if it quacks like a duck, it is a duck, and the check happens when the method is called. In a duck-typed language you can pass anything with an `area()` to the code that wants an `area()`; the failure, a string with no `area()`, appears at the call, at runtime. Coral has no duck typing, because its checks happen at compile time and a value's behavior is established by its type.
+Duck typing is the runtime version of the idea that a value's behavior is what matters: if it quacks like a duck, it is a duck, and the check happens when the method is called. You can pass anything with an `area()`; the failure, a string with no `area()`, appears at the call, at runtime. Coral has no duck typing, because its checks happen at compile time and behavior is established by the type.
 
-Protocol-oriented design is the compile-time version of the idea. A protocol is a named set of rules, and a type's conformance to the protocol is declared and checked. The trait is the protocol, the implementation block establishes conformance, and the generic function over the trait calls the protocol's methods. This is the previous chapter's trait machinery, and it answers the duck-typing question: the duck-ness is a declared fact, checked by the compiler. The shape of a duck is checked when it is defined, not when it quacks.
+Protocol-oriented design is the compile-time version. A protocol is a named set of rules, and a type's conformance is declared and checked. The trait is the protocol, the implementation block establishes conformance, and the generic function over the trait calls the protocol's methods. The duck-ness is a declared fact, checked when the type is defined, not when it quacks.
 
-A minimum of machinery makes the design concrete. A storefront calls its payment providers through one door: every provider can `charge(cents)` and can answer `canCancel(order)`. The door is a trait, the protocol, and each provider declares that it implements it:
+A storefront calls its payment providers through one door: every provider can `charge(cents)` and answer `canCancel(order)`. The door is a trait, the protocol, and each provider declares that it implements it:
 
     trait PaymentProvider
     {
@@ -498,51 +492,51 @@ The checkout function takes the protocol, not a provider:
         provider.charge(cents);
     }
 
-The duck-typed version of the same call site would check that `charge` exists when the call runs, and the check would be needed for every provider, forever, at runtime. The Coral version declares both conformance blocks once, and the checkout call is checked at build time: `checkout(paypal, 2500)` compiles because `PayPal` declares the trait, and it would not compile if some third provider, or a string, were passed by accident. The protocol is the one door, the types state that they fit through it, and the compiler is the doorman who checks every visitor before the shop opens. The duck is checked at its definition, and the quack is part of the signed declaration.
+The duck-typed version of the same call site would check that `charge` exists when the call runs, for every provider, forever, at runtime. The Coral version declares both conformance blocks once, and the checkout call is checked at build time: `checkout(paypal, 2500)` compiles because `PayPal` declares the trait, and it would not compile if a third provider, or a string, were passed by accident. The compiler is the doorman.
 
-The structural typing version of the idea, where a type qualifies by having the right shape without declaring it, is not Coral's model. Coral's conformance is nominal: a type implements a trait because it has an implementation block, not because it happens to have the right methods. That conformance is explicit, and the compiler checks the explicit form. If two structs both happen to have a field called `name`, neither implements the `Named` trait unless one says so; a coincidence of shape proves nothing. The protocol is the interface, the implementation is the declaration, and the checking is where the rigor lives.
+The structural typing version, where a type qualifies by having the right shape without declaring it, is not Coral's model. Coral's conformance is nominal: a type implements a trait because it has an implementation block, not because it happens to have the right methods. If two structs both have a field called `name`, neither implements `Named` unless one says so; a coincidence of shape proves nothing.
 
 9.23 What a Type Is
 
-A type is an agreement between the program and the compiler. When a value has a type, the compiler knows what can be done with it: what operations exist, what memory it occupies, what it can become. The agreement runs both ways. The type promises the compiler what the value is, and the compiler promises the program that every use of the value is checked against that promise. A program that compiles is one whose values were used according to their types.
+A type is an agreement between the program and the compiler. When a value has a type, the compiler knows what can be done with it: what operations exist, what memory it occupies, what it can become. The type promises the compiler what the value is, and the compiler promises the program that every use is checked against that promise.
 
 The type is also a promise to the reader. A signature like
 
     Result<Config, ParseError> loadConfig(str path)   // and its call sites
 
-tells the reader everything the code needs to know before the body is read: the function takes text, and it produces either a configuration or a parse error. The reader can see the shape of the program, the paths and the outcomes, without executing a line. This is the sense in which the type system is the documentation: the types say what the program means, and the prose says why. When you read `Option<u64>` as a return type, the function tells you the truth it could have hidden: sometimes there is no answer, and you must look. Reading the type tells you what the body is bound to do.
+tells the reader everything needed before the body is read: the function takes text, and produces either a configuration or a parse error. The types say what the program means, and the prose says why. Reading `Option<u64>` as a return type tells you the truth the function could have hidden: sometimes there is no answer, and you must look.
 
-The type is finally a promise the machine keeps. A `u64` is sixty-four bits, an `f64` is the IEEE double format, a pointer is an address, a struct is its fields laid out in order. The type determines the representation, and the representation determines the cost. The rigor of the type system is not academic; the same rigor decides how many bytes a value occupies and how the hardware treats it. The type is where the language's abstraction meets the machine's reality, and the meeting is exact.
+The type is finally a promise the machine keeps. A `u64` is sixty-four bits, an `f64` is the IEEE double format, a pointer is an address, a struct is its fields laid out in order. The type determines the representation, and the representation determines the cost. The type is where the language's abstraction meets the machine's reality, and the meeting is exact.
 
 9.24 The Type Checker at Work
 
-The compiler's type checker is the enforcement arm of the type system. It walks the program, giving every expression a type, and verifies that every use matches what its type allows. The checking is the machine that makes the types real.
+The compiler's type checker is the enforcement arm of the type system. It walks the program, giving every expression a type, and verifies that every use matches what its type allows.
 
-The checker gives each expression the type the rules say it has. A literal has its type, a variable has its declared type, a function call has its return type, an operator has the type its operands produce. The checker then verifies the seams: an assignment requires the same type on both sides, a function argument requires the declared parameter type, an operation requires the operand types its rules demand. A mismatch is an error at the seam, reported with the code that caused it.
+The checker gives each expression the type the rules say it has. A literal has its type, a variable its declared type, a function call its return type, and an operator the type its operands produce. It then verifies the seams: an assignment requires the same type on both sides, an argument requires the declared parameter type, and an operation requires the operand types its rules demand. A mismatch is an error at the seam, reported with the code that caused it.
 
 A worked example shows a mismatch caught. The vector's `count()` method returns a `usize`, and a function that uses it where a pointer is expected cannot stand:
 
     usize n = v.count();      // correct: usize from usize
     u64* p = v.count();       // error: usize is not u64*, and no conversion exists
 
-The second line fails because a `u64` is not a pointer to `u64`, and Coral has no implicit conversion that would pretend it is. The checker reports the mismatch at the assignment, where the types meet, and the error names the types involved. The reader sees the error and knows the fix: the program meant a pointer, or it meant a number, and the types say which. In a dynamic language that same second line would run, and then crash, or worse, corrupt memory, at the first `*p`. Here it never ships.
+The second line fails because a `u64` is not a pointer to `u64`, and Coral has no implicit conversion that would pretend it is. The checker reports the mismatch at the assignment and names the types involved. The reader knows the fix: the program meant a pointer, or it meant a number. In a dynamic language the same line would run, then crash or corrupt memory at the first `*p`.
 
 In plain words, the type checker is a careful proofreader. It reads every line and asks one question wherever two values meet, an assignment, a call, an operation: "are these the same type?" If the answer is no, it stops and says exactly which two types it saw. It never guesses what you meant.
 
-The same seam catches the subtler mistake, the one where both sides are nearly right. A function that expects a struct value receives a pointer to one, or an `i32` reaches a `u64` parameter. The mismatch is not a category error, it is a "these two types are close, and not the same" error:
+The same seam catches the subtler mistake, where both sides are nearly right. A function that expects a struct value receives a pointer to one, or an `i32` reaches a `u64` parameter. The mismatch is not a category error but a "these two types are close, and not the same" error:
 
     u64 total = 0;
     u64* slot = &total;     // correct: u64* receives the address of a u64
     i32 count = 3;
     u64 c = count;          // error: i32 is not u64, and no implicit widening exists
 
-The last line is the kind of mistake C compilers wave through with a quiet warning, if that: in C an `i32` widens to a `u64` silently, and the bug that follows is a negative count that becomes four billion. Coral's checker refuses the line, and the refusal is the conversion policy of section9.16 wearing its enforcement uniform. The writer must write the cast, and the cast is the statement that the widening was seen and intended. The checker never decides a type change on its own; it reports the seam and waits for the writer's word.
+The last line is the kind of mistake C compilers wave through with a quiet warning: an `i32` widens to a `u64` silently, and the bug that follows is a negative count that becomes four billion. Coral's checker refuses the line. The writer must write the cast, and the cast states that the widening was seen and intended. The checker never decides a type change on its own.
 
-The checking is total: it covers the whole program. Every expression is typed, every seam is verified, and every function is checked against its own signature before it is used. That totality is what makes the type system's promises real. A program that compiles has been checked everywhere, not just in the parts the compiler noticed. The rigor is uniform, and the uniformity is the trust.
+The checking is total: it covers the whole program. Every expression is typed, every seam is verified, and every function is checked against its signature before it is used. A program that compiles has been checked everywhere, not just in the parts the compiler noticed. The rigor is uniform, and the uniformity is the trust.
 
 9.25 A Worked Example: Modeling With Types
 
-Designing types is the first act of writing a Coral program, and a worked example shows the act. A small inventory system must track items, each with a name, a quantity, and a category. The categories are fixed: tool, material, and consumable.
+Designing types is the first act of writing a Coral program. A small inventory system must track items, each with a name, a quantity, and a category. The categories are fixed: tool, material, and consumable.
 
 The categories are an enum, because they are a fixed set of named alternatives:
 
@@ -599,19 +593,19 @@ Now the report every inventory needs: how much of each category is on hand. The 
     println("tools: {}  materials: {}  consumables: {}",
             tools, materials, consumables);
 
-The categories are compared by equality to the enum's variants, and the comparisons are checked. A category value is always one of the three, so the chain covers the world without an else, and a value could not be "gadget" even if a typo tried, there is no such variant to hold. Write the same report with string categories and the compiler cannot help. Write it with an enum and the alternatives are the type's own, spelled once, checked everywhere they are used.
+The categories are compared by equality to the enum's variants, and the comparisons are checked. A category value is always one of the three, so the chain covers the world without an else, and a value could not be "gadget" even if a typo tried. Write the same report with string categories and the compiler cannot help. Write it with an enum and the alternatives are spelled once and checked everywhere they are used.
 
-The types carry the program's meaning. The enum names the categories and prevents a typo from inventing a new one. The option names the possibility of absence and forces the restock code to handle it: the `else` is not optional, because `isSome()` can be false and the code must say what happens then. The struct names the fields and their types. The type system is not decoration here; it is the program's structure, and the compiler checks every decision the structure makes. Try to add a new category as a string and the enum rejects it. Try to use a quantity before checking the option and the compiler points at the line. Try to total the categories with a misspelled variant and the same line fails. The model is the plan, and the types hold it.
+The types carry the program's meaning. The enum names the categories and prevents a typo from inventing a new one. The option names the possibility of absence and forces the restock code to handle it: the `else` is not optional, because `isSome()` can be false. The struct names the fields and their types. Try to add a category as a string and the enum rejects it. Try to use a quantity before checking the option and the compiler points at the line. The model is the plan, and the types hold it.
 
 9.26 Types and the Machine: Layout
 
 A type is not only a set of rules; it is a layout. The machine stores values as bytes, and the type decides how those bytes are arranged. Understanding the layout is understanding the cost of a type, and the cost is where the rigor meets the machine.
 
-A struct's fields are laid out in declaration order, each field at the address the platform's alignment requires. A struct with a `u64`, a `u8`, and a `u64` puts its first `u64` at the start, its `u8` after it, and its second `u64` at the next alignment boundary, with padding between the `u8` and the `u64`. That padding is the platform's price for alignment, and the size of the struct includes it. The order of the fields decides the padding, which is why you arrange a struct's fields with the wider fields first when memory matters. This is a practical lesson, not trivia: two structs holding the same fields in the other order can differ by several bytes each, and a million of them in a vector differ by millions of bytes.
+A struct's fields are laid out in declaration order, each at the address the platform's alignment requires. A struct with a `u64`, a `u8`, and a `u64` puts the first `u64` at the start, the `u8` after it, and the second `u64` at the next alignment boundary, with padding between. The padding is the platform's price for alignment, and the size includes it. The order of the fields decides the padding, which is why wider fields come first when memory matters: two structs holding the same fields in the other order can differ by several bytes each, and a million of them by millions of bytes.
 
-In plain words, alignment is the machine's demand that a value of a given size start at an evenly spaced address. To obey that demand the compiler leaves small gaps, called padding, between some fields. The gaps are invisible in the source but real in memory, so the order you declare fields in can make a struct bigger or smaller.
+In plain words, alignment is the machine's demand that a value of a given size start at an evenly spaced address. To obey it the compiler leaves small gaps, called padding, between some fields. The gaps are invisible in the source but real in memory, so the order you declare fields in can make a struct bigger or smaller.
 
-The arithmetic is worth seeing once with real structs, because the sizes are the point. The three fields below are the same three fields in two orders, and the order moves eight bytes:
+The arithmetic is worth seeing once with real structs. The three fields below are the same three fields in two orders, and the order moves eight bytes:
 
     struct Interleaved
     {
@@ -627,27 +621,27 @@ The arithmetic is worth seeing once with real structs, because the sizes are the
         u64 big;
     }
 
-Interleaved puts a `u64` between two one-byte fields, and each `u8` pays the wide field's alignment: one byte at offset zero, seven bytes of padding, eight for the `u64`, one byte, and seven more bytes of padding, twenty-four bytes. Grouped places the two small fields together, pocketed before the `u64`, and pays one alignment pad of six bytes total: sixteen bytes. Same fields, same types, eight bytes of difference, and `sizeof(Interleaved)` and `sizeof(Grouped)` print 24 and 16 on the platforms Coral targets. A vector of a million Interleaved values holds eight million bytes of padding the Grouped form never pays. That is real memory, at the price of field order, which is why the wider-fields-first habit is worth having. The padding is the platform's price for alignment, and the order of the fields decides how many times you pay it.
+Interleaved puts a `u64` between two one-byte fields, and each `u8` pays the wide field's alignment: one byte at offset zero, seven bytes of padding, eight for the `u64`, one byte, and seven more bytes of padding, twenty-four bytes. Grouped places the two small fields together, pocketed before the `u64`, and pays one alignment pad of six bytes: sixteen bytes. Same fields, eight bytes of difference, and `sizeof(Interleaved)` and `sizeof(Grouped)` print 24 and 16 on the platforms Coral targets. A vector of a million Interleaved values holds eight million bytes of padding the Grouped form never pays.
 
-The fixed-width integers are their widths: a `u8` is one byte, a `u16` two, a `u32` four, a `u64` eight, and a pointer is the platform's word size. An `f32` is four bytes in the single-precision IEEE format, an `f64` eight in the double format. An enum is an integer wide enough for its variants, and a distinct type has exactly its base type's layout. A `Vec` is three fields, a pointer and two length words, and its size is the sum with alignment, no matter how many elements it holds, because the elements live elsewhere, on the heap. The `Vec`'s header size is what your struct costs when it holds a `Vec`; the elements are a separate bill, paid when they are allocated.
+The fixed-width integers are their widths: a `u8` is one byte, a `u16` two, a `u32` four, a `u64` eight, and a pointer is the platform's word size. An `f32` is four bytes, an `f64` eight. An enum is an integer wide enough for its variants, and a distinct type has exactly its base type's layout. A `Vec` is three fields, a pointer and two length words, and its size is the sum with alignment no matter how many elements it holds, because the elements live on the heap.
 
-The `sizeof` operator reports a type's size, and the standard library uses it where a size must be known exactly: the memory pool computes its block size as the maximum of the element size and a pointer size, so every block is at least large enough to hold a free-list link. The layout is the C ABI, because Coral's types are C's types, and a struct compiled by Coral has the same layout the platform's C compiler would give it. The layout is not an abstraction; it is the bytes, and the types are the plan for the bytes.
+The `sizeof` operator reports a type's size, and the standard library uses it where a size must be known exactly: the memory pool computes its block size as the maximum of the element size and a pointer size. The layout is the C ABI, because Coral's types are C's types, and a struct compiled by Coral has the same layout the platform's C compiler would give it.
 
 9.27 Reading Types
 
 Reading types is the habit a type-first language rewards. A reader who encounters a signature reads it as a sentence: the return type is the result, the parameters are the inputs, and the types carry the meaning.
 
-Reading a generic type means reading its parameters. A `HashMap<K, V>` says the keys and values without naming them; a `Vec<T>` says the elements; an `Arr<T, N>` says the elements and the count. The generic type's parameters are its whole structure, and the type arguments at the use make that structure concrete. Reading a trait object, an `any Shape`, reads the requirement in the type itself: the value must implement the trait, and the trait's methods are exactly what the body may call. A signature that says `largestArea(const Vec<any Shape>*)` tells you the function measures shapes it never named, and the trait is the promise that keeps the body honest. A plain generic `largestArea<T>` says less on the signature and more in the body: the operations it calls are the requirement, checked when the function is instantiated.
+Reading a generic type means reading its parameters. A `HashMap<K, V>` says the keys and values without naming them; a `Vec<T>` says the elements; an `Arr<T, N>` says the elements and the count. Reading `any Shape` reads the requirement in the type itself: the value must implement the trait, and the trait's methods are exactly what the body may call. A plain generic `largestArea<T>` says less on the signature and more in the body: the operations it calls are the requirement.
 
-Reading an option reads the possibility of absence, and reading a `Result` reads the possibility of failure. The types say what the function may not produce, which matters as much as what it does produce. A function returning an `Option<u64>` does not promise a `u64`; it promises a `u64` or nothing, and the reader handles both before relying on it. Read the types as the program's honest description. That honesty is the point of the type-first language: everything that can be said about a value's behavior, the types say it, and the reader reads it.
+Reading an option reads the possibility of absence, and reading a `Result` reads the possibility of failure. The types say what the function may not produce, which matters as much as what it does produce. A function returning an `Option<u64>` does not promise a `u64`; it promises a `u64` or nothing, and the reader handles both before relying on it. Read the types as the program's honest description.
 
 9.28 The Type System and the Type-First Principle
 
 The type system is the type-first principle in full. Every type is declared and named, every value has a type, every function's signature states its types, and every program is checked against its types before it runs. The types are explicit, and that explicitness is the rigor.
 
-Every design choice in this chapter follows from the philosophy. The types are concrete and named, with no subtyping and no variance, because an exact type is a type the reader can trust. Inference is local and declaration-directed, not global, because a type the compiler guesses is a type the reader does not see. The enums are exhaustive sums; the structs are named products; both are checked. The option is the checked absence, and the casts are the visible conversions. The `comptime` blocks reason about types at compile time, and the runtime stays clean of type machinery.
+Every design choice follows from the philosophy. Types are concrete and named, with no subtyping and no variance, because an exact type is a type the reader can trust. Inference is local and declaration-directed, because a guessed type is a type the reader does not see. Enums are exhaustive sums, structs are named products, the option is checked absence, and casts are visible conversions.
 
-The type system is where Coral makes its promise: a program that compiles is a program whose types are consistent, and a program whose types are consistent has had its class of errors found. The rigor is the point, the types are the rigor, and the type-first principle is the language.
+The type system is where Coral makes its promise: a program that compiles has consistent types, and a program whose types are consistent has had its class of errors found. The rigor is the point, the types are the rigor, and the type-first principle is the language.
 
 Chapter9 Summary
 
@@ -665,7 +659,7 @@ Generic types and functions are compiled by monomorphization: each concrete use 
 
 Coral has no subtyping, so generics are invariant and the language has no variance, at either the use site or the declaration site.
 
-A generic's requirement is not spelled as a bound; it is the set of operations its body performs, checked when the generic is instantiated for a concrete type. When you want the requirement in the signature, take the capability by name as a trait object (`any Trait`) or by value as a function-pointer parameter.
+A generic's requirement is not spelled as a bound; it is the set of operations its body performs, checked when the generic is instantiated. To put the requirement in the signature, take the capability as a trait object (`any Trait`) or by value as a function pointer.
 
 The `typedef` names an existing type, and the name is an alternative spelling of the same type.
 
@@ -685,7 +679,7 @@ The full matrix of implicit coercions is empty: no type converts to another impl
 
 Explicit conversions use the C-style cast, a parenthesized type, or the generic `cast<T>` form, and every conversion, widening and narrowing alike, is written explicitly.
 
-There are no C-style promotions and no usual arithmetic conversions: an operation's operands have one type, and the writer states it, often by casting one operand or by writing the literal's type with a suffix.
+There are no C-style promotions and no usual arithmetic conversions: an operation's operands have one type, and the writer states it, often by casting one operand or writing the literal's type with a suffix.
 
 Values convert to text through the formatting functions, and text converts to views and strings through the constructors.
 

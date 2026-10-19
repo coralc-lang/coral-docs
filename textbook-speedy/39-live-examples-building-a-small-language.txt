@@ -4,23 +4,23 @@ Live Examples: Building a Small Language
 
 A Tokenizer, a Parser, and an Interpreter You Can Read
 
-Every program that reads a program, a compiler, an interpreter, a linter, a config loader, the query planner inside a database, is built from the same three parts: a lexer that turns text into tokens, a parser that turns tokens into a tree, and an evaluator that walks the tree and produces a result. The parts sound like folklore, and most courses present them as a single terrifying monolith. They are not. Each is a page of code, and the whole pipeline fits in a chapter you can read in an afternoon.
+Every program that reads a program (compiler, interpreter, linter, config loader, query planner) has three parts: a lexer turning text into tokens, a parser turning tokens into a tree, and an evaluator walking the tree. Each is a page of code, and the pipeline fits in an afternoon.
 
-The language we build here is deliberately tiny. It has integer values, arithmetic, comparison, variables, `if`, `while`, `print`, and nothing else, no types, no functions, no strings, no garbage collector. That is not a limitation of the technique; it is the point. Every real language adds features to these nine sections, but it does not replace them, and the shape of a production parser is the shape of the one below with more cases in the switches. The grammar is small enough to hold in your head, which means you can trace every decision and see why it is there.
+The language is deliberately tiny: integers, arithmetic, comparison, variables, `if`, `while`, and `print`. No types, functions, strings, or garbage collector. That is the point. Real languages add features but keep this shape, with more switch cases. The grammar is small enough to trace every decision.
 
-The pipeline is a one-way street, and that shape is the lesson. Bytes become tokens (39.1); tokens become an abstract syntax tree (39.2, 39.3); the tree is either walked directly (39.5, 39.6, 39.7) or lowered to a flat instruction stream for a stack machine (39.8). Errors are values that ride along the whole way, carrying the source position that produced them (39.4), and at the end a read-eval-print loop wires the stages together against a real terminal (39.9). Each stage knows nothing about the ones after it: the tokenizer has never heard of a tree, and the evaluator has never seen a byte of source. That decoupling is why each stage can be tested alone.
+The pipeline is one-way: bytes to tokens (39.1), tokens to an abstract syntax tree (39.2, 39.3), the tree walked (39.5 to 39.7) or lowered to bytecode (39.8). Errors are values carrying source positions (39.4), and a REPL wires the stages together (39.9). Each stage knows nothing about those after it, so each can be tested alone.
 
-The section headings are a build order, not a menu. Read them in order the first time. The tokenizer defines the `TokenKind` enum that every later switch reuses; the AST defines the `Expr` variant that the parser constructs and the evaluator matches; the environment that variables need (39.6) is the same hash map introduced in Chapter26. Where a section builds on an earlier declaration, the text says so, and only the new code is shown, so you are never reading the same hundred lines twice. If you want the whole thing at once, the REPL in 39.9 is the union of the parts, and its code block lays out the final assembly.
+The headings are a build order. Read them in order the first time. The tokenizer defines `TokenKind`, the AST defines `Expr`, and the environment is the hash map from Chapter26. Only new code is shown; the REPL in 39.9 is the final assembly.
 
-A word on values. Everything in this language is an `i64`. Booleans are integers too: a comparison yields `1` for true and `0` for false, and a condition is true exactly when it is nonzero. That single decision removes the entire type-checking pass from the interpreter, because there is nothing to check. It also means division by zero has to be given a meaning by hand, we define it as `0`, rather than being caught by a checker that does not exist. The warts are worth naming because they are the same warts every hand-rolled language starts with, and the exercise is to see precisely which chapter of this book you would turn to in order to remove each one.
+Everything is an `i64`. Booleans are integers too: comparison yields `1` or `0`, and a condition is true when nonzero. That removes the type-checking pass. It also means division by zero needs a hand-defined meaning, which we set to `0`. These are the usual hand-rolled-language warts.
 
-A note on the imports. The programs use `import(lib) std::vec { Vec };` for growable arrays, `import(lib) std::text::string { String };` for owned mutable text, `import(lib) std::io::ios { println, print };` for output, `import(lib) std::mman { alloc, dealloc };` for the heap nodes of the tree, and `import(lib) std::collections::hashmap { HashMap };` for the environment of 39.6. `Option` and `Result` are in the prelude, as are `str` and the integer types. Each code block repeats the imports it needs. A `str` is a borrowed read-only view; a `String` is owned and mutable, and the REPL is careful about which one survives a line of input.
+The programs use `Vec`, `String`, `println`/`print`, `alloc`/`dealloc`, and `HashMap`. `Option`, `Result`, `str`, and the integer types are in the prelude. Each block repeats its imports. A `str` is borrowed; a `String` is owned, and the REPL is careful about which survives a line.
 
 39.1 The Tokenizer
 
-The problem. Turn a string of source text into a sequence of tokens: a small tagged record per number, name, operator, or delimiter, with the source position of each so that errors can point at it later.
+The problem. Turn source text into tokens: a small tagged record per number, name, operator, or delimiter, each with a source position so errors can point at it.
 
-The idea. Walk the bytes exactly once. Whitespace is skipped because it only separates tokens; a run of digits is a number; a run of letters, digits, and underscores is a name, which becomes a keyword if it happens to spell one; and every remaining byte is a one-character operator or delimiter. The output ends with a single sentinel token so the parser can always look one position ahead without checking whether it has run off the end. That sentinel is the one design decision that makes every later stage shorter.
+The idea. Walk the bytes once. Skip whitespace; a digit run is a number; a run of letters, digits, and underscores is a name, promoted to a keyword if it spells one; every other byte is a one-character operator or delimiter. Append a sentinel token so lookahead never checks for the end, which shortens every later stage.
 
 The implementation.
 
@@ -157,17 +157,17 @@ The implementation.
         }
     }
 
-Every token keeps a `str` rather than a copied `String`, because the source outlives the parsing of it and copying each lexeme would be pure waste; the parser reads `t.text` as long as it still holds the source, which is exactly the lifetime rule from Chapter10. The `pos` is the offset of the token's first byte, and it is what an error message will print as a column. The `Eof` sentinel is appended unconditionally, so an empty source produces a one-token vector and the parser's lookahead is total.
+Tokens keep a `str` rather than a copied `String`, because the source outlives parsing; this is Chapter10's lifetime rule. `pos` is the first byte's offset, printed as a column in errors. The `Eof` sentinel is appended unconditionally, so an empty source yields one token and lookahead is total.
 
-Cost and notes. Time is O(n): each byte is consumed by exactly one branch, and no byte is ever examined twice. Space is O(t) for the tokens plus the source, which is not copied. The class of tokenizer that reads one character and then decides is called a single-pass scanner, and it is why compilers are fast at this stage, lexing a megabyte is a memory-bandwidth problem, not a compute problem. A production lexer adds maximal-munch for multi-character operators (`==`, `<=`, `&&`), number literals in several bases, and string literals with escapes; each is one more `while` loop at the top, not a new architecture.
+Cost and notes. Time is O(n): each byte is consumed by one branch and never examined twice. Space is O(t) for tokens plus the uncopied source. This is a single-pass scanner, so lexing a megabyte is memory-bandwidth bound. A production lexer adds maximal munch for `==`, `<=`, `&&`, number bases, and escapes; each is one more `while`, not a new architecture.
 
-Edge cases and variations. An empty source yields exactly one token, the sentinel, and `main`'s loop prints it as `Eof` with empty text, which is correct. A number too large for `i64` wraps silently in the `value * 10 + digit` step; a real lexer checks for overflow and reports it, which is the same overflow discipline as Chapter3. An unknown byte such as `@` is skipped rather than diagnosed, so the tokenizer can never fail, that is a deliberate simplification, and 39.4 puts the diagnosis where it belongs, in the parser, which is the first stage that knows the grammar. The variation worth trying is maximal munch: before falling back to single characters, peek at the next byte and, if the pair spells `<=` or `==`, emit one two-character token instead of two single ones.
+Edge cases and variations. An empty source yields exactly one token. A number too large for `i64` wraps silently in `value * 10 + digit`; a real lexer checks overflow. An unknown byte such as `@` is skipped rather than diagnosed, a simplification; 39.4 puts diagnosis in the parser, the first stage that knows the grammar. The variation is maximal munch: peek at the next byte and emit `<=` or `==` as one token.
 
 39.2 The AST as a Variant
 
-The problem. Represent a parsed expression as data the evaluator can walk: numbers, variable references, negation, and binary operations, where each operation holds two sub-expressions that may themselves be operations.
+The problem. Represent a parsed expression as data the evaluator can walk: numbers, variable references, negation, and binary operations whose operands may themselves be operations.
 
-The idea. This is a variant from Chapter13, and the self-reference is the whole story. An expression is one of four cases, and two of those cases point back at more expressions. The pointers are not an optimization; they are what makes the type finite, because a variant that contained whole `Expr` values inside `Expr` would be asking the compiler to size a box in terms of itself. Heap pointers break the circle, and the `alloc`/`dealloc` pair from Chapter28's trees frees it again.
+The idea. This is a variant from Chapter13, and self-reference is the story. An expression is one of four cases, two pointing back at more expressions. Pointers make the type finite: a variant containing whole `Expr` values would ask the compiler to size a box in terms of itself. `alloc`/`dealloc` frees the heap nodes.
 
 The implementation.
 
@@ -263,17 +263,17 @@ The implementation.
         freeExpr(e);
     }
 
-The `show` function is the tree printed back in fully parenthesized form, and reading its output is how you confirm that later parsing produced the tree you meant: `(+ 1 (* 2 3))` is different from `(* (+ 1 2) 3)`, and the parentheses make the difference visible. `freeExpr` is a postorder deallocation, exactly the `freeTree` from Chapter28, because a parent's pointers are the only route to its children and they must be followed before the parent's own storage is returned.
+`show` prints the tree fully parenthesized, which confirms parsing produced the intended tree: `(+ 1 (* 2 3))` differs visibly from `(* (+ 1 2) 3)`. `freeExpr` is postorder deallocation, as `freeTree` in Chapter28, because a parent's pointers are the only route to its children.
 
-Cost and notes. Construction is O(1) per node. `show` and `freeExpr` are both O(n) in the number of nodes, because each visits every node once. A tree of n nodes uses O(n) heap and O(h) stack, where h is the depth, so a right-leaning chain of a million additions would recurse a million frames deep, the same stack-depth warning as every recursive tree walk in this book. There is no sharing and no cycle: every node is allocated once and freed once.
+Cost and notes. Construction is O(1) per node. `show` and `freeExpr` are O(n). A tree of n nodes uses O(n) heap and O(h) stack for depth h; a right-leaning chain of a million additions recurses a million frames deep. No sharing, no cycles: each node is allocated once and freed once.
 
-Edge cases and variations. `freeExpr` on a `Num` or `Var` frees only the node, because the leaf holds no owned storage, the `str` name is a view, not an allocation, so there is nothing else to release. Freeing `null` is not supported and never happens, because constructors never return null. The variation that matters for the next section is to add cases: a `Call { str name; Vec<Expr*> args; }` for functions, or `Index` for arrays. Each new case makes the switches in `show`, `freeExpr`, and the evaluator stop compiling until they handle it, which is the exhaustiveness guarantee of Chapter13 doing real work.
+Edge cases and variations. `freeExpr` on a `Num` or `Var` frees only the node, since the `str` name is a view. Freeing `null` never happens. New cases such as `Call { str name; Vec<Expr*> args; }` or `Index` stop `show`, `freeExpr`, and the evaluator compiling until handled, which is Chapter13's exhaustiveness doing real work.
 
 39.3 A Recursive-Descent Parser with Precedence
 
-The problem. Turn the flat token vector into a tree that respects operator precedence: `1 + 2 * 3` must group as `1 + (2 * 3)`, and subtraction must be left-associative so `1 - 2 - 3` is `(1 - 2) - 3`.
+The problem. Turn the token vector into a tree respecting precedence: `1 + 2 * 3` groups as `1 + (2 * 3)`, and subtraction is left-associative so `1 - 2 - 3` is `(1 - 2) - 3`.
 
-The idea. Write one function per precedence level, and have each level call the tighter level for its operands. The loosest level is comparison, which calls addition, which calls multiplication, which calls unary negation, which calls the atoms. Multiplication loops while it sees `*` or `/`, so it swallows all the `*`s before returning to addition, that is where precedence comes from. The loop, not recursion, is what makes each level left-associative. This is recursive descent, and the grammar and the code have the same shape.
+The idea. One function per precedence level, each calling the tighter level for operands: comparison calls addition, which calls multiplication, which calls unary negation, which calls atoms. Multiplication loops while it sees `*` or `/`, swallowing them before returning to addition. The loop, not recursion, makes each level left-associative. This is recursive descent.
 
 The implementation. This builds on the `Token`/`TokenKind` definitions of 39.1 and the `Expr`, `Op`, and `mk*` constructors of 39.2. Only the parser is new.
 
@@ -385,17 +385,17 @@ The implementation. This builds on the `Token`/`TokenKind` definitions of 39.1 a
         freeExpr(e);
     }
 
-The one non-obvious move is that `parseComparison` calls `parseAddSub` for both sides, not `parseComparison`. That asymmetry, operands always come from a strictly tighter level, never the same level, is what stops left recursion, the infinite regress a grammar like `expr := expr '+' expr` would cause. The `while` loops then handle repetition without recursion. Read the four levels as one idea repeated with different operators, and the precedence table of Chapter3 is suddenly a stack of functions.
+The non-obvious move is that `parseComparison` calls `parseAddSub` for both sides, not itself. Operands always come from a stricter level, which stops left recursion, the infinite regress of `expr := expr '+' expr`. The `while` loops handle repetition. Read the four levels as one idea repeated, and Chapter3's precedence table becomes a stack of functions.
 
-Cost and notes. Parsing is O(t) in the number of tokens: every token is consumed by exactly one `advance`, and the lookahead never backtracks. The recursion depth is bounded by the nesting depth of the expression, not its length, because each level returns before the next token is consumed. Recursive descent is the parser you write when the grammar is small; for larger grammars the same code grows to dozens of levels or gives way to a table-driven parser, but the shape, a function per precedence, a loop per repetition operator, never goes away.
+Cost and notes. Parsing is O(t): each token is consumed by one `advance`, and lookahead never backtracks. Recursion depth is bounded by nesting, not length. Recursive descent suits small grammars; larger ones grow to dozens of levels or a table-driven parser, but the shape, a function per precedence and a loop per repetition, remains.
 
-Edge cases and variations. The input `1 + 2 * 3 - 4 < 2 * -5` parses as `((1 + (2 * 3)) - 4) < (2 * (-5))`, and printing it is the proof. A missing closing parenthesis is silently accepted: `(1 + 2` returns the tree for `1 + 2` because of the `if (check(...)) advance(p)` guard, which is a bug we fix properly in 39.4. An unexpected token yields a zero node rather than an error, so the parser always returns a tree and never fails, convenient here, wrong in production, and the reason errors need their own section. The variation to try is a precedence table: a single `parseBinary(minPrec)` that loops while `precedence(peek.kind) > minPrec`, which collapses four functions into one and is the version real parsers use.
+Edge cases and variations. `1 + 2 * 3 - 4 < 2 * -5` parses as `((1 + (2 * 3)) - 4) < (2 * (-5))`. A missing closing parenthesis is silently accepted: `(1 + 2` returns the tree for `1 + 2` because of the `if (check(...)) advance(p)` guard, a bug fixed in 39.4. An unexpected token yields zero rather than an error, convenient here but wrong in production. The variation is a precedence table: one `parseBinary(minPrec)` looping while `precedence(peek.kind) > minPrec`.
 
 39.4 Errors That Carry a Position
 
-The problem. When the input is not a valid program, report where and why, instead of silently substituting a zero or dropping a token. The report must point at a byte offset in the original source.
+The problem. When input is invalid, report where and why instead of silently substituting zero or dropping a token. The report must point at a byte offset in the source.
 
-The idea. Make the error a value, not an exception: a `ParseError` variant that carries a message and a position, stored in the parser. Every parse function keeps going after it records an error, so a single run can report the first problem without the code being littered with early returns. The first error wins, because later errors are usually consequences of the first. At the top, a `Result` carries either the tree or the error out to the caller, following the explicit propagation discipline of Chapter15.
+The idea. Make the error a value: a `ParseError` variant carrying a message and position, stored in the parser. Every parse function keeps going after recording an error, so one run reports the first problem without early returns. The first error wins, since later ones are consequences. A `Result` carries the tree or error out, following Chapter15.
 
 The implementation. This adds error state to the parser of 39.3 and changes the entry point; the tokenizer and tree are unchanged.
 
@@ -487,17 +487,17 @@ The implementation. This adds error state to the parser of 39.3 and changes the 
         freeExpr(e);
     }
 
-The design decision worth naming is that `fail` records only the first error and then ignores every later one. Without that guard, a parser that recovers and continues can pile up dozens of cascading messages, all of them symptoms of the one real mistake. With it, the message points at the first thing that was wrong, which is almost always the thing the programmer needs to see. The `Result<Expr*, ParseError>` never holds a null tree and an error at once; the two cases are mutually exclusive by construction.
+`fail` records only the first error and ignores later ones; otherwise a recovering parser piles up cascading messages, all symptoms of one mistake. `Result<Expr*, ParseError>` never holds a null tree and an error at once.
 
-Cost and notes. Error handling adds constant work per token and does not change the O(t) bound, because `fail` is O(1) and `expect` replaces the checks the parser already made. The error value is small, a tag, a view, and an offset, so returning it by value through `Result` costs nothing meaningful. The pattern of "record the first failure, keep going, check at the top" is exactly how production parsers batch diagnostics, though the good ones keep a list of errors rather than just the first, and resume at a synchronization point such as the next semicolon.
+Cost and notes. Error handling adds constant work per token and leaves O(t) unchanged, since `fail` is O(1). The error value is small, so returning it by value costs nothing meaningful. Production parsers batch diagnostics, keep a list, and resume at a synchronization point such as the next semicolon.
 
-Edge cases and variations. An empty source parses to `Err TrailingTokens` rather than a tree, because the first token is the sentinel and `parsePrimary` reports "expected an expression" at position zero. A stray closing parenthesis or a trailing operator is caught by `TrailingTokens` at the position of the leftover token. The `else` arm of `toOp` returning `Op::Add` is now defensible in a new way: it is only reachable if the precedence chain already accepted the token, so it never fires. The variation is error recovery with a synchronization token: on a failure, skip tokens until the next `;`, discard the partial statement, and continue, so one run reports every avoidable mistake instead of only the first.
+Edge cases and variations. An empty source parses to `Err TrailingTokens`, because the sentinel reaches `parsePrimary`, which reports 'expected an expression' at zero. A stray closing parenthesis or trailing operator is caught at the leftover token. `toOp`'s `else` is reachable only if the precedence chain already accepted the token, so it never fires. The variation is recovery with a synchronization token: skip to the next `;`, discard the partial statement, and continue.
 
 39.5 A Tree-Walking Evaluator
 
 The problem. Given a tree from 39.2, compute its integer value by walking it, handling arithmetic, comparison, and negation.
 
-The idea. The evaluator is a recursion whose structure mirrors the tree's. A number evaluates to itself; a negation evaluates its operand and negates; a binary node evaluates both children and applies the operator. Comparisons yield `1` or `0`, so the entire language has one value type and no coercion rules. This is the smallest possible interpreter, a handful of lines, and the interesting choices are all about what to do at the boundaries, such as division by zero.
+The idea. The evaluator's recursion mirrors the tree. A number evaluates to itself; negation evaluates and negates; a binary node evaluates both children and applies the operator. Comparisons yield `1` or `0`, so there is one value type and no coercion. The interesting choices are at the boundaries, such as division by zero.
 
 The implementation. The tree and constructors come from 39.2; only `eval` and `main` are new.
 
@@ -541,17 +541,17 @@ The implementation. The tree and constructors come from 39.2; only `eval` and `m
         freeExpr(e);
     }
 
-The tree-walking interpreter is the reference implementation every faster engine is measured against. It is slow for a reason worth understanding: the recursion touches the heap once per node, and the same operator is rediscovered by a switch at runtime that a compiler would have resolved at build time. That gap, between interpreting a tree and compiling it once to instructions, is exactly what 39.8 closes, and seeing the two forms side by side is the clearest possible statement of what compilation buys.
+The tree-walker is the reference every faster engine is measured against. It is slow because the recursion touches the heap once per node and rediscovers the operator through a runtime switch a compiler would resolve at build time. That gap is what 39.8 closes.
 
-Cost and notes. Time is O(n) in the nodes, and each `eval` call is a function call plus a tag switch. Space is O(h) for the recursion, where h is the depth, again bounded by nesting rather than length. Because every node is visited exactly once and no node is evaluated twice, a tree of additions is linear even though it looks recursive; the exponential blowups people fear come from re-evaluating shared sub-trees, which this representation cannot express, because there is no sharing.
+Cost and notes. Time is O(n) in nodes, each `eval` a call plus a tag switch. Space is O(h) for recursion. Every node is visited once, so a tree of additions is linear; exponential blowups come from re-evaluating shared subtrees, which this representation cannot express.
 
-Edge cases and variations. Division by zero returns `0` rather than trapping, which is a choice, not a truth: a real language either faults, returns an `Option`, or moves to floating point, and Chapter3 discusses all three. Integer overflow in `l + r` wraps silently, the same wart as the tokenizer's number folding. Deeply left-nested input recurses proportionally to depth and can overflow the stack. The variation worth writing is to have `eval` return `Result<i64, EvalError>` with a `DivisionByZero` case, which turns the undefined divide from a silent zero into a value the caller must confront, the discipline of 39.4 applied to runtime rather than parse-time errors.
+Edge cases and variations. Division by zero returns `0`, a choice rather than a truth: a real language faults, returns an `Option`, or moves to floating point (Chapter3). Integer overflow wraps silently. Deeply left-nested input can overflow the stack. The variation is to return `Result<i64, EvalError>` with a `DivisionByZero` case.
 
 39.6 Variables and an Environment
 
-The problem. Make names meaningful: an assignment `x = expr` must store a value under a name, and a later `x` must read it back. This also needs statements, because assignment is not an expression you can nest arbitrarily.
+The problem. Make names meaningful: `x = expr` stores a value under a name, and a later `x` reads it back. This also needs statements, because assignment is not an expression.
 
-The idea. Keep a hash map from name to value, the environment, and give the language a second tree, the statement tree, beside the expression tree. A program is a sequence of statements; `runStmt` walks them, evaluating expressions with the environment in hand. The map is `HashMap<str, i64>` from Chapter26, and the key is the name as a view into the source, which is safe because the source outlives the run.
+The idea. Keep a hash map from name to value, the environment, and add a second tree, the statement tree. A program is a sequence of statements; `runStmt` walks them with the environment in hand. The map is `HashMap<str, i64>` from Chapter26, keyed by a source view, safe because the source outlives the run.
 
 The implementation. This adds the `Stmt` variant and an environment parameter threaded through evaluation; the expression tree and constructors are unchanged from 39.2.
 
@@ -655,17 +655,17 @@ The implementation. This adds the `Stmt` variant and an environment parameter th
         env.dispose();
     }
 
-The environment is threaded as a pointer because every statement shares the same map and mutates it; the map is the one piece of state that lives outside the tree. `runStmt` being separate from `eval` is a small but real design choice: it is the moment the language stops being an expression calculator and becomes a sequence of effects, and it is why the evaluator can no longer be a pure function of the tree alone. In the next section the same split lets control flow exist, because statements can decide which statements run.
+The environment is threaded as a pointer because every statement shares and mutates the same map, the one state outside the tree. `runStmt` being separate from `eval` is the moment the language stops being an expression calculator and becomes a sequence of effects.
 
-Cost and notes. Each assignment and each variable read is an O(1) average-time hash operation, so a program of length p is O(p) evaluations plus O(p) map work. The map grows with the number of distinct variables, not the number of assignments, because an overwrite reuses the slot. The `str` key is safe only because the source outlives the run; the moment the source could be freed or reused, the keys would dangle, which is exactly the problem 39.9 solves with owned `String` keys.
+Cost and notes. Each assignment and read is an O(1) average hash operation, so a program of length p is O(p) evaluations plus O(p) map work. The map grows with distinct variables, not assignments. The `str` key is safe only because the source outlives the run; 39.9 solves the dangling case with owned `String` keys.
 
-Edge cases and variations. Reading a name before it is assigned yields `0`, not an error, because `unwrapOr(0)` supplies the missing case; a stricter language returns `Result` and forces the caller to handle the unbound variable. Reassigning `x` replaces its value, since `insert` updates in place when the key exists. The environment is disposed by hand at the end, because `HashMap`'s backing storage is not returned automatically. The variation is scope: wrap nested environments in a stack, push on entering a block, pop on leaving, and look a name up the chain of maps from innermost to outermost, which is exactly how every block-structured language from Chapter12 onward resolves names.
+Edge cases and variations. Reading before assignment yields `0` via `unwrapOr(0)`; a stricter language returns `Result`. Reassigning replaces in place. The environment is disposed by hand because `HashMap` storage is not returned automatically. The variation is scope: a stack of nested environments, pushed on entry and popped on exit, searched innermost outward.
 
 39.7 Control Flow: if and while
 
 The problem. Let statements decide what runs next: `if` chooses between two blocks, and `while` repeats a block while a condition holds.
 
-The idea. Add a `Block`, which is a sequence of statements, and two new statement cases whose fields point at blocks. The evaluator reproduces the semantics directly: an `if` evaluates its condition and runs one of two blocks; a `while` re-evaluates its condition before every pass and runs the body while the condition is nonzero. Because the body is itself a list of statements and `runStmt` is recursive, nesting falls out for free, a block can contain an `if` that contains a `while`.
+The idea. Add a `Block`, a sequence of statements, and two statement cases pointing at blocks. `if` evaluates its condition and runs one block; `while` re-evaluates before every pass and runs the body while nonzero. Since the body is a list of statements and `runStmt` is recursive, nesting is free.
 
 The implementation. This extends the `Stmt` variant and `runStmt` of 39.6; the environment and expression evaluator are unchanged.
 
@@ -750,17 +750,17 @@ The implementation. This extends the `Stmt` variant and `runStmt` of 39.6; the e
         env.dispose();
     }
 
-`runStmt` and `runBlock` call each other, which is mutual recursion and would need a forward declaration in some languages. Here it is written so that `runStmt` inlines the block loop rather than calling `runBlock`, keeping the recursion single-function and the definition order valid. The `elseBody` pointer is `null` when there is no `else`, and the evaluator checks it explicitly; the alternative is to make the field an `Option<Block*>`, which the compiler would force you to unwrap and so make forgetting impossible.
+`runStmt` and `runBlock` are mutually recursive. Here `runStmt` inlines the block loop rather than calling `runBlock`, keeping recursion single-function and definition order valid. `elseBody` is `null` when there is no `else`, checked explicitly; an `Option<Block*>` would make forgetting impossible at compile time.
 
-Cost and notes. The interpreter's cost is the cost of the program it runs: each loop iteration costs one condition evaluation plus one block execution, and there is no compilation step to amortize. The recursion depth is the nesting depth of blocks, not the loop count, because a `while` is a loop rather than a recursive call. This is the difference between a language whose loops are cheap and one whose loops are function calls, a real difference in performance and an invisible one in meaning.
+Cost and notes. The interpreter's cost is the program's cost: each iteration is one condition evaluation plus one block execution, with no compilation to amortize. Recursion depth is block nesting depth, not loop count, because `while` is a loop, not a recursive call.
 
-Edge cases and variations. A `while` whose condition is initially zero runs its body zero times, which is the standard and the reason the condition is tested first. An `if` with no `else` and a false condition does nothing, because the `elseBody` is null and the branch is skipped. Because conditions are integers, `while 1 { ... }` is an infinite loop with no way to break in this language; adding `break` and `continue` means giving `runBlock` a signal return rather than `void`, which is the variation to attempt. The other variation is `for`: desugar it to a `while` with an initializer block before and an increment block at the end of the body, and the interpreter does not change at all, a small, clean example of a feature implemented entirely in the parser.
+Edge cases and variations. A `while` whose condition is initially zero runs zero times. An `if` with no `else` and a false condition does nothing. Because conditions are integers, `while 1 { ... }` loops forever with no break; adding `break` means giving `runBlock` a signal return rather than `void`. The other variation is `for`, desugared to a `while` with initializer and increment, implemented entirely in the parser.
 
 39.8 A Tiny Stack-Based Bytecode VM
 
-The problem. Walking a tree is simple but slow, because every node costs a recursive call and a runtime tag switch. Compile the tree once to a flat sequence of instructions and run those instead.
+The problem. Walking a tree is simple but slow: every node costs a recursive call and a runtime tag switch. Compile the tree once to a flat instruction sequence and run that.
 
-The idea. A stack machine: instructions push values onto a stack, and operators pop their operands and push their result. Compiling an expression is a postorder walk, emit the left subtree, emit the right subtree, then emit the operator, so that by the time an operator instruction runs, its operands are already on the stack. The tree is read once at compile time; at run time there is a loop and an array, no recursion and no tags to interpret.
+The idea. A stack machine: instructions push values, operators pop operands and push results. Compiling an expression is a postorder walk: emit left, right, then the operator, so operands are on the stack when the operator runs. The tree is read once at compile time; run time is a loop and an array, no recursion or tags.
 
 The implementation. The tree and constructors come from 39.2; the evaluator is replaced by a compiler and a machine.
 
@@ -863,19 +863,19 @@ The implementation. The tree and constructors come from 39.2; the evaluator is r
         freeExpr(e);
     }
 
-The single multi-case arm, `Add | Sub | Mul | Div | Less | Greater => apply(...)`, is the payoff of flat opcodes: six operators dispatch through one call, and adding a seventh means one new `OpCode` case and one new line in `apply`, not a new recursion. The machine has no idea it is running a tree; it has an array and an index, and that is the entire state of the interpreter between instructions. This is the same split a real compiler makes twice, first from tree to bytecode and then from bytecode to machine code, and the reason the first split is easy is that the tree already encodes the evaluation order the stack machine replays.
+The multi-case arm `Add | Sub | Mul | Div | Less | Greater => apply(...)` is the payoff: six operators dispatch through one call, and a seventh means one new `OpCode` case and one line in `apply`. The machine has no idea it runs a tree; it has an array and an index. This is the split a real compiler makes twice, tree to bytecode and bytecode to machine code.
 
-Cost and notes. Compilation is a single O(n) postorder pass. Execution is O(k) in the number of instructions, and each instruction is a constant-time stack operation plus one array access, no recursion, no heap per step. The bytecode is O(n) in size. The win over tree-walking is the absence of per-node function calls and per-node tag dispatch, which is why even a simple bytecode VM beats an interpreter by a constant factor that grows with expression size. The loop here is a switch inside a `for`; a production VM threads the next instruction through the end of each case, a technique called direct threading, to remove the loop overhead.
+Cost and notes. Compilation is one O(n) postorder pass. Execution is O(k) instructions, each a constant-time stack operation plus one array access, with no recursion or per-step heap. The win over tree-walking is the absence of per-node calls and tag dispatch. Production VMs use direct threading to remove the loop overhead.
 
-Edge cases and variations. An empty program, or one whose last instruction is not `Halt`, falls off the end of the loop and returns whatever is on top of the stack, which is why a real compiler always appends `Halt`. A `Div` by zero pushes `0` through the same guard as 39.5, so the machine and the tree-walker agree by construction. Popping from an empty stack is a bug the machine does not detect; a defensive version checks the depth before every `pop` and reports a mismatch, which is also how you would validate untrusted bytecode before running it. The variation to attempt is variables: add `Load { usize slot; }` and `Store { usize slot; }` opcodes, compile variable references to slot indices resolved by a scope pass at compile time, and the same machine runs whole programs, which is exactly the step from an expression compiler to a statement compiler.
+Edge cases and variations. An empty program, or one not ending in `Halt`, falls off the loop and returns whatever is on the stack, which is why a real compiler always appends `Halt`. `Div` by zero pushes `0` through the same guard as 39.5. Popping an empty stack is undetected; a defensive version checks depth before every `pop`, which also validates untrusted bytecode. The variation is variables: add `Load` and `Store` opcodes resolved in a compile-time scope pass.
 
 39.9 A REPL on stdin
 
-The problem. Wire the whole pipeline into a read-eval-print loop that reads a line, parses it as a statement, runs it against a persistent environment, and prints the result, the smallest complete language front end.
+The problem. Wire the pipeline into a read-eval-print loop that reads a line, parses it as a statement, runs it against a persistent environment, and prints the result: the smallest complete language front end.
 
-The idea. Everything is already written: the tokenizer of 39.1, the tree of 39.2, the error-carrying parser of 39.4 extended with statement parsing, the environment of 39.6, and the evaluator. The only new problem is ownership. A REPL reuses one input buffer for every line, so a name captured during parsing would dangle the moment the next line overwrites the buffer. The environment therefore owns its keys: it stores `String`, not `str`, copying each name the first time it is stored.
+The idea. Everything is written: the tokenizer, tree, error-carrying parser extended with statements, and the environment and evaluator. The new problem is ownership. A REPL reuses one input buffer, so a name captured during parsing would dangle when the next line overwrites it. The environment therefore owns its keys, storing `String`, not `str`.
 
-The implementation. This is the full assembly. It parses three kinds of statement, `print`, assignment, and a bare expression, which a REPL echoes, and leaves `if`/`while` to 39.7 as an exercise.
+The implementation. This is the full assembly. It parses three statement forms, `print`, assignment, and a bare expression, which a REPL echoes; `if` and `while` are left to 39.7 as an exercise.
 
     import(lib) std::vec { Vec };
     import(lib) std::text::string { String };
@@ -1048,30 +1048,30 @@ The implementation. This is the full assembly. It parses three kinds of statemen
         env.dispose();
     }
 
-The ownership decision is the heart of this section. The parse tree's names are `str` views into `line`, which is correct for as long as the statement runs, because that happens before the next read. But the environment outlives the line: a variable set on line one must still read back on line fifty. So `assign` copies the name into an owned `String` that the map keeps, while `lookup` builds a temporary owned key only to satisfy the map's `String`-keyed interface and frees it immediately after. This is the borrow-versus-own split of Chapter10 made concrete: the tree borrows, the environment owns, and the boundary is exactly where one lifetime ends and the other begins.
+Ownership is the heart of this section. The tree's names are `str` views into `line`, correct while the statement runs, before the next read. But the environment outlives the line: a variable set on line one must read back on line fifty. So `assign` copies the name into an owned `String`, while `lookup` builds a temporary key and frees it immediately. This is Chapter10's borrow-versus-own split: the tree borrows, the environment owns.
 
-Cost and notes. Each line is lexed, parsed, and run in time proportional to its length, and the environment's cost is the usual O(1) average hash operation per statement. The only new cost is the `String` copy on each assignment and each lookup; assignments are rare and lookups are short, so the copy is negligible, and it buys correctness. The REPL holds no state between lines except the environment, which is what makes it a language rather than a calculator: the same line means different things depending on what came before it.
+Cost and notes. Each line is lexed, parsed, and run in time proportional to its length, and the environment costs an O(1) average hash operation per statement. The only new cost is the `String` copy on each assignment and lookup; assignments are rare and lookups short, so it is negligible and buys correctness. The REPL holds no state between lines except the environment.
 
-Edge cases and variations. A blank line is skipped before parsing, so an empty statement does not report an error. A line without a trailing newline at end of input is still processed, because `readLine` returns true when it has read any bytes before hitting the end. A parse error prints its position and does not disturb the environment, so the session continues. Freeing the `line` and disposing the `env` at the end releases everything the loop built. The obvious variations are to add `if` and `while` by reusing 39.7's `parseStatement` arms, to keep a history and re-run the last statement on an empty line, and to switch the evaluator from the tree-walker to the bytecode VM of 39.8, which changes only `runStmt` and leaves the parser, the tree, and the errors entirely untouched, a clear demonstration that the stages really are independent.
+Edge cases and variations. A blank line is skipped before parsing. A final line without a newline is still processed, because `readLine` returns true after reading any bytes. A parse error prints its position and leaves the environment untouched. Freeing `line` and disposing `env` releases everything. The variations are to add `if` and `while` by reusing 39.7's arms, to keep a history and re-run the last statement on an empty line, and to swap the tree-walker for the bytecode VM of 39.8, which changes only `runStmt`.
 
 Exercises
 
-1. Comprehension. Trace `tokenize("a1 + 12")` by hand and write down every token's `kind`, `pos`, and `text`. Then explain why appending the `Eof` sentinel lets `advance` drop its bounds check, and what would break if the sentinel were removed.
+1. Comprehension. Trace `tokenize("a1 + 12")` by hand, writing each token's `kind`, `pos`, and `text`. Explain why the `Eof` sentinel lets `advance` drop its bounds check, and what breaks without it.
 
-2. Precedence. Add a `==` operator that binds looser than comparison. Decide whether it is left- or right-associative, add one function to the precedence chain, and explain why the choice changes the parse of `a == b < c`.
+2. Precedence. Add `==` binding looser than comparison. Decide its associativity, add one function to the chain, and explain how the choice changes the parse of `a == b < c`.
 
-3. Associativity. Change `parseAddSub`'s loop to a right-recursive form so that `1 - 2 - 3` parses as `1 - (2 - 3)`, then evaluate both forms and state the value each produces. Which one matches the arithmetic you were taught, and why?
+3. Associativity. Change `parseAddSub` to right recursion so `1 - 2 - 3` parses as `1 - (2 - 3)`. Evaluate both forms and state each value. Which matches the arithmetic you were taught, and why?
 
-4. Errors. Give `fail` a list instead of a single `ParseError`, record every error, and make `parse` return the first. Then add recovery: after a failure, skip tokens to the next `Semi` and parse the following statement, so `1 +; 2 *; 3` reports two errors rather than one.
+4. Errors. Give `fail` a list instead of one `ParseError`, record every error, and return the first. Then add recovery: skip to the next `Semi` and parse the following statement, so `1 +; 2 *; 3` reports two errors.
 
-5. Evaluation. Rewrite `eval` to return `Result<i64, EvalError>` with a `DivisionByZero` case, and update `runStmt` to print the error instead of the value. What does this force the caller to confront that the `0`-on-divide version let it ignore?
+5. Evaluation. Rewrite `eval` to return `Result<i64, EvalError>` with a `DivisionByZero` case, and update `runStmt` to print the error. What does this force the caller to confront that the `0`-on-divide version ignored?
 
-6. Environment. Add a `Block` environment stack so that a variable assigned inside an `if` block is visible only within it. Push a map on entering a block, pop on leaving, and search from innermost to outermost. Which programs change meaning, and is that the behavior you want?
+6. Environment. Add a block environment stack so a variable assigned inside an `if` is visible only there. Push on entry, pop on exit, search innermost outward. Which programs change meaning, and is that what you want?
 
-7. Compiler. Add `Load` and `Store` opcodes to the VM of 39.8 and a scope pass that assigns each variable an integer slot. Then compile a small program with assignments and run it, and explain where the slot resolution happens and why it cannot happen at run time.
+7. Compiler. Add `Load` and `Store` opcodes to the VM of 39.8 and a scope pass assigning each variable an integer slot. Compile and run a small program with assignments, and explain where slot resolution happens and why it cannot happen at run time.
 
-8. REPL. Wrap the REPL line in a `try`-like construct, or, since Coral has none, use the `Result` discipline of Chapter15, so that an evaluation-time error such as an unknown variable is reported rather than defaulting to zero. What is the smallest change to the tree or the environment that makes "unknown variable" detectable?
+8. REPL. Use the `Result` discipline of Chapter15 so an evaluation-time error such as an unknown variable is reported rather than defaulting to zero. What is the smallest change to the tree or environment that makes 'unknown variable' detectable?
 
-9. Design. The language has no way to stop a `while` loop from outside. Design a `break` statement, describing exactly what `runStmt` and `runBlock` must return to propagate the signal up through nested blocks, and argue why a plain `void` return cannot express it.
+9. Design. The language cannot stop a `while` loop from outside. Design `break`, describing what `runStmt` and `runBlock` must return to propagate the signal through nested blocks, and why a plain `void` cannot express it.
 
-10. Meta. Re-read 39.4's `fail`. It keeps the first error and drops the rest. Find one realistic input where that discards a more informative message in favor of a worse one, and describe the recovery strategy that would report the better message first.
+10. Meta. Re-read 39.4's `fail`, which keeps the first error and drops the rest. Find a realistic input where that discards a more informative message, and describe a recovery strategy that reports the better message first.

@@ -4,19 +4,19 @@ Live Examples: Inline Assembly and Clobbers
 
 Telling the Compiler What It Cannot See
 
-Chapter20 gave the FFI its own instruction for reaching the machine directly: `asm`, the escape hatch below the boundary. Section20.8 is the reference for its syntax, and this chapter is the workshop. Where 19.8 states the grammar once, carefully, these pages use it nine times, each time in a small function that does one thing, and each chosen so that a different part of the contract comes into focus. The first example is a single clobber and nothing else. The last is a wrapper that hides every register name from the rest of the program. In between are outputs, inputs, read-write operands, digit constraints, `volatile`, and a full clobber list, in roughly the order a person meets them.
+Chapter20 gave the FFI `asm`, the escape hatch below the boundary; Section20.8 is the syntax reference and this chapter the workshop. Nine small functions isolate the contract piece by piece: clobbers, outputs, inputs, read-write operands, digit constraints, `volatile`, full clobber lists, and a wrapper that hides every register name.
 
-Here is the thing to hold onto for the whole chapter. The assembly template is the easy part. It is a string, and it is emitted verbatim. The part that decides whether the program is correct is the note card you hand the compiler beside it: the outputs, the inputs, the clobbers, and the qualifier. An `asm` block is a promise the compiler cannot verify. You are telling a tool that reasons about registers and memory what a few instructions it cannot see into will do. When the note card is honest, the code works and stays fast. When it is not, the program is wrong in a way that changes with the optimisation level, appears on one machine and not another, and gives no hint where to look.
+The template is the easy part: a string emitted verbatim. Correctness comes from the note card beside it, the outputs, inputs, clobbers, and qualifier. An `asm` block is a promise the compiler cannot verify. An honest note card keeps the code correct and fast; a dishonest one fails differently at each optimisation level and on each machine.
 
-Two honesties before the first example. First, inline assembly is architecture-specific and target-specific. It is the target C compiler that assembles it, not Coral; the template is lowered straight to GNU inline assembly, so `%0`, `"=a"`, and `%%rsp` are the C compiler's spelling, not Coral's. The standard library keeps separate files per platform for exactly this reason, and so should you. The examples below are x86-64 Linux. The lessons about clobbers, constraints, and volatility transfer to any target; the register names and instruction spellings do not. Second, the compiler does not check your note card today. It copies the constraint strings through without interpreting them, and it never inspects the clobber list. A wrong constraint, an unlisted clobbered register, or a missing `"memory"` is a miscompile the tool will not warn about. The error catalogue reserves E0401, E0402, and E0403 for these mistakes (Chapter23), but they are documented intentions, not checks that exist. You are the checker.
+Two honesties. Inline assembly is architecture-specific; the target C compiler assembles it, so `%0`, `"=a"`, and `%%rsp` are C inline-assembly spelling, which is why the standard library keeps per-platform files. The examples are x86-64 Linux; the lessons transfer, the register names do not. Second, the compiler does not check the note card: it passes constraints through and never inspects clobbers. A wrong constraint, unlisted clobber, or missing `"memory"` is a silent miscompile. E0401, E0402, and E0403 are intentions, not checks.
 
-A note on the imports. The examples reach for `std::io::ios { println }` to print, `std::mman { alloc, dealloc }` when they need a raw buffer, and `std::concurrent::thread { AtomicU64 }` when comparing a hand-written atomic to the library's. Each code block repeats the import it needs so that it can be read on its own.
+The examples use `println`, `alloc`/`dealloc` for raw buffers, and `AtomicU64` for comparison. Each block repeats its imports.
 
 40.1 The Shortest Useful Block: A Compiler Barrier
 
-The problem. You have two ordinary Coral stores, and their order matters: one must reach memory before the other. In a single thread the compiler is free to reorder stores that do not alias, because nobody in that thread can observe the difference. Across threads, or against a memory-mapped device, somebody can. You need to stop the compiler from moving them past each other, without writing a single instruction of your own.
+The problem. Two ordinary stores must reach memory in order. Within one thread the compiler may reorder non-aliasing stores; across threads or against a memory-mapped device, somebody observes the difference. Stop the compiler moving them past each other, without writing an instruction.
 
-The idea. The shortest useful `asm` block has an empty template and one thing in it: the clobber `"memory"`. An empty template means no instructions are emitted; the block exists only for the note card. `"memory"` tells the compiler the block may read and write any memory, so it must not keep memory values in registers across the block and must not move other memory accesses past it. That is exactly a compiler barrier. The `volatile` qualifier keeps the compiler from deleting a block whose only content is a promise, and the two empty operand sections are skipped with `::`, which is how the block reaches the clobber list with no outputs and no inputs.
+The idea. The shortest useful block has an empty template and one clobber, `"memory"`. No instructions are emitted; the block exists for the note card. `"memory"` says the block may read and write any memory, so values cannot stay in registers across it and accesses cannot move past it. `volatile` keeps a promise-only block from being deleted, and `::` skips the empty operand sections.
 
 The implementation.
 
@@ -44,19 +44,19 @@ The implementation.
         println("data {} flag {}", data, flag);
     }
 
-Parsing the barrier line by line: `asm volatile` is the statement; `""` is the empty template; the first `:` opens the output section and the second `:` closes it with nothing in it; the third `:` opens the input section, which is likewise empty, and the `"memory"` that follows is the clobber list. The whole block lowers to a C `__asm__ volatile("" ::: "memory")`, and the compiler is forbidden from reordering `*flag = 1u` above `*data = value`. The variables themselves are ordinary Coral locals and parameters; the barrier never mentions them, because it is not about a particular value, it is about all memory at once.
+Line by line: `asm volatile` is the statement, `""` the template, the first `:` opens and second closes an empty output section, the third opens empty inputs, and `"memory"` is the clobber list. It lowers to `__asm__ volatile("" ::: "memory")`, forbidding the compiler from moving `*flag = 1u` above `*data = value`. The barrier names no variables; it is about all memory.
 
-Cost and notes. The block emits no instructions and costs nothing at run time. It costs a little at compile time, because it forces the compiler to reload values it might otherwise have kept in a register. That is the whole point: it is a fence in the compiler's model, not in the hardware's. It does not stop the processor from reordering. If you also need the hardware to observe the order, that is a separate fence instruction, written in its own `asm` block with its own `"memory"` clobber. This is the block the standard library exposes as `memoryBarrier`, and it is the one to reach for whenever correctness depends on the order of ordinary memory accesses rather than on a special instruction.
+Cost and notes. No instructions and no run-time cost, only compile-time reloads the compiler might otherwise avoid. That is the point: a fence in the compiler's model, not the hardware's. If the processor must also observe the order, use a separate fence instruction with its own `"memory"` clobber. This is the standard library's `memoryBarrier`.
 
-Edge cases. `"memory"` is the only clobber here because memory is the only thing the block touches. A sibling clobber, `"cc"`, says the condition codes do not survive; an empty template does not touch them, so `"cc"` would be wrong here. And a barrier is not a substitute for atomics: it orders the compiler's view of memory, but two unsynchronised stores remain a data race no matter how they are ordered. Reach for the barrier when ordering is the missing piece and the accesses are already otherwise safe.
+Edge cases. `"memory"` is the only clobber because memory is the only thing touched. `"cc"` would be wrong here, since an empty template leaves condition codes alone. A barrier is not a substitute for atomics: it orders the compiler's view, but two unsynchronised stores remain a data race.
 
-Variation. Put the same barrier on both sides of a critical region, or between the loads and the store of a hand-rolled lock, and reason about which reorderings it forbids and which it permits. Then write the noisy version, `asm volatile { "mfence" ::: "memory" }`, and compare: the hardware fence orders the processor's accesses as well as the compiler's, and it is the one to use when the code crosses threads without an atomic. The instruction's own contract is the platform's to document; the Coral-side contract is the same `"memory"` clobber either way.
+Variation. Put the barrier on both sides of a critical region, or between the loads and store of a hand-rolled lock, and reason about which reorderings it forbids. Then write `asm volatile { "mfence" ::: "memory" }` and compare: the hardware fence also orders processor accesses, while the Coral-side contract stays the same.
 
 40.2 Reading a Register Out: An Output Operand
 
-The problem. Some values live in a register and nowhere else at the moment you want them. The stack pointer is the classic one: you want a snapshot of it, and no Coral expression names a register. You need the `asm` block to hand a register's value back to a Coral variable.
+The problem. Some values live only in a register. The stack pointer is the classic case: you want a snapshot, and no Coral expression names a register. The block must hand a register's value back to a Coral variable.
 
-The idea. An output operand has an `=` constraint and binds a Coral lvalue. `"=r"(sp)` says "the block writes a general-purpose register, and after the block its value belongs in `sp`." The compiler chooses which register stands in for `%0`; your template writes whatever `%0` is, and the compiler stores it into `sp` afterward. A literal register name in the template is written with a doubled percent, `%%rsp`, because a single `%` belongs to the operand placeholder. The block is a statement of intent about one output and one register, and nothing else.
+The idea. An output operand has an `=` constraint and binds a Coral lvalue. `"=r"(sp)` says the block writes a general-purpose register whose value then belongs in `sp`. The compiler chooses the register for `%0`; the template writes whatever `%0` is. A literal register uses a doubled percent, `%%rsp`, because a single `%` belongs to the placeholder.
 
 The implementation.
 
@@ -67,19 +67,19 @@ The implementation.
         return sp;
     }
 
-The output section is `"=r"(sp)`: one operand, output number `%0`, bound to the local `sp`. The template names one register literally as `%%rsp` and the operand as `%0`. The compiler chooses a general-purpose register for `%0` for the duration of the block, the block fills it, and afterward the compiler writes that register's value into `sp`'s storage. `sp` is write-only from the block's point of view, the `=` says its prior value is dead, which is correct, because nothing reads `sp` before the block runs.
+The output section is `"=r"(sp)`: operand `%0` bound to `sp`. The template names `%%rsp` literally and the operand as `%0`. The compiler picks a register, the block fills it, and afterward the value is stored into `sp`. The `=` says `sp`'s prior value is dead, correct because nothing reads it first.
 
-Cost and notes. One register-to-register move, and one store. The cost is in the constraint, not the instruction: because `"=r"` lets the compiler pick the register, it can fit the block into whatever register allocation it already has, which is why `"r"` is the default choice and a fixed register is reserved for when the instruction demands one. Selecting the fixed register by hand (`"=a"`, say) would be stricter than necessary here and could force the compiler to spill something.
+Cost and notes. One register-to-register move and one store. The cost is in the constraint: `"=r"` lets the compiler fit the block into its existing allocation, which is why `"r"` is the default and a fixed register is reserved for instructions that demand one. `"=a"` here could force a spill.
 
-Edge cases. The value is a snapshot taken at the moment the block runs, and the compiler is free to schedule the block around your other code; do not assume it lands exactly between the statements that surround it. What `%%rsp` holds is the stack pointer as the compiler has arranged its own frames, which is not always the value a human picture of the call stack would expect. And an output operand needs no clobber for its own register: the compiler knows `%0` is written because the `=` says so, and it will not keep a live value there across the block.
+Edge cases. The value is a snapshot when the block runs, and the compiler may schedule the block around other code; do not assume it lands between surrounding statements. `%%rsp` holds the stack pointer as the compiler arranged its frames, not a human picture of the call stack. An output needs no clobber for its own register, because `=` says it is written.
 
-Variation. Add a second output for a value the same instruction produces, and watch the numbering: outputs are numbered before inputs, so the two outputs are `%0` and `%1`. Then change `"=r"` to a fixed register constraint and observe that the block still works but the compiler has less freedom to schedule around it. The lesson is the same in both directions: the looser constraint is better whenever the instruction allows it.
+Variation. Add a second output and watch the numbering: outputs come before inputs, so they are `%0` and `%1`. Then change `"=r"` to a fixed register and observe less scheduling freedom. The looser constraint is better whenever the instruction allows it.
 
 40.3 Two Outputs at Once: The Timestamp Counter
 
-The problem. Some instructions produce their result split across two registers, and you want both halves out at once. A function that returns a small struct is the Coral shape for this, and `asm` can fill both halves from two outputs.
+The problem. Some instructions split their result across two registers, and you want both halves at once. A function returning a small struct is the Coral shape, and `asm` can fill both halves from two outputs.
 
-The idea. Name two output operands, one per destination register, with the fixed-register constraints the instruction requires. `"=a"` and `"=d"` name the two registers the instruction writes, and each is bound to its own Coral local. Outputs are numbered first, so the first is `%0` and the second is `%1`, even though this template mentions neither by number. A block whose only clobbered registers are its outputs needs no clobber list: the compiler already knows both registers are written.
+The idea. Name two output operands with the fixed-register constraints the instruction requires. `"=a"` and `"=d"` name the two written registers, each bound to a local. Outputs are numbered first, so they are `%0` and `%1`, though the template mentions neither. A block whose only clobbered registers are outputs needs no clobber list.
 
 The implementation.
 
@@ -96,19 +96,19 @@ The implementation.
         return Timestamp { .low = lo, .high = hi };
     }
 
-The two constraints pin the two halves to the registers the instruction reports through. The compiler loads nothing before the block, because both operands are outputs, and after the block it writes each named register into the local it binds. The two locals are then gathered into the struct, which is the type a caller can hold onto without knowing anything about registers.
+The constraints pin the two halves to the registers the instruction reports through. Nothing is loaded before the block, since both operands are outputs, and afterward each named register is stored into its local. The locals are gathered into the struct, a type a caller can hold without knowing about registers.
 
-Cost and notes. A few cycles, and two register-to-memory stores. The fixed-register constraints cost nothing here, because the instruction has only one place to put each half; a looser constraint could not be satisfied. The function's signature is entirely Coral, a `Timestamp` in, a `Timestamp` out, and that is the property to preserve. As soon as a register name appears in a public signature, the abstraction has leaked.
+Cost and notes. A few cycles and two register-to-memory stores. Fixed constraints cost nothing here, because the instruction has only one place for each half. The signature is entirely Coral, and that is the property to preserve: a register name in a public signature means the abstraction has leaked.
 
-Edge cases. Forgetting one of the two outputs would leave a register that the instruction destroys unaccounted for; the honest fixes are to bind it as a second output or to name it in the clobber list, and which you choose depends on whether you want its value. This block needs neither, because both destroyed registers are outputs. And the counter is not a clock: it is a tick count that varies by core and by machine, so it measures elapsed ticks within a process, not wall-clock time. If you need time, `std::time::nowMonotonic()` is the library call; asm is for the tick counter itself.
+Edge cases. Forgetting one output leaves a destroyed register unaccounted for; bind it as an output or name it as a clobber, depending on whether you want its value. The counter is not a clock: it varies by core and machine, measuring elapsed ticks within a process. For wall-clock time, use `std::time::nowMonotonic()`.
 
-Variation. Combine the two halves into one `u64` with shifts, and compare the result across two reads to see the counter advance. Then add a third output for a register the instruction also touches but that you were not capturing, and note that the moment a destroyed register stops being an output, it must become a clobber instead.
+Variation. Combine the halves into one `u64` with shifts and compare two reads to see the counter advance. Then add a third output for a register the instruction touches but you were not capturing; the moment a destroyed register stops being an output, it must become a clobber.
 
 40.4 A Raw Syscall: Digit Constraints and a Full Clobber List
 
-The problem. The kernel's system-call interface has no libc wrapper for what you need, and the mapping from arguments to registers is fixed by the platform's ABI. You must place each argument in the register the kernel expects, issue the call, and read the result out, and you must tell the compiler about every register the call does not preserve.
+The problem. The kernel's syscall interface has no libc wrapper for what you need, and the argument-to-register mapping is fixed by the ABI. You must place each argument, issue the call, read the result, and tell the compiler about every register the call does not preserve.
 
-The idea. This example has all the pieces at once, so it is worth reading slowly. The template moves the arguments that have no fixed constraint into the registers the ABI wants, issues the call, and reads the result out. The output is `"=a"(ret)`: the result arrives in one register and is stored into `ret`. The first input is `"0"(number)`: the digit `"0"` ties that input to output number zero, so the call number shares the result register instead of taking one of its own. The next three inputs use fixed-register constraints for the ABI's first three argument registers; the last three use generic `"r"`, and the template moves them where they belong. Every register the call destroys that is not already an operand is named in the clobber list, and `"memory"` says the call may read and write arbitrary memory.
+The idea. The template moves arguments with no fixed constraint into ABI registers, issues the call, and reads the result. `"=a"(ret)` stores the result. `"0"(number)` ties the call number to output zero, sharing the result register. Three inputs use fixed-register constraints for the first three argument registers; the last three use `"r"` and the template moves them. Every destroyed register not already an operand is clobbered, and `"memory"` says the call may touch arbitrary memory.
 
 The implementation. This is the general six-argument wrapper; the standard library's `mmap` is a specialized form of the same shape.
 
@@ -147,19 +147,19 @@ The implementation. This is the general six-argument wrapper; the standard libra
         println("done");
     }
 
-The operand numbering, spelled out, is the heart of the example. Operands are numbered outputs first and then inputs, so `%0` is `ret`, `%1` is `number`, `%2` is `arg1`, `%3` is `arg2`, `%4` is `arg3`, `%5` is `arg4`, `%6` is `arg5`, and `%7` is `arg6`. The fixed constraints do their own placement: `"D"` puts `arg1` where the ABI's first argument register is, `"S"` the second, `"d"` the third. The first three argument registers are therefore already correct when the template starts, which is why the template only moves `%5`, `%6`, and `%7`, the arguments the compiler was free to place anywhere. The digit `"0"` makes `number` and `ret` the same register: at entry it holds the call number, and after the call the template copies the result register back into `%0`. The clobber list names the registers the call destroys and that are not otherwise accounted for by an operand: `"rcx"` and `"r11"` because the call itself uses them, `"r8"`, `"r9"`, and `"r10"` because the template writes them with the fourth, fifth, and sixth arguments. `"memory"` tells the compiler the call can read and write any memory, so it must not cache anything across the block.
+Operand numbering is the heart: outputs first, then inputs, so `%0` is `ret`, `%1` `number`, `%2` `arg1`, through `%7` `arg6`. `"D"`, `"S"`, and `"d"` place the first three arguments, so the template moves only `%5`, `%6`, and `%7`. `"0"` makes `number` and `ret` one register: it holds the call number at entry, and the template copies the result back. `"rcx"` and `"r11"` are clobbered because the call uses them; `"r8"`, `"r9"`, and `"r10"` because the template writes them. `"memory"` prevents caching across the block.
 
-Cost and notes. The cost is a handful of moves, the call itself, and the register pressure the constraints impose. The `"r"` inputs are the cheap ones, because the compiler picks where they go; the fixed constraints are the expensive ones, because if a register the ABI names already holds something live, the compiler must spill it. That is the trade: ask for a fixed register only when the instruction requires it. And `sysWrite`, the typed wrapper, is what the rest of the program should see, it takes an `i32`, a `cchar*`, and a `usize`, and it knows nothing about `%5` or `"r10"`. The registers and the clobbers live one level down, in `rawSyscall6`.
+Cost and notes. A handful of moves, the call, and register pressure. `"r"` inputs are cheap because the compiler picks; fixed constraints are expensive because a live register may need spilling. Ask for a fixed register only when the instruction requires it. `sysWrite` is what the rest of the program should see, knowing nothing about `%5` or `"r10"`.
 
-Edge cases. The clobber list must name every register the block destroys that is not an operand; `"rcx"` and `"r11"` are the two most often forgotten, because the template never mentions them and it is tempting to leave out what you cannot see. Omitting them lets the compiler keep a live value in one of those registers across the call, and the value is destroyed silently. The digit constraint is not decoration: writing `"r"(number)` instead of `"0"(number)` would put the call number in an arbitrary register while the result went to `%0`, so the entry register would be wrong. And `"memory"` is required even though the template has no memory operand, because the call can touch memory the compiler cannot see. This is the shape the book's own platform layer uses; `rawSyscall6` is the general case and `mmap` is one instance.
+Edge cases. The clobber list must name every destroyed register that is not an operand; `"rcx"` and `"r11"` are most often forgotten because the template never mentions them. Omitting them lets the compiler keep a live value there, destroyed silently. Writing `"r"(number)` instead of `"0"(number)` puts the call number in the wrong entry register. `"memory"` is required even without a memory operand, because the call can touch unseen memory.
 
-Variation. Write the one-argument and three-argument forms, `rawSyscall1` and `rawSyscall3`, and notice that dropping arguments also drops the moves and the corresponding clobbers, but never drops `"rcx"`, `"r11"`, or `"memory"`. Then replace the `"D"`, `"S"`, `"d"` fixed constraints with generic `"r"` and add explicit `movq`s into the argument registers, and decide for yourself which form reads more clearly. The general wrapper in the standard library uses the fixed constraints, and this is why.
+Variation. Write the one- and three-argument forms and notice that dropping arguments drops moves and clobbers, but never `"rcx"`, `"r11"`, or `"memory"`. Then replace the fixed constraints with `"r"` plus explicit moves and decide which reads more clearly.
 
 40.5 An Atomic Read-Modify-Write: Why volatile and `"memory"` Matter
 
-The problem. You want an atomic read-modify-write on a single word, the kind a lock-free algorithm is built from, and you want it written out rather than taken from the library. The point of the exercise is not the instruction. It is that the compiler must be told, in two separate ways, that the operation has effects it cannot see.
+The problem. You want an atomic read-modify-write on a single word, written out rather than taken from the library. The point is not the instruction but that the compiler must be told, in two ways, about effects it cannot see.
 
-The idea. Two things protect the block. The `volatile` qualifier stops the compiler from deleting or duplicating it: a caller that ignores the returned value would otherwise leave a dead `asm` block, and dead blocks are removed. The `"memory"` clobber stops the compiler from reordering other memory accesses across it, which is what makes the atomic usable as a fence for the code around it. On the operand side, the cell carries `"+m"`: the `+` says the memory is both read and written, so the compiler must reload it rather than reusing a cached copy. The register that both carries the addend in and receives the old value out is a read-write operand, `"+r"`, or an input tied to the output with a digit constraint, and choosing between those two spellings is the lesson.
+The idea. `volatile` stops the compiler deleting or duplicating the block: a caller ignoring the result would otherwise leave a dead block. `"memory"` stops reordering other accesses across it, making it a fence. The cell carries `"+m"`: `+` says read and write, so the compiler must reload rather than reuse a cached copy. The register carrying the addend in and the old value out is read-write, either `"+r"` or an input tied to the output with a digit constraint.
 
 The implementation.
 
@@ -192,13 +192,13 @@ The implementation.
         println("library {}", counter.load());
     }
 
-The output `"=r"(previous)` is operand `%0`; the read-write memory `"+m"(*cell)` is operand `%1`. The input `"0"(delta)` is tied to operand zero, so the addend arrives in the same register that the operation leaves the previous value in. The register is therefore both an input and an output without a separate `"+r"` operand, and the `+` on the memory says the cell is read as well as written. The `"cc"` clobber is there because the operation writes the condition codes, and `"memory"` orders all other memory around it.
+`"=r"(previous)` is `%0`; `"+m"(*cell)` is `%1`. `"0"(delta)` is tied to operand zero, so the addend arrives in the register that leaves the previous value. The register is both input and output without a separate `"+r"`, and `+` on memory says the cell is read and written. `"cc"` is present because the operation writes condition codes, and `"memory"` orders other accesses.
 
-Cost and notes. One locked instruction, a few tens of cycles, serialising and indivisible. The compiler's cost is the `"memory"` clobber, which forces reloads around the block; that is exactly what an atomic should force, because the whole reason for the operation is that another thread may have changed memory since the last load. Compare this to `std::concurrent::thread::AtomicU64::fetchAdd`, which is the same operation with a reviewed note card: the library's version is the one to use in a real program, and this one is here to show you the note card the library wrote.
+Cost and notes. One locked instruction, tens of cycles, serialising and indivisible. The `"memory"` clobber forces reloads around the block, exactly what an atomic should force, because another thread may have changed memory. Compare `AtomicU64::fetchAdd`, the same operation with a reviewed note card and the version to use in real programs.
 
-Edge cases. Remove `volatile` and the block becomes deletable when its result is unused, which is precisely when a lock-free update must still happen. Remove `"memory"` and the compiler may hoist a load of another location above the block or sink a store below it, defeating the ordering the algorithm relies on. And the `+` in `"+m"` is not optional: with a bare `"=m"` the compiler believes the old cell value is dead and may discard a store that another thread would have observed. Each of these is a real miscompile and each is silent.
+Edge cases. Remove `volatile` and the block becomes deletable when its result is unused, precisely when a lock-free update must still happen. Remove `"memory"` and the compiler may hoist a load above or sink a store below. A bare `"=m"` instead of `"+m"` tells the compiler the old value is dead, and it may discard a store another thread would observe. Each is a silent miscompile.
 
-Variation. The compare-and-swap form is the same shape with a different instruction, and it is a good test of the accumulator question. The instruction reads and writes the accumulator as part of its contract, so the accumulator must be a read-write operand, `"+a"`, not a clobber:
+Variation. Compare-and-swap has the same shape. The instruction reads and writes the accumulator, so the accumulator is a read-write operand, `"+a"`, not a clobber:
 
     bool compareSwap(u64* cell, u64 expected, u64 desired) {
         u64 seen = expected;
@@ -212,13 +212,13 @@ Variation. The compare-and-swap form is the same shape with a different instruct
         return seen == expected;
     }
 
-If you wrote `"rax"` in the clobber list instead of binding `"+a"(seen)`, you would be telling the compiler that the accumulator is destroyed while also feeding it an expected value, the exact contradiction E0402 names. The compiler does not check it today, so the wrong version builds and misbehaves.
+Writing `"rax"` in the clobber list instead of binding `"+a"(seen)` claims the accumulator is destroyed while also feeding it an expected value, the contradiction E0402 names. The compiler does not check it today, so the wrong version builds and misbehaves.
 
 40.6 A Read-Only Probe: Four Clobbers, or Four Outputs
 
-The problem. An instruction reports several registers' worth of information, and you either want some of it or only want the instruction to have run. It reports through four registers. The question this example settles is whether those registers are outputs, clobbers, or both.
+The problem. An instruction reports through four registers, and you either want some of the information or only want the instruction to have run. The question is whether those registers are outputs, clobbers, or both.
 
-The idea. They are either outputs or clobbers, never both. If you want the values, bind each of the four registers as an output, the inputs that select what is reported, if any, are read-write operands, and the clobber list is empty, because every destroyed register is already an operand. If you want only to run the instruction and take nothing back, bind no operands and name all four registers in the clobber list. The two forms are the same block with the same destroyed set, described two different ways. Writing both at once, the registers as outputs and also in the clobber list, is the contradiction E0402 describes.
+The idea. They are either outputs or clobbers, never both. If you want the values, bind each register as an output, make selectors read-write, and leave the clobber list empty. If you want only to run the instruction, bind no operands and name all four as clobbers. Writing both is the contradiction E0402 describes.
 
 The implementation. The capturing form, with the two selectors as read-write operands and no clobbers:
 
@@ -248,19 +248,19 @@ The implementation. The capturing form, with the two selectors as read-write ope
         asm volatile { "cpuid" ::: "eax", "ebx", "ecx", "edx" }
     }
 
-In the first form, the four registers are all operands. The two that carry an input as well as an output, the selectors, use `+`, which is why `a` and `c` are initialised before the block and are read-write rather than write-only. Because the entire destroyed set is accounted for as operands, the clobber list is empty. In the second form, the four registers are all clobbers, both operand sections are skipped with `::`, and the block captures nothing. Both forms tell the compiler the same fact, these four registers do not survive, and both are honest. The mistake is to write the operands *and* the clobber list, which claims the registers are simultaneously live operands and destroyed strangers.
+In the capturing form the four registers are all operands. The selectors use `+`, so `a` and `c` are initialised before the block and are read-write. Since the whole destroyed set is accounted for, the clobber list is empty. In the discarding form the four registers are clobbers and nothing is captured. Both are honest; writing operands *and* clobbers claims the registers are simultaneously live and destroyed.
 
-Cost and notes. The capturing form costs four stores after the block and constrains the compiler to the four fixed registers. The discarding form costs nothing at run time beyond the instruction itself and constrains nothing, because with no operands the compiler has no registers to allocate. The discarding form is rarely what you want, an instruction whose answer you throw away usually has no point, but as a probe or as a serialising barrier it is a clean demonstration of a clobber list with nothing else in it.
+Cost and notes. The capturing form costs four stores and constrains the compiler to four fixed registers. The discarding form costs nothing beyond the instruction and constrains nothing, because with no operands there is nothing to allocate. It is rarely what you want, but as a probe or serialising barrier it cleanly demonstrates a clobber-only block.
 
-Edge cases. This example captures four `u32`s; binding a `u64` to one of these 32-bit register constraints is the size mismatch that E0401 reserves a code for, and it is a real error even though the compiler does not catch it. One of the four registers is reserved for a particular addressing model on some targets, which is one more reason the standard library keeps its own per-platform file and you should not copy this block between architectures. And the capturing form needs `+` on the selectors precisely because the instruction reads them before it writes: a bare `"a"(a)` would be an input, and then the instruction's write to the same register would be an unlisted destruction.
+Edge cases. Binding a `u64` to a 32-bit register constraint is the size mismatch E0401 reserves a code for, a real error the compiler does not catch. One register is reserved for a particular addressing model on some targets, another reason to keep per-platform files. The capturing form needs `+` on selectors because the instruction reads before writing; a bare `"a"(a)` would make the write an unlisted destruction.
 
-Variation. Start from the capturing form and delete one output, leaving that register destroyed and unaccounted for; then fix it by naming the register in the clobber list. You have just converted an output into a clobber, which is the whole distinction the example is about. Do it for each of the four registers and watch the operand numbering shift; outputs are numbered before inputs, so removing an output renumbers the ones after it.
+Variation. Delete one output, leaving a register destroyed and unaccounted for, then name it as a clobber. You have converted an output into a clobber, the distinction this example is about. Do it for each register and watch the numbering shift.
 
 40.7 The Wrong Ways, Part One: Missing `"memory"` and Missing `volatile`
 
-The problem. These are the two mistakes that make an `asm` block look correct and behave unpredictably. One is a block that touches memory without saying so; the other is a block with a side effect that the optimizer deletes. Both are invisible at the source and both appear and disappear with the optimisation level.
+The problem. These two mistakes make an `asm` block look correct and behave unpredictably: a block that touches memory without saying so, and a block with a side effect the optimizer deletes. Both are invisible at the source and vary with the optimisation level.
 
-The first wrong way: no `"memory"`. Consider a store, then a block that announces it, with no `"memory"` clobber on the block.
+The first wrong way: no `"memory"`. Consider a store, then a block that announces it, with no `"memory"` clobber.
 
     void signalWrong(u64* data, u64* ready) {
         *data = 42u;
@@ -268,28 +268,28 @@ The first wrong way: no `"memory"`. Consider a store, then a block that announce
         asm volatile { "movq $1, (%0)" : : "r"(ready) }
     }
 
-Because the block does not claim to touch arbitrary memory, the compiler is entitled to move the `*data = 42u` store *after* the block, or to keep a copy of `*data` in a register and skip the store entirely, if it believes nothing reads it. On the other thread, the announcement arrives before the payload, or the payload never arrives at all. The fix is the barrier of 39.1 folded into the same block: add `"memory"` to the clobber list, and the store can no longer cross the block. The lesson is that a block that writes memory through a pointer must tell the compiler about *all* memory, not just the cell it names, because the compiler cannot know what else the write aliases.
+Because the block does not claim to touch arbitrary memory, the compiler may move `*data = 42u` after the block, or keep a copy in a register and skip the store if nothing reads it. The other thread sees the announcement first or no payload at all. The fix is 39.1's barrier folded in: add `"memory"`, and the store cannot cross. A block writing memory through a pointer must claim *all* memory, because the compiler cannot know what else the write aliases.
 
-The second wrong way: no `volatile`. A block whose purpose is a side effect on a device or a shared word, with no outputs and no `volatile`, is dead code to the optimizer.
+The second wrong way: no `volatile`. A block whose purpose is a side effect on a device or shared word, with no outputs and no `volatile`, is dead code to the optimizer.
 
     void pokeWrong(rawptr mmio) {
         // no output and no volatile: the optimizer sees a dead block
         asm { "movq $1, (%0)" : : "r"(mmio) }
     }
 
-With no output to use and no `volatile`, the block has no observable result as far as the compiler is concerned, and it is removed entirely. The program compiles, runs, and never pokes the device. The fix is `asm volatile`, which marks the block as having side effects that must not be dropped, reordered, or duplicated. A block with an output that the caller uses is safe without `volatile`; a block whose only result is in memory or in the world is not.
+With no output and no `volatile`, the block has no observable result and is removed entirely. The program compiles, runs, and never pokes the device. `asm volatile` marks side effects that must not be dropped, reordered, or duplicated. A block whose output the caller uses is safe without `volatile`; a block whose only result is in memory or the world is not.
 
-Cost and notes. The fixes cost nothing at run time, `"memory"` and `volatile` are notes to the compiler, not instructions. What they cost is optimisation: a block marked `volatile` with a `"memory"` clobber cannot be hoisted out of a loop, combined with a neighbour, or elided, which is the price of being trusted. The catalogue's nearest reserved code is E0403, which names a volatile write defeated by a non-volatile read: it is the same family of "the memory model does not say what the author thinks it says." The specific mistakes above, a missing `"memory"` clobber and a deletable side effect, are not individually coded, and none of the E04xx checks runs today, so the compiler will not save you.
+Cost and notes. The fixes cost nothing at run time; `"memory"` and `volatile` are notes, not instructions. They do cost optimisation: a `volatile` block with a `"memory"` clobber cannot be hoisted, combined, or elided. The nearest reserved code is E0403, a volatile write defeated by a non-volatile read. The specific mistakes above are not individually coded, and no E04xx check runs today.
 
-Edge cases. Adding `volatile` does not by itself fix a missing `"memory"`: the two are different promises, and a `volatile` block with no `"memory"` can still have ordinary accesses reordered around it. Conversely, `"memory"` does not keep a block from being deleted if it has no output and no `volatile`; a deletable block needs both. And `volatile` on an `asm` is a different thing from the `#[[const]]` attribute on a function: `volatile` stops the block being moved or removed, while `#[[const]]` promises that a function does not mutate its parameters. The const check does not look inside `asm` operands, so an `asm` that writes through `self` in a const function is a mutation the checker will not see.
+Edge cases. `volatile` alone does not fix a missing `"memory"`: ordinary accesses can still be reordered around a volatile block. Conversely, `"memory"` does not keep a block from being deleted if it has no output and no `volatile`. `volatile` on `asm` differs from `#[[const]]`: `volatile` stops movement or removal, while `#[[const]]` promises no mutation. The const check does not look inside `asm` operands.
 
-Variation. Take the working `publish` from 39.1 and remove its `"memory"` clobber, then build at `debug` and at `release` and compare. The `debug` build, with almost no optimisation, behaves correctly; the `release` build is where the reordering shows up. Then remove the `volatile` from `pokeWrong` and confirm with the compiler's own output, or by reading the generated assembly, that the instruction is gone. The lesson is not about the instructions; it is about who is responsible for them.
+Variation. Take the working `publish` from 39.1, remove its `"memory"`, and build at `debug` and `release`. The `debug` build behaves correctly; `release` is where reordering appears. Then remove `volatile` from `pokeWrong` and confirm from the generated assembly that the instruction is gone.
 
 40.8 The Wrong Ways, Part Two: Operand and Clobber Contracts
 
-The problem. These two mistakes are about the operands themselves: an input the template quietly modifies, and a clobber that collides with a live operand. Both are contradictions between what the note card says and what the block does, and both are the kind of thing a checker would catch if the checker existed.
+The problem. These mistakes concern the operands: an input the template quietly modifies, and a clobber that collides with a live operand. Both contradict the note card and block, and both are what a checker would catch if one existed.
 
-The first wrong way: an input that is modified without `+`. A template writes its operand, but the constraint says input-only.
+The first wrong way: an input modified without `+`. The template writes its operand, but the constraint says input-only.
 
     u64 badIncrement(u64 x) {
         // "r"(x) says input-only, but the template writes that operand
@@ -297,9 +297,9 @@ The first wrong way: an input that is modified without `+`. A template writes it
         return x;
     }
 
-The constraint `"r"(x)` tells the compiler that `x` is read and not written, so after the block the compiler may still hold the old `x` in a register and return it, or reuse the register for something else. The block wrote to a register the compiler believed it owned. The fix is to make the operand read-write: `"+r"(x)` on the output side, which says both that the block reads the old value and that the new value is the result. The nearest reserved code is E0401, whose subject is a constraint that does not agree with the operand; the silent modification here is the same class of disagreement between the note card and reality.
+`"r"(x)` tells the compiler `x` is read, not written, so after the block it may still hold the old value or reuse the register. The block wrote to a register the compiler believed it owned. The fix is `"+r"(x)`, saying the block reads the old value and produces the new one. The nearest reserved code is E0401.
 
-The second wrong way: a clobber that overlaps a live operand. A block binds an input to a fixed register and then also names that register in the clobber list.
+The second wrong way: a clobber overlapping a live operand. A block binds an input to a fixed register and also names that register as a clobber.
 
     u64 addViaFixedReg(u64 a, u64 b) {
         u64 out;
@@ -313,19 +313,19 @@ The second wrong way: a clobber that overlaps a live operand. A block binds an i
         return out;
     }
 
-The input `"c"(b)` tells the compiler to place `b` in the fixed register, and `"rcx"` in the clobber list tells it the same register is destroyed. Both cannot be true: the input would be destroyed before the block reads it. The compiler is forced to choose which statement to believe, and which it believes depends on the optimisation level. The fix is to delete `"rcx"` from the clobber list, because a register that is already an operand is accounted for and must not appear again. This is exactly E0402, "a clobbered register listed as a live input or output operand," and it is one of the rare cases where the mistake has a precise name.
+`"c"(b)` places `b` in the fixed register, and `"rcx"` says that register is destroyed. Both cannot be true: the input would be destroyed before the block reads it, and which statement the compiler believes depends on the optimisation level. Delete `"rcx"`: a register that is already an operand is accounted for. This is E0402.
 
-Cost and notes. The correct versions are free: `"+r"(x)` and removing the redundant clobber change nothing at run time and only correct the compiler's model. The wrong versions are the dangerous kind of wrong, because they build. The constraint strings are copied straight through, and the clobber list is never inspected, so the program compiles cleanly with the contradictions in place. The misbehaviour shows up as a value that is stale, a register that holds the wrong thing, or a result that depends on the optimisation level, none of which points back to the `asm` block.
+Cost and notes. The correct versions are free, correcting only the compiler's model. The wrong versions build, because constraints are copied through and clobber lists never inspected. The misbehaviour is a stale value, a wrong register, or an optimisation-dependent result, none pointing back to the block.
 
-Edge cases. The `+` is not a lighter version of `=`; it is the only accurate spelling when the template reads the operand before writing it, and using `=` where `+` belongs leaves the old value undefined if the template reads it. A digit constraint such as `"0"` is an alternative to `+` when the operand must share a specific numbered operand rather than a fresh register, as 39.5 showed. And the clobber rule is one-directional: a register may be an operand without being a clobber, but it may not be both. When a register is destroyed and you want its value, make it an output; when you do not, make it a clobber; never list it as both.
+Edge cases. `+` is not a lighter `=`; it is the only accurate spelling when the template reads before writing, and using `=` leaves the old value undefined. A digit constraint such as `"0"` is an alternative when the operand must share a numbered operand. The rule is one-directional: a register may be an operand without being a clobber, but not both.
 
-Variation. Take the syscall wrapper from 39.4 and deliberately move `"r10"` from the clobber list into the operand list, binding the fourth argument with a fixed constraint, and confirm the compiler now allocates that register for you. Then move it back. The point is that the two descriptions are exclusive, and choosing between them is the whole job of writing a clobber list. Then revisit 39.6 and decide, for each of the four registers, whether it is an output or a clobber in your particular use of the probe, and write it one way and not the other.
+Variation. Take the syscall wrapper from 39.4 and move `"r10"` from the clobber list to a fixed-constraint operand, then move it back. The two descriptions are exclusive, and choosing between them is the whole job of a clobber list. Then decide, for each of the four probe registers, whether it is an output or a clobber.
 
 40.9 Quarantining the Target: One Wrapper, No Registers Anywhere Else
 
-The problem. Every block in this chapter names x86-64 registers and instructions, and every one of them is wrong on another architecture. If that knowledge is scattered through a program, the program has to change wholesale when the target does. The standard library's answer is to keep it in a file per platform; the answer for your program is the same, expressed with a target guard and one small function.
+The problem. Every block here names x86-64 registers and is wrong on another architecture. Scattered through a program, that knowledge forces wholesale changes when the target does. The standard library keeps it in a file per platform; your program should too, behind a target guard and one small function.
 
-The idea. Put every `asm` block behind a function with an ordinary Coral signature, in a module whose only job is to hold target-specific code. Inside the function, `flag (arch)` selects the branch that assembles on the current target and provides a fallback for the others. Callers import the module and call the function; they never see a register name, a constraint, or a clobber. This is the FFI wrapper of Chapter20 applied one level down: the wrapper does the translation once, and the rest of the program is portable Coral.
+The idea. Put every `asm` block behind a function with an ordinary Coral signature, in a module whose only job is target-specific code. Inside, `flag (arch)` selects the branch that assembles on the current target and provides a fallback. Callers import the module and call the function, never seeing a register, constraint, or clobber. This is Chapter20's FFI wrapper applied one level down.
 
 The implementation. The target-specific module, the only file in the program that mentions a register:
 
@@ -359,32 +359,32 @@ And the program that uses it, which never sees the assembly:
         println("elapsed ticks {}", t1 - t0);
     }
 
-The module exports one function with a pure Coral signature, `u64 readCycleCounter()`. The `flag (arch)` block decides at compile time whether the target-specific branch is included, so on a non-x86 target the asm is not merely unreachable, it is not compiled, and the fallback defines the result. The caller writes `readCycleCounter()` and nothing else; the name is a plain verb, the return type is a plain integer, and the fact that one platform reads a register and another returns zero is entirely the wrapper's business.
+The module exports one function with a pure Coral signature, `u64 readCycleCounter()`. `flag (arch)` decides at compile time whether the target branch is included, so on a non-x86 target the asm is not compiled and the fallback defines the result. The caller writes `readCycleCounter()` and nothing else.
 
-Cost and notes. There is no run-time cost to the wrapper; if the compiler inlines the small function, the call disappears and the block sits wherever it was called. The cost is organisational, and it is small: one extra module, a handful of lines. What it buys is that a port touches one file. When the program is built for another architecture, only `cycles.crl` changes, or rather, a sibling implementation of `cycles` for that target is added, exactly as the standard library adds a `std/x86_64/windows/...` beside its `std/x86_64/linux/...`. The rest of the program, which called `readCycleCounter`, does not change at all.
+Cost and notes. No run-time cost; if the compiler inlines the small function, the call disappears. The cost is organisational and small: one module, a handful of lines. A port touches one file. For another architecture, only `cycles.crl` changes, or a sibling implementation is added, as the standard library adds platform files. The rest of the program does not change.
 
-Edge cases. The fallback must produce a *defined* value, and zero is the honest one for a counter that does not exist; returning an uninitialised local would make the port compile and then misbehave. Document the contract of the wrapper, what the counter means, whether it can repeat or go backwards, and what the fallback does, because callers will treat it as an ordinary function and the contract is the only thing protecting them. Keep the module's exported surface small: a function, not a register, not a constraint, not a `struct` full of platform words. And keep the asm in exactly one place, because two copies of a clobber list are two copies that can drift apart, and the one that drifts is the one nobody re-reads.
+Edge cases. The fallback must produce a *defined* value; zero is honest for a counter that does not exist, while an uninitialised local would compile and misbehave. Document the wrapper's contract: what the counter means, whether it can repeat or go backward, and what the fallback does. Keep the exported surface small, and keep the asm in one place, because two clobber lists can drift.
 
-Variation. Move `readStackPointer` from 39.2 and `rawSyscall6` from 39.4 into the same module, or into sibling modules named for their targets, and give each a Coral signature that says nothing about registers. Then write a non-x86 implementation of the same three functions and confirm that a program calling them is unchanged. That exercise is the entire argument of the chapter in miniature: the unsafe, target-specific code is small, local, and reviewed once; the portable program above it is ordinary Coral and stays that way.
+Variation. Move `readStackPointer` from 39.2 and `rawSyscall6` from 39.4 into the same module, give each a register-free Coral signature, and write non-x86 implementations. Confirm a calling program is unchanged. That is the chapter's argument in miniature: unsafe code is small, local, and reviewed once; the program above is ordinary Coral.
 
 40.10 Exercises
 
-1. Comprehension. In one sentence each, what do the output, input, and clobber sections of an `asm` block tell the compiler? Which of the three is the only one that binds a Coral variable?
+1. Comprehension. In one sentence each, what do the output, input, and clobber sections tell the compiler? Which is the only one that binds a Coral variable?
 
-2. Comprehension. Explain the difference between `"="`, `"+"`, and a digit constraint such as `"0"`. For each, give a short template fragment and the operand declaration that uses it, and say which one ties an input to a specific output.
+2. Comprehension. Explain `"="`, `"+"`, and a digit constraint such as `"0"`. For each, give a template fragment and operand declaration, and say which ties an input to a specific output.
 
-3. Operand numbering. Given an `asm` block with two outputs and three inputs, state the number of every operand, and state which one a constraint `"1"` would refer to. Why are outputs numbered before inputs?
+3. Operand numbering. With two outputs and three inputs, state every operand's number and which one `"1"` refers to. Why are outputs numbered before inputs?
 
-4. Implementation. Write `rawSyscall1(u64 number, u64 arg1)`, the one-argument form of 39.4, with the correct clobber list. Which clobbers are required because of the call itself, and which would be required only if you moved more arguments? Then use it to wrap a no-argument syscall.
+4. Implementation. Write `rawSyscall1(u64 number, u64 arg1)`, the one-argument form of 39.4, with the correct clobber list. Which clobbers are required by the call itself, and which only if you moved more arguments? Then wrap a no-argument syscall.
 
-5. Clobbers. The syscall block in 39.4 names `"rcx"` and `"r11"` even though the template never mentions them. Explain why, and describe exactly what can go wrong if you omit them. Why is `"rax"` not in the list?
+5. Clobbers. The syscall block in 39.4 names `"rcx"` and `"r11"` though the template never mentions them. Explain why and what goes wrong if you omit them. Why is `"rax"` not listed?
 
-6. Correctness. A colleague writes an input operand with a plain `"r"` constraint, and the template modifies it. Show the corrected block, name the reserved diagnostic that is closest to the mistake, and explain why the compiler did not report it.
+6. Correctness. A colleague writes an input with plain `"r"` and the template modifies it. Show the corrected block, name the closest reserved diagnostic, and explain why the compiler did not report it.
 
-7. Correctness. A block lists `"rcx"` in its clobber list and also passes an input with the `"c"` constraint. What contradiction has the author written, which reserved code names it, and what is the single-line fix?
+7. Correctness. A block lists `"rcx"` as a clobber and also passes an input with `"c"`. What contradiction is written, which reserved code names it, and what is the one-line fix?
 
-8. Volatility. Write a non-volatile `asm` block whose only effect is a store through a pointer, show why the optimizer is entitled to remove it, and then fix it two ways: with `volatile`, and with an output the caller uses. Which fix is appropriate when, and why does adding `volatile` alone not fix a missing `"memory"`?
+8. Volatility. Write a non-volatile `asm` block whose only effect is a store through a pointer, show why the optimizer may remove it, then fix it with `volatile` and with a used output. Which fix is appropriate when, and why does `volatile` alone not fix a missing `"memory"`?
 
-9. Wrapper design. Put `readCycleCounter` and `readStackPointer` behind one module with ordinary Coral signatures and `flag (arch)` guards. State the contract each function documents, and explain why a caller in another module can be written once and built for any target.
+9. Wrapper design. Put `readCycleCounter` and `readStackPointer` behind one module with Coral signatures and `flag (arch)` guards. State each contract, and explain why a caller in another module can be written once and built for any target.
 
-10. Design and meta. Choose one instruction the compiler will not emit for you and design the wrapper that hides it: the function signature, the constraint and clobber choices, the target guards, and the fallback. Then argue the other side, describe one task where reaching for `asm` is the wrong call, and name the library function or the ordinary Coral code that should have been used instead.
+10. Design and meta. Choose an instruction the compiler will not emit and design the wrapper that hides it: signature, constraints, clobbers, target guards, fallback. Then argue the other side: describe one task where `asm` is the wrong call, and name the library function or ordinary Coral code that should have been used.
