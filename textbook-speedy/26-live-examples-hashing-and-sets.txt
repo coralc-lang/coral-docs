@@ -4,17 +4,17 @@ Live Examples: Hashing and Sets
 
 Trading Order for Speed
 
-There comes a moment in learning data structures when hashing stops being a strange word and becomes a superpower. It happens the first time you replace a nested loop with a single lookup and watch a problem that took a second run in a microsecond. This chapter is about that moment, from six different angles.
+Hashing turns a nested loop into a single lookup, replacing seconds with microseconds. This chapter shows that from six angles.
 
-The picture that makes hashing click is the coat check at a theatre. You hand over your coat, and the attendant hands you a ticket with a number. Later you hand back the ticket and get your coat, with no attendant searching a pile of a thousand coats, because the ticket told them exactly which hook to look at. A hash map is that coat check. You give it a key (your coat), it computes a number (the ticket), and it stores the value at the slot that number points to. To look the value up again, it recomputes the number from the key and goes straight to the slot. No searching. The catch: the attendant must know how to turn *any* coat into a ticket, and must be able to tell two coats apart. In Coral those two abilities are the two function arguments you hand to every hashed container, and Chapter16 showed the signatures.
+A hash map is a theatre coat check: you give a key, it computes a slot number, and it stores the value there. Lookup recomputes the number and goes straight to the slot, with no searching. The catch is that the container needs a hash function to make the ticket and an equality function to tell keys apart; Chapter16 showed the signatures.
 
-Hold on. Why is that O(1), and why do I keep saying "average"? Because two different keys can, by bad luck, compute the same slot number. That is a collision, and the container must have a plan for it: Coral's `HashMap` walks forward to the next free slot (open addressing with linear probing). Two colliding keys sit near each other, and a lookup checks a short chain. When the table stays under half full, that chain is almost always length one, so the average lookup is a constant number of steps. But in the pathological worst case, everything collides and it degrades to a linear scan. The friendly hedge word "average" is doing real work. A good engineer remembers it is not a guarantee about any particular run.
+Two keys can compute the same slot. That is a collision, and Coral's `HashMap` resolves it by walking forward to the next free slot (open addressing with linear probing). Colliding keys sit near each other, so a lookup checks a short chain. Below half full, that chain is almost always length one, giving constant average lookup. In the pathological worst case everything collides and lookup degrades to a linear scan. "Average" is doing real work.
 
-Sets are maps without values. A set answers exactly one question, "is this thing present?", and enforces that each thing appears at most once. If a map is the coat check, a set is the guest list: a doorman who can tell you instantly whether a name is on the list, and who refuses to write the same name twice.
+A set is a map without values. It answers "is this present?" and enforces at most one copy of each element, like a doorman checking a guest list.
 
-One more piece of vocabulary before the problems. The library has a second associative container, `Map`, an ordered tree: it keeps keys sorted and gives O(log n) lookups instead of O(1). In exchange, its iteration is deterministic and in order (Chapter16, 16.3). Choosing between them is a statement about your problem. If you iterate and need the keys sorted, use `Map`. If you only ever look things up, use `HashMap`. And a recurring trick in these problems is to store not the answer directly but a *complement* or a *prefix*. Instead of asking "have I seen this value?", ask "have I seen the value that would complete this pair?" That inversion is the single most useful hashing idea, and it appears three times below.
+`Map` is the other associative container: an ordered tree with O(log n) lookups but deterministic, sorted iteration (Chapter16, 16.3). Use `Map` when keys must stay sorted, `HashMap` when you only look up. A recurring trick is to store a *complement* or a *prefix* rather than the answer: ask "have I seen the value that would complete this pair?" That inversion appears three times below.
 
-Every implementation here needs the two little functions the containers are handed. For integer keys they are almost trivial:
+Every hashed container needs a hash and an equality function. For integer keys they are almost trivial:
 
     usize hashI32(i32 k) { return (usize)k; }
     bool eqI32(i32 a, i32 b) { return a == b; }
@@ -31,7 +31,7 @@ Every implementation here needs the two little functions the containers are hand
     }
     bool eqStr(str a, str b) { return a.equals(b); }
 
-The `hashStr` is the classic djb2. It is not a cryptographic hash; it is chosen for speed, which is all a hash table needs. The equality functions look almost too simple to be necessary. They matter for exactly the collision case: after hashing to the same slot, the table compares the stored key against yours to tell a true match from a coincidence.
+`hashStr` is djb2, chosen for speed rather than cryptography, which is all a hash table needs. Equality matters exactly on collision: after hashing to the same slot, the table compares the stored key with yours to tell a true match from a coincidence.
 
 26.1 Two Sum (Unsorted)
 
@@ -39,17 +39,17 @@ The problem
 
 Given an unsorted array and a target, return the positions of the two numbers that sum to the target.
 
-Picture this
+Walk the line once with a notebook mapping each number seen to its position. For each person, ask whether the needed complement is already in the notebook. Never look ahead, never double back.
 
-You walk down a line of people, each holding a number. For each person you ask: "Has anyone I already passed held exactly the number needed to complete mine?" You keep a little notebook of everyone you have passed, mapping their number to their position. You never look ahead, and you never double back. One walk through the line solves it.
+Try every pair, scanning every later `j` for each `i`: n² / 2 comparisons. It is the baseline hashing must beat by an order of magnitude.
 
 Brute force
 
-Try every pair. For each i, scan every j after it and test the sum. n² / 2 comparisons. It is the first thing everyone writes, and the baseline the hashing answer must beat by an order of magnitude. Which it does.
+One pass with a hash map from value to last-seen position. For each number, compute `target - number` and ask whether the complement has been seen; if so, return the stored position and the current one. Otherwise record the current number. This is the complement trick: store what you have and immediately check whether the past contains its partner.
 
 The better approach
 
-One pass with a hash map from value to the position where it was last seen. For each number, compute the complement `target - number` and ask the map whether the complement has been seen. If it has, we have our pair: the stored position and the current one. If not, record the current number and move on. This is the complement trick. We do not store what we have and later look for a match in the future. We store what we have and immediately check whether the past already contains its partner.
+The code:
 
 The implementation
 
@@ -79,15 +79,15 @@ The implementation
         return out;
     }
 
-Two corners are handled deliberately. The complement is computed in `i64` and range-checked before it is cast back, because `target - x` can overflow a 32-bit subtraction. A wrapped complement would be looked up as a plausible-looking number and could produce a wrong match. And we insert the current number *after* the lookup, not before, so a number is never paired with itself. That ordering is the difference between finding distinct indices and returning `[i, i]` for an input like `[3]` with target 6.
+Two corners are deliberate. The complement is computed in `i64` and range-checked before casting back, because `target - x` can overflow 32-bit subtraction and a wrapped complement could produce a wrong match. And the current number is inserted *after* the lookup, so it never pairs with itself; that ordering distinguishes distinct indices from returning `[i, i]` for `[3]` with target 6.
 
 The cost
 
-Time is linear on average: one pass, and each map lookup and insertion is O(1) on average because the table keeps its probe chains short. Space is linear; in the worst case the map holds every element. Compare the brute force's quadratic time. The trade is memory for time, the signature trade of hashing, and it is almost always worth making.
+Average time is linear: one pass with O(1) average lookups and insertions. Space is linear, since the map may hold every element. The brute force is quadratic; trading memory for time is the signature hash trade.
 
 Edge cases and a variation
 
-Fewer than two elements returns an empty vector, meaning no pair. If the same value must not be used twice, the insert-after-lookup order enforces it. The variation: find all unique pairs summing to the target, not the first. Keep the map but do not return early; instead skip duplicates by checking that the complement has not already been consumed. The same skeleton solves three-sum once the array is sorted and one element is fixed by an outer loop, with this hash pass done on the remainder.
+Fewer than two elements returns an empty vector. Insert-after-lookup prevents reusing a value. Variation: return all unique pairs by not returning early and skipping consumed complements. The same skeleton solves three-sum after sorting and fixing one element with an outer loop.
 
 26.2 Contains Duplicate
 
@@ -97,15 +97,15 @@ Given an array, decide whether any value appears at least twice.
 
 Picture this
 
-A party where the doorman has a guest list. Each guest gives a name. If the name is already on the list, two people with the same name have arrived, and the answer is yes. The doorman never compares new guests against each other, only against the list.
+A doorman checks each arriving name against the guest list. If it is already there, a duplicate has arrived. New guests are compared only with the list.
 
 Brute force
 
-Compare every pair and stop if any two are equal. Quadratic. It works, and it is the definition, but it rehashes the same information on every pair.
+Compare every pair and stop on equality. Quadratic, and it rehashes the same information on every pair.
 
 The better approach
 
-A set. Walk the array once. For each value, if the set already contains it, return yes; otherwise add it. Each value is tested in constant average time and inserted once.
+A set. Walk once: if the set contains the value, return true; otherwise insert it. Each value is tested and inserted in constant average time.
 
 The implementation
 
@@ -128,33 +128,33 @@ The implementation
         return false;
     }
 
-This is the simplest shape a hashing answer can take, and it is worth internalizing, because the deduction and membership problems that follow are all built from it. Insert-if-absent and contains are the set's entire vocabulary for this problem.
+This is the simplest hashing shape, and the membership problems that follow build on it. Insert-if-absent and contains are the set's entire vocabulary here.
 
 The cost
 
-Time is linear on average: one membership test and possibly one insertion per element. Space is linear in the worst case, because the set may hold every element. If memory is tight and the values are known to lie in a small range, a `Bitset` (Chapter16) replaces the set with one bit per possible value and constant-time tests, both smaller and faster. An optimization worth mentioning, to show that "use a set" is a default, not a law.
+Average time is linear: one membership test and possibly one insertion per element. Space is linear in the worst case. For tight memory and a small value range, a `Bitset` (Chapter16) uses one bit per value with constant-time tests, smaller and faster. "Use a set" is a default, not a law.
 
 Edge cases and a variation
 
-An empty array or a single element has no duplicate, and the loop falls through to false. The variation: return the first duplicated value, not just a yes or no. The set answers this too. The moment `contains` is true, the current value is the first repeat. A harder variation: find a duplicate in an array of `n + 1` integers drawn from `1..n`, without modifying the array and using constant space. A classic that abandons hashing entirely for the cycle-detection idea we meet again in Chapter27's Floyd algorithm.
+An empty or single-element array returns false. Variation: return the first duplicated value; the moment `contains` is true, the current value is the first repeat. A harder version, a duplicate among `n + 1` values drawn from `1..n` in constant space without modifying the array, abandons hashing for the cycle detection of Chapter27.
 
 26.3 Intersection of Two Arrays
 
 The problem
 
-Given two arrays, return their intersection: the set of values appearing in both. Each value should appear once in the result.
+Given two arrays, return the set of values appearing in both, each once.
 
 Picture this
 
-Two guest lists from two parties, and you want the names that attended both. You read the smaller list into memory, then walk the larger list and check each name against it. Names that hit go into the answer, but only once, so you also need to remember which hits you have already reported.
+Read the smaller guest list into memory, walk the larger, and collect names on both. Remember which hits you have already reported so each appears once.
 
 Brute force
 
-For each element of the first array, scan the entire second array. Quadratic, and the deduplication is another nested check on top.
+For each element of the first array, scan the entire second. Quadratic, with another nested check for deduplication.
 
 The better approach
 
-Two sets. Load the second array into a set. Call it the "present in B" set. Then walk the first array. For each value present in B and not yet in the result set, add it to both the result and the result set. The result set enforces "each value once," and it is the reason this does not degenerate.
+Load the second array into a "present in B" set. Walk the first; for each value in B and not yet emitted, add it to both the result and an `emitted` set. The second set enforces "each value once."
 
 The implementation
 
@@ -183,33 +183,33 @@ The implementation
         return out;
     }
 
-The `emitted` set is the deduplication guard, the piece most first attempts forget. Without it, a value appearing three times in `a` is pushed three times. If the result may be sorted, an alternative is to collect everything and sort at the end. But the set version keeps the result in the order the distinct values first appear in `a`, which is often what a caller wants.
+The `emitted` set is the deduplication guard most first attempts forget; without it, a value appearing three times in `a` is pushed three times. Sorting at the end is an alternative, but the set version keeps first-appearance order from `a`.
 
 The cost
 
-Time is linear on average in the combined lengths, with constant average work per element. Space is linear: two sets, each at most as large as its source array. The `Set` type has this operation built in as `intersection` (Chapter16, 16.5). We write it by hand here to see the machinery; then prefer the built-in.
+Average time is linear in the combined lengths. Space is linear: two sets, each at most the size of its source. `Set` has this built in as `intersection` (Chapter16, 16.5); prefer it after seeing the machinery.
 
 Edge cases and a variation
 
-Either array empty gives an empty intersection, and the loop handles it. If the intersection must respect multiplicity, three copies in `a` and two in `b` meaning two copies in the result, as in a multiset intersection, a set cannot represent it. Switch to a `HashMap<i32, i32>` counting occurrences and take the minimum count for each key. The library's set algebra (`union`, `difference`, `isSubset`) covers the set-theoretic operations; the counting version is the one to build by hand when duplicates carry meaning.
+Either array empty gives an empty result. For multiplicity, where three copies in `a` and two in `b` mean two in the result, a set cannot represent it; use a `HashMap<i32, i32>` of counts and take the minimum per key. The library's `union`, `difference`, and `isSubset` cover set-theoretic operations.
 
 26.4 Happy Number
 
 The problem
 
-Repeatedly replace a number by the sum of the squares of its digits. If you reach 1, the number is "happy." If you loop forever without reaching 1, it is not. Decide which.
+Repeatedly replace a number by the sum of the squares of its digits. If you reach 1 it is "happy"; if you loop forever it is not. Decide which.
 
 Picture this
 
-You are following a trail of stepping stones, each telling you where the next is. Either the trail leads to the goal, the stone marked 1, or it winds around in a loop forever. To avoid walking forever, you leave a chalk mark on every stone you step on. The moment you reach a stone you have marked before, you know you are in the loop and can stop.
+Follow stepping stones, leaving a chalk mark on each. Reaching a marked stone means a loop, so stop; reaching 1 means happy.
 
 Brute force
 
-No simple brute force exists, because the process is inherently infinite; a naive program loops forever on unhappy numbers. The honest way to think of the brute force is "run it and give up after some number of steps," which is a guess, not a proof.
+The process is infinite, so a naive program loops forever on unhappy numbers. Running it and giving up after some steps is a guess, not a proof.
 
 The better approach
 
-Detect the cycle. Keep a set of every value you have seen. At each step, compute the digit-square sum. If it is 1, the number is happy. If it is already in the set, we have closed a loop, so the number is unhappy. Otherwise record it and continue. The set turns an infinite process into a finite one, because the values are bounded (the digit-square sum of even a large number is far smaller than the number), so only finitely many distinct values can appear before a repeat.
+Detect the cycle with a set of seen values. Each step, compute the digit-square sum; if it is 1, the number is happy; if it is already in the set, a loop has closed and the number is unhappy. Otherwise record it. The values are bounded, so only finitely many distinct values can appear before a repeat.
 
 The implementation
 
@@ -238,33 +238,33 @@ The implementation
         return n == 1;
     }
 
-The loop condition carries the whole algorithm: continue only while we have neither arrived at 1 nor returned to a value we have seen. When it exits, `n` is either 1 (happy) or a repeated value (unhappy). The `digitSquareSum` helper is plain arithmetic, reusable by any digit problem from Chapter24.
+The loop condition carries the algorithm: continue while `n` is neither 1 nor seen. On exit, `n` is 1 (happy) or a repeat (unhappy). `digitSquareSum` is plain reusable arithmetic.
 
 The cost
 
-Time is bounded by the number of distinct values reachable from `n` before a repeat. For the digit-square process that is a small constant, well under a hundred, for any 32-bit input, so in practice it is constant time. Space is a small constant too. The asymptotic story is subtler than it looks, because the input is bounded. This is a problem about a finite state machine, and the set is just a way to find the cycle in it.
+Time is bounded by the distinct values reachable before a repeat, a small constant well under a hundred for any 32-bit input, so in practice constant. Space is a small constant. The input is bounded, making this a finite-state machine, with the set finding its cycle.
 
 Edge cases and a variation
 
-Start at 1: the loop condition is false immediately and it returns true. Start at 0: `digitSquareSum(0)` is 0, so 0 maps to itself; the set catches the repeat and returns false, which is correct, because 0 is not happy. The variation is important and elegant: solve it with constant space using Floyd's tortoise-and-hare cycle detection, which we use in Chapter27 for linked lists. Run a slow pointer that applies the function once and a fast pointer that applies it twice. If they meet at anything other than 1, there is a cycle. That drops the set and its memory entirely, and it is the same idea as the chalk marks, done with two walkers instead of marks.
+Starting at 1 returns true immediately. Starting at 0 maps to itself; the set catches the repeat and returns false, correctly. Variation: Floyd's tortoise-and-hare uses constant space. A slow pointer applies the function once, a fast pointer twice; meeting anywhere other than 1 means a cycle. Same idea, two walkers instead of chalk marks.
 
 26.5 Subarray Sum Equals K
 
 The problem
 
-Given an array of integers (possibly negative) and a target k, count how many contiguous subarrays sum to k.
+Given an array of integers, possibly negative, and a target `k`, count the contiguous subarrays summing to `k`.
 
 Picture this
 
-You walk across the array keeping a running total of everything you have passed. At each step you ask: "How many times in the past was my running total exactly `current - k`?" Each such earlier moment marks a stretch between then and now whose sum is exactly k. This is the complement trick in its purest form, applied to running totals instead of individual values.
+Keep a running total. At each step ask how many earlier running totals equaled `current - k`; each such moment marks a subarray summing to `k`. This is the complement trick applied to prefixes.
 
 Brute force
 
-For every start position, extend a running sum to the right and count the times it equals k. That is n² additions. It recomputes, from every start, totals it could have carried forward.
+For every start, extend a running sum right and count hits. n² additions, recomputing totals it could have carried forward.
 
 The better approach
 
-One pass with a hash map counting how often each prefix sum has occurred. Seed the map with the empty prefix, `0 -> 1`, because a subarray starting at the very first element has an "empty prefix" on its left. Walk the array maintaining the running prefix sum. At each position, the number of subarrays ending here that sum to k equals the number of past prefixes equal to `prefix - k`; add that count to the total. Then record the current prefix. The seed is the detail that trips people: forget it and you miss every subarray that begins at index zero.
+One pass with a hash map counting prefix sums. Seed `0 -> 1` for the empty prefix, or you miss every subarray starting at index zero. At each position, the number of subarrays ending here is the count of past prefixes equal to `prefix - k`; add it, then record the current prefix.
 
 The implementation
 
@@ -296,33 +296,33 @@ The implementation
         return total;
     }
 
-The order inside the loop matters: count the completions against the *past* prefixes first, then add the current prefix to the map. Add first, and a subarray of length zero counts itself. This is the same insert-after-lookup discipline as 25.1, for the same reason.
+Order matters: count completions against past prefixes first, then add the current prefix. Add first, and a zero-length subarray counts itself. This is the insert-after-lookup discipline of 25.1.
 
 The cost
 
-Time is linear on average: one pass, two map operations per element. Space is linear: the map holds up to one entry per distinct prefix sum, at most the length. This is where the prefix-sum idea from Chapter24 grows up. There we used it to answer one range query in constant time. Here we use a map of all prefixes to count every range in one pass.
+Average time is linear: one pass, two map operations per element. Space is linear, at most one entry per distinct prefix sum. The prefix-sum idea from Chapter24 grows up: there it answered one range query; here a map of all prefixes counts every range in one pass.
 
 Edge cases and a variation
 
-An empty array has no subarrays and returns zero. Negative numbers are handled naturally, because the prefix map does not assume sums increase. That is the source of a subtle trap: if all numbers were positive, a sliding window would work, but with negatives the window's sum is non-monotonic and the sliding-window approach silently fails. Overflow of the prefix sum is the real risk. If the sums can exceed 32 bits, promote `prefix` and the map's key to `i64` and add a `hashI64`. The variation: count subarrays whose sum is divisible by k, which uses the prefix sum modulo k as the key and the same map.
+An empty array returns zero. Negative numbers work naturally because the map does not assume sums increase; a sliding window would silently fail, since its sum is non-monotonic. Overflow is the real risk: if sums can exceed 32 bits, promote `prefix` and the map key to `i64` and add `hashI64`. Variation: count subarrays divisible by `k`, keying on prefix sum modulo `k`.
 
 26.6 Longest Substring Without Repeating Characters
 
 The problem
 
-Given a string, find the length of the longest substring that contains no repeated character.
+Given a string, find the length of the longest substring with no repeated character.
 
 Picture this
 
-A window slides along the string. Its left edge is the start of the current candidate substring; its right edge extends one character at a time. When the new character has already appeared *inside the current window*, the window's left edge must jump forward to just after that earlier appearance, so the repeated character is dropped and the window is valid again. The answer is the largest width the window ever reached. This is the sliding-window pattern, and its engine is a map from character to the last position where it appeared.
+A window slides right. When the new character already appears inside the current window, move the left edge to just after that appearance. The answer is the largest width reached. The engine is a map from character to last position.
 
 Brute force
 
-For every start, extend right while collecting characters in a set; stop when a repeat appears, and record the length. Quadratic, because each start rescans. Worth writing once to feel the redundancy: the inner scan rediscovers the same runs over and over.
+For every start, extend right while collecting characters in a set, stopping at a repeat. Quadratic, because each start rescans the same runs.
 
 The better approach
 
-One pass, a map from character to last-seen index, and a `start` index for the window's left edge. For each character at index i, if it was last seen at or after `start`, move `start` to just past that occurrence. Then update the character's last-seen position to i and record the window length `i - start + 1`. Because `start` only ever moves forward, the window never revisits. Each character is processed once.
+One pass with a map from character to last-seen index and a `start` for the left edge. For character `i`, if it was last seen at or after `start`, move `start` past that occurrence. Update the last-seen position and record `i - start + 1`. `start` only moves forward, so each character is processed once.
 
 The implementation
 
@@ -351,33 +351,33 @@ The implementation
         return best;
     }
 
-The guard `prev.unwrap() >= start` is the whole subtlety. Without it, a character seen long ago and already left behind by the window would wrongly yank `start` backwards, and the window would shrink for no reason. The map remembers the last position of every character ever seen. Only positions that fall inside the current window may move its left edge.
+The guard `prev.unwrap() >= start` is the subtlety. Without it, a character seen long ago and already outside the window would yank `start` backward and shrink the window for no reason. Only positions inside the current window may move the left edge.
 
 The cost
 
-Time is linear: both `start` and `i` only advance, so at most n forward movements of either. Space is at most the size of the alphabet, since the map holds one entry per distinct character; for byte input, at most 256 entries, effectively constant. This is a rare case where the hashing answer is not just faster asymptotically but dramatically so on inputs with long repeated runs.
+Time is linear: both `start` and `i` only advance, for at most n forward movements. Space is at most the alphabet: 256 entries for byte input, effectively constant. Hashing here is dramatically faster on inputs with long repeated runs.
 
 Edge cases and a variation
 
-The empty string returns zero. A string of all-identical characters keeps `start` just behind `i` and returns one. The Unicode caveat returns: this counts bytes, so a multi-byte character could be split. For correctness on non-ASCII text, iterate codepoints with `nextCodepoint` (Chapter17) and key the map on `char` instead of `u8`, which requires a `hashChar`. The variation: "longest substring with at most k distinct characters" replaces the "no repeat" rule with a count of distinct characters kept in the map, and the window's left edge moves whenever that count exceeds k. Same skeleton, different shrink condition.
+The empty string returns zero; all-identical characters return one. This counts bytes, so a multi-byte character could be split; for non-ASCII text iterate codepoints with `nextCodepoint` (Chapter17) and key on `char` with a `hashChar`. Variation: "at most k distinct characters" keeps a distinct count in the map and moves the left edge when it exceeds `k`.
 
 26.7 First Unique Character in a String
 
 The problem
 
-Given a string, return the index of the first character that appears exactly once, or -1 if every character repeats.
+Given a string, return the index of the first character appearing exactly once, or -1 if every character repeats.
 
 Picture this
 
-A census of the characters. First you count everybody. Then you read the line again in order and report the first person who turned out to be alone. Two passes, but the first builds a table so the second is a lookup rather than a recount. You cannot do it in one pass because "appears exactly once" is a property you only know after seeing the whole string.
+Count every character first, then read the line again and report the first with count one. Two passes, because "appears exactly once" is only known after seeing the whole string.
 
 Brute force
 
-For each character, scan the entire string to see if it appears again. Quadratic, and it re-scans for every position.
+For each character, scan the entire string for another occurrence. Quadratic, rescanning for every position.
 
 The better approach
 
-One pass to build a frequency map, a second pass to find the first character with frequency one. The second pass follows the original order, which is why the map must be indexed by the character and not by anything order-destroying.
+One pass builds a frequency map; a second pass finds the first character with frequency one. The second pass follows original order, so the map must be keyed by character.
 
 The implementation
 
@@ -406,35 +406,35 @@ The implementation
         return -1;
     }
 
-In the second pass, the lookup is guaranteed to succeed, because every character in the string was inserted in the first pass. The `unwrap` is safe, and a reader can verify that at a glance. That is the standard justification for `unwrap` from Chapter15: not "it will probably work" but "the code above makes it impossible to be absent."
+The second-pass lookup is guaranteed to succeed because every character was inserted in the first pass. That is the standard justification for `unwrap` from Chapter15: the code above makes absence impossible.
 
 The cost
 
-Time is linear: two passes, each a constant-time hash operation per character. Space is at most the alphabet size, 256 entries for bytes, constant regardless of string length. That constant is worth naming: for fixed-alphabet input, a fixed-size array of 256 counters would replace the map with a raw array and be faster still. The map's advantage shows only when the alphabet is sparse or large. Chapter16's discussion of `Bitset` versus `Set` is the same trade.
+Time is linear: two passes with constant-time hash operations. Space is at most the alphabet, 256 entries for bytes, constant regardless of length. For fixed-alphabet input, a 256-counter array would be faster still; the map wins when the alphabet is sparse or large, the same trade as `Bitset` versus `Set`.
 
 Edge cases and a variation
 
-An empty string returns -1. A string whose first character is unique returns 0 immediately in the second pass. The variation: return the most frequent character, breaking ties by first occurrence. Same frequency map; the second pass tracks the best as it goes. A second variation: "first unique character" but the unique character must be first *alphabetically* among the unique ones. That inverts the two passes, because now you want any unique character in order of *value*, not order of position. So you can simply scan the key set in sorted order, which is exactly why `Map` exists alongside `HashMap`.
+An empty string returns -1; a unique first character returns 0 in the second pass. Variation: return the most frequent character, breaking ties by first occurrence. Another: the first unique character *alphabetically*, which scans the key set in sorted order, exactly why `Map` exists.
 
 26.8 Group Anagrams
 
 The problem
 
-Given a list of words, group together the words that are anagrams of each other.
+Given a list of words, group together words that are anagrams of each other.
 
 Picture this
 
-Two words are anagrams if one can be rearranged into the other. "eat", "tea", and "ate" are the same letters shuffled. So give every word a canonical signature: sort its letters. Then two words are anagrams exactly when their sorted forms are identical. Group by that signature, and you have your answer. The sorted form is a key that discards the very thing that distinguishes anagrams, order, while preserving the thing they share, the multiset of letters.
+Give every word a canonical signature: sort its letters. Anagrams have identical sorted forms. Group by that signature, which discards order while preserving the multiset of letters.
 
 Brute force
 
-Compare every pair of words and, for each pair, check whether their letter multisets match (by sorting both and comparing, or by counting). Quadratic in the number of words, with an anagram check inside each pair. The better approach does not compare words to each other at all. It computes a signature for each word independently and uses the signature as a map key, so grouping is a single insertion per word.
+Compare every pair, checking whether their letter multisets match, by sorting or counting. Quadratic in the number of words, with an anagram check inside each pair. The better approach never compares words with each other.
 
 The better approach
 
-A hash map from the sorted-letter signature to the list of indices of words that share it. For each word, build its signature (copy the bytes, sort them, reassemble), append the word's index to the list under that signature. At the end, the map's values are the groups.
+A hash map from sorted-letter signature to the list of word indices sharing it. For each word, build the signature (copy the bytes, sort, reassemble) and append its index. The map's values are the groups.
 
-This is where the problem teaches something the integer-keyed problems did not: the key is a string, and the string is *built fresh* for each word. A `str` in Coral is a borrowed view, a pointer and a length, so a map keyed by `str` stores the address of the bytes, not the bytes themselves. If those bytes live in a temporary that is freed, the key dangles. We must keep the signature bytes alive for as long as the map uses them. The clean way to say that is to own every signature in a list that outlives the map, and hand the map views into that list.
+The key is a string *built fresh* for each word. A `str` is a borrowed view, so a map keyed by `str` stores the address of the bytes, not the bytes. If those bytes live in a temporary that is freed, the key dangles. Own every signature in a list that outlives the map and hand the map views into it.
 
 The implementation
 
@@ -497,33 +497,33 @@ The implementation
         return out;
     }
 
-Two ownership details carry this code. First, `keyStore` owns every signature `String`. The map's `str` keys are views into `keyStore`'s heap buffers, and because `keyStore` is never cleared or freed until the function returns, those views stay valid. Even when `keyStore` grows and its internal array of `String` structs is reallocated, the *bytes* each `String` points to do not move, so the views survive. That point is worth pausing on; it is exactly the borrowed-versus-owned distinction of Chapter17. Second, the map is keyed on `str`, and the `Vec<i32>` values are mutated through `getPtr` rather than copied out, so appending an index edits the list in place instead of a copy that would then have to be written back.
+Two ownership details carry this code. `keyStore` owns every signature `String`; the map's `str` keys view its heap buffers, and because `keyStore` is never cleared or freed until return, they stay valid. Even when `keyStore` grows and its array of `String` structs is reallocated, the bytes each `String` points to do not move. Second, values are mutated through `getPtr`, so appending an index edits the list in place rather than a copy that must be written back.
 
 The cost
 
-Let n be the number of words and L the average length. Building each signature costs O(L log L) to sort, so the total is O(n · L log L). The sorting dominates, not the hashing. The map operations are O(1) on average each, for O(n) of them. Space is linear in the total input size, because every signature is stored. If L is small and bounded, this is effectively linear in n, which is why the practical speed is excellent.
+With n words of average length L, signatures cost O(L log L) to sort, so the total is O(n · L log L). Sorting dominates, not hashing; map operations are O(1) average for O(n) of them. Space is linear in total input. For small bounded L this is effectively linear in n.
 
 Edge cases and a variation
 
-Empty input yields an empty result. Empty strings all share the empty signature and group together, which is correct; the empty multiset is a multiset. A common alternative signature avoids sorting entirely: count the letters into a fixed 26-byte array and use that as the key. That turns the O(L log L) sort into O(L) counting, at the cost of a fixed-length key and an assumption about the alphabet. The choice is the same counting-versus-sorting trade as Chapter24's anagram-style checks and Chapter25's `sortColors`. Writing the counting version and comparing is a good exercise.
+Empty input yields an empty result. Empty strings share the empty signature and group together, correctly. An alternative signature counts letters into a fixed 26-byte array, turning O(L log L) sorting into O(L) counting at the cost of a fixed-length key and an alphabet assumption. That is the same counting-versus-sorting trade as Chapter24 and Chapter25's `sortColors`.
 
 26.9 Isomorphic Strings
 
 The problem
 
-Two strings are *isomorphic* if you can rename the characters of the first, consistently, one letter at a time, to get the second. So `"egg"` and `"add"` are isomorphic (`e` becomes `a`, `g` becomes `d`), and `"badc"` and `"baba"` are not.
+Two strings are *isomorphic* if you can consistently rename characters of the first to get the second. `"egg"` and `"add"` are; `"badc"` and `"baba"` are not.
 
 Picture this
 
-Renaming is a translation table with two columns, and the table must be a one-to-one dictionary: no source letter maps to two different targets, and no target letter is claimed by two different sources. If two source letters both wanted to become the same target, the second one would have to be renamed to something already taken. So you keep two maps, one each direction, and check both at every position.
+Renaming is a one-to-one translation table: no source maps to two targets, and no target is claimed by two sources. Keep two maps, one per direction, and check both at every position.
 
 Brute force
 
-For each position, scan the rest of the string to find where the same source letter recurs, and verify the target letters match there too. That is quadratic and it only checks one direction, which is why it quietly accepts `"badc"` versus `"baba"`.
+For each position, scan the rest for the same source letter and verify the target matches. Quadratic, and one-directional checking quietly accepts `"badc"` versus `"baba"`.
 
 The better approach
 
-One pass with two maps: `source -> target` and `target -> source`. For each pair, if the source is already mapped, its target must equal the current one; if the target is already mapped, its source must equal the current one; otherwise record both. Lengths must match up front, or the answer is immediately no. This is the same complement-of-a-lookup discipline as 25.1, doubled to enforce the bijection.
+One pass with `source -> target` and `target -> source`. If the source is mapped, its target must match; if the target is mapped, its source must match; otherwise record both. Lengths must match up front. This doubles the lookup discipline of 25.1 to enforce a bijection.
 
 The implementation
 
@@ -556,33 +556,33 @@ The implementation
         return true;
     }
 
-The second map is the part first attempts omit, and it is the whole reason the graph has to be a bijection rather than just a function. With only `toB`, `"badc"` and `"baba"` would pass `b -> b`, `a -> a`, but then `d -> b` would be recorded even though `b` already owns the target `b`; the return map catches that duplication.
+The second map is what first attempts omit, and it makes the relation a bijection rather than a function. With only `toB`, `"badc"` and `"baba"` would pass `b -> b` and `a -> a`, then record `d -> b` even though `b` already owns target `b`. The return map catches that.
 
 The cost
 
-Time is linear on average: one pass, a constant number of hash operations per character. Space is at most the alphabet, one entry per distinct character in each direction, effectively constant for byte input. This is the smallest example in the chapter of needing two hashed structures at once, and the reason is always the same: a function is not enough when you also need injectivity.
+Average time is linear: one pass with a constant number of hash operations per character. Space is at most the alphabet, one entry per distinct character in each direction, effectively constant for bytes. This is the smallest example needing two hashed structures: a function is not enough when injectivity is also required.
 
 Edge cases and a variation
 
-Different lengths return false before any map is touched. The empty string is isomorphic to the empty string. A string compared with itself is always isomorphic, which makes a decent sanity test. This compares bytes, so the Unicode caveat from 25.6 applies. The variation: *word* isomorphism, where whole tokens rather than characters must map consistently, is the next problem, and it needs one map of `u8 -> str` and one of `str -> u8` to reach the same bijection.
+Different lengths return false before any map is touched. The empty string is isomorphic to itself, and a string compared with itself always is, a decent sanity test. This compares bytes, so the Unicode caveat from 25.6 applies. Variation: *word* isomorphism maps whole tokens, needing `u8 -> str` and `str -> u8`.
 
 26.10 Word Pattern
 
 The problem
 
-Given a pattern of letters such as `"abba"` and a sentence of space-separated words, decide whether the words follow the same pattern. `"dog cat cat dog"` follows `"abba"`; `"dog cat cat fish"` does not.
+Given a pattern such as `"abba"` and a space-separated sentence, decide whether the words follow the pattern. `"dog cat cat dog"` does; `"dog cat cat fish"` does not.
 
 Picture this
 
-This is 25.9 at the granularity of words. The pattern's letters are the source alphabet, the sentence's words are the target alphabet, and each pattern letter must always stand for the same word, with no two letters standing for the same word. The only new mechanics are splitting the sentence into tokens and noting that the number of words must equal the number of pattern letters.
+This is 25.9 at word granularity: pattern letters are the source alphabet, words the target, and the mapping must be one-to-one. The only new mechanics are splitting the sentence and checking that word count equals pattern length.
 
 Brute force
 
-For each pattern position, scan every other position and check whether equal pattern letters have equal words and vice versa. That is quadratic and it re-derives the bijection on every pair.
+For each pattern position, scan every other position and check that equal letters have equal words and vice versa. Quadratic, re-deriving the bijection on every pair.
 
 The better approach
 
-Split the sentence, check the lengths match, then run the exact two-map bijection check of 25.9, keyed on the pattern byte one way and the word `str` the other. The sentence's word views live for the whole call, so it is safe to store them as map values.
+Split the sentence, check the lengths, then run the two-map bijection check of 25.9, keyed on the pattern byte one way and the word `str` the other. Word views live for the whole call, so storing them as map values is safe.
 
 The implementation
 
@@ -628,33 +628,33 @@ The implementation
         return true;
     }
 
-`splitVec` hands back `str` views into `sentence`, so the words are borrowed, not copied, and the two maps hold one view and one byte per token. The `equals` calls are the equality functions of the two maps wearing their public clothes: the same comparison the table would run after a hash collision.
+`splitVec` returns `str` views into `sentence`, so words are borrowed, not copied; each map holds one view or one byte per token. The `equals` calls are the maps' equality functions in public clothes.
 
 The cost
 
-Time is linear in the combined length of the pattern and sentence, because splitting and the two hash operations per token are each constant average work per byte. Space is linear in the number of words, which is unavoidable since the words must all be seen. The map keyed on `str` borrows the sentence, so no word bytes are duplicated.
+Time is linear in the combined pattern and sentence length: splitting and the two hash operations per token are constant average work per byte. Space is linear in the number of words, which is unavoidable. The `str`-keyed map borrows the sentence, so no word bytes are duplicated.
 
 Edge cases and a variation
 
-A mismatch between the number of words and the pattern length returns false before any map is built. An empty sentence with a non-empty pattern fails the count check; both empty returns true trivially. Trailing or repeated spaces are a property of `splitVec` that is worth checking against your intended semantics, since `"a  b"` may or may not mean the same as `"a b"`. The variation: allow a pattern to match a *prefix* of the sentence, or return the first violating index instead of a boolean, by keeping the same maps and moving the return into the loop.
+A word-count mismatch returns false before any map is built. An empty sentence with a non-empty pattern fails the count; both empty returns true. Trailing or repeated spaces depend on `splitVec` semantics, so check whether `"a  b"` means the same as `"a b"`. Variation: match a prefix, or return the first violating index by moving the return into the loop.
 
 26.11 Longest Consecutive Sequence
 
 The problem
 
-Given an unsorted array, find the length of the longest run of consecutive integers, in `O(n)` average time. For `[100, 4, 200, 1, 3, 2]` the longest run is `1, 2, 3, 4`, so the answer is four.
+Given an unsorted array, find the length of the longest run of consecutive integers in O(n) average time. For `[100, 4, 200, 1, 3, 2]` the run `1, 2, 3, 4` gives four.
 
 Picture this
 
-Pour the numbers into a set, so membership is instant, and then look for the *start* of each run: a value whose predecessor is absent. From a start, count upward while the set still contains the next value. The insight is that each number is visited at most twice, once as a potential start and once as a member of exactly one run, because a number is extended only from the run that begins below it.
+Pour the numbers into a set, then find each run's *start*: a value whose predecessor is absent. Count upward while the next value is present. Each number is visited at most twice, once as a potential start and once in exactly one run.
 
 Brute force
 
-Sort the array and scan for the longest streak, handling duplicates. That is `O(n log n)`, correct, and it is the honest fallback when hashing is not available. It costs a full sort to answer a question about adjacency.
+Sort and scan for the longest streak, handling duplicates. O(n log n), correct, and the honest fallback when hashing is unavailable; it costs a full sort to answer an adjacency question.
 
 The better approach
 
-Insert every value into a set. Then for each value, check whether `value - 1` is present. If it is, this value is in the middle of a run that another value will start, so skip it. If it is not, this value starts a run; walk upward with `contains` until the chain breaks, and record the length. Each value is probed a constant number of times in total.
+Insert every value into a set. If `value - 1` is present, this value is mid-run and another value will start it, so skip. Otherwise walk upward with `contains` until the chain breaks and record the length. Each value is probed a constant number of times.
 
 The implementation
 
@@ -686,33 +686,33 @@ The implementation
         return best;
     }
 
-The set removes duplicates as it loads, so repeated values cost nothing extra. The `contains(x - 1)` guard is what stops the algorithm from re-walking the same run from every one of its members; without it the inner loop could total quadratic work even though each individual walk is short.
+The set removes duplicates as it loads. The `contains(x - 1)` guard stops the algorithm from re-walking a run from every member; without it the inner loop could total quadratic work.
 
 The cost
 
-Time is linear on average: building the set is `O(n)`, and every value starts at most one walk and is extended by at most one walk, so the total inner-loop work across the whole function is `O(n)`. Space is linear, the set of distinct values. This is the classical case where a set turns an ordering question (`O(n log n)` by sorting) into an adjacency question (`O(n)` by hashing).
+Average time is linear: building the set is O(n), and every value starts at most one walk and is extended by at most one, so total inner-loop work is O(n). Space is linear. A set turns an ordering question (O(n log n) by sorting) into an adjacency question (O(n) by hashing).
 
 Edge cases and a variation
 
-An empty array returns zero, and a single element returns one. Duplicates are absorbed by the set. The subtle trap is arithmetic overflow: `x - 1` when `x` is the smallest possible `i32` wraps to a huge positive number, which is not in the set, so the guard happens to do the right thing, but relying on wrap-around is poor hygiene; promote the arithmetic to `i64` if the input can contain extremes. The variation: return the actual run, not just its length, by threading a start index through the walk. A second variation: longest *arithmetic* run with a given difference `d`, which replaces the `+1`/`-1` probes with `+d`/`-d` and works unchanged.
+An empty array returns zero; one element returns one. Duplicates are absorbed by the set. `x - 1` at the smallest `i32` wraps to a huge positive, which happens to do the right thing, but do not rely on wrap-around; promote to `i64` for extreme input. Variation: return the run itself by threading a start index. A second: longest arithmetic run with difference `d`, replacing `+1`/`-1` with `+d`/`-d`.
 
 26.12 Top K Frequent Elements
 
 The problem
 
-Given an array and an integer `k`, return the `k` values that occur most often. The order of the result does not matter.
+Given an array and an integer `k`, return the `k` most frequent values, in any order.
 
 Picture this
 
-Count how many times each value appears, then sort the distinct values by that count. But a full comparison sort is more work than the problem needs, and the counts are bounded by the length of the array. So use *bucket sort*: make one bucket per possible frequency, from 0 up to `n`, and drop each value into the bucket for its count. Then read the buckets from the highest frequency downward until `k` values have been collected. No comparisons are needed because the bucket index *is* the sorted order.
+Count occurrences, then bucket values by frequency from 0 to `n`, and read buckets from the highest down until `k` values are collected. Bucket sort needs no comparisons because the bucket index is the sorted order.
 
 Brute force
 
-Sort the distinct values by decreasing count explicitly. That is `O(d log d)` where `d` is the number of distinct values, which is fine but unnecessary, and it is the version almost everyone writes first.
+Sort the distinct values by decreasing count: O(d log d) for d distinct values. Fine but unnecessary, and the version almost everyone writes first.
 
 The better approach
 
-A frequency map, then a vector of buckets indexed by frequency. The number of buckets is `n + 1`, because no value can appear more often than the array is long. Placing each distinct value costs one map lookup and one push; reading the top buckets costs at most `n` steps. This is `O(n)` average and needs no comparator at all, which sidesteps the problem that a comparator function cannot see the frequency map.
+A frequency map, then buckets indexed by frequency. There are `n + 1` buckets because no value can occur more than `n` times. Placing each distinct value costs one lookup and one push; reading the top buckets costs at most `n` steps. O(n) average, with no comparator at all, which sidesteps the fact that a comparator cannot see the frequency map.
 
 The implementation
 
@@ -761,33 +761,33 @@ The implementation
         return out;
     }
 
-`buckets.atPtr(freq)` returns a pointer to the inner vector, so `push` edits the bucket in place instead of copying it; this is the same `getPtr`-style reasoning that 25.8 used for map values. `count.get(key).unwrap()` is safe because every key came out of the map itself, the "the code above makes absence impossible" justification from 25.7.
+`buckets.atPtr(freq)` returns a pointer to the inner vector, so `push` edits it in place, the same reasoning 25.8 used for map values. `count.get(key).unwrap()` is safe because every key came from the map, the "code above makes absence impossible" justification from 25.7.
 
 The cost
 
-Time is `O(n)` on average: one pass to count, one pass over the distinct keys to fill buckets, and one pass down the buckets. Space is `O(n)`, the map plus the buckets. The bucket approach beats the `O(d log d)` sort and, unlike a `PriorityQueue`, needs no comparator that could see the counts.
+Average time is O(n): one pass to count, one over distinct keys to fill buckets, one down the buckets. Space is O(n) for the map plus buckets. Bucketing beats the O(d log d) sort and, unlike a `PriorityQueue`, needs no comparator that can see the counts.
 
 Edge cases and a variation
 
-`k` at or above the number of distinct values returns all of them, and the loop stops when the output is full. Ties are broken arbitrarily by insertion order within a bucket, which the problem permits. An empty array returns an empty result. The variation: return the top `k` in *sorted* order, by sorting the small output at the end; or use `PriorityQueue` from Chapter16 for a streaming version where the array does not fit in memory, at the cost of `O(n log k)` instead of `O(n)`.
+`k` at or above the number of distinct values returns all of them; the loop stops when output is full. Ties break arbitrarily by insertion order within a bucket, which the problem permits. An empty array returns empty. Variation: return the top `k` sorted by sorting the small output; or use a `PriorityQueue` for a streaming O(n log k) version when the array does not fit in memory.
 
 26.13 Valid Sudoku
 
 The problem
 
-Given a 9-by-9 Sudoku board with digits `1` to `9` and `.` for empty cells, decide whether it is valid: no digit repeats in any row, column, or 3-by-3 box. The board need not be solvable, only free of immediate conflicts.
+Given a 9-by-9 Sudoku board with digits `1` to `9` and `.` for empty cells, decide whether any digit repeats in a row, column, or 3-by-3 box. The board need not be solvable, only free of immediate conflicts.
 
 Picture this
 
-Twenty-seven little ledgers: nine for the rows, nine for the columns, nine for the boxes. As you visit a cell, you check it against all three ledgers it belongs to, then mark it in all three. A digit already marked in any ledger of its cell is a conflict. The box a cell belongs to is `(row / 3) * 3 + (col / 3)`, the arithmetic of dividing the grid into nine blocks.
+Keep twenty-seven ledgers: nine rows, nine columns, nine boxes. Check each cell against all three, then mark it in all three. The box is `(row / 3) * 3 + (col / 3)`.
 
 Brute force
 
-For each cell, scan its whole row, its whole column, and its whole box for a duplicate. That is `O(81 · 27)` work, constant because the board is fixed size, but it is a lot of redundant scanning and it hides the box formula.
+For each cell, scan its row, column, and box for a duplicate. That is O(81 · 27) work, constant because the board is fixed, but redundant and it hides the box formula.
 
 The better approach
 
-Use bitsets, one machine word per ledger. Bit `d` of a row's mask means digit `d` has been seen in that row. Checking a cell is an AND against three masks; marking it is an OR. Twenty-seven `i32` masks index the rows, then the columns, then the boxes. This is compact, avoids any allocation per group, and makes the three membership tests a single byte test each.
+Use bitsets, one machine word per ledger. Bit `d` means digit `d` was seen. Checking is an AND against three masks; marking is an OR. Twenty-seven `i32` masks index rows, columns, then boxes, with no allocation per group.
 
 The implementation
 
@@ -817,34 +817,34 @@ The implementation
         return true;
     }
 
-The constant `48` is the byte `'0'`, so `(i32)v - 48` turns a digit character into its value. Bit `d` is `1 << d`, and `d` ranges from 1 to 9, safely inside a 32-bit integer. The three mask indices partition the flat 27-slot vector into rows at `0..8`, columns at `9..17`, and boxes at `18..26`, which is why the same `mask.at` call serves all three checks.
+The constant `48` is the byte `'0'`, so `(i32)v - 48` gives the digit value. Bit `d` is `1 << d`, and `d` ranges from 1 to 9, safely inside 32 bits. The 27-slot vector partitions into rows at `0..8`, columns at `9..17`, and boxes at `18..26`, so one `mask.at` call serves all three checks.
 
 The cost
 
-Time and space are both constant: 81 cells, each visited once, and 27 integers of ledger. There is no `n` here; the board size is part of the problem. The bitmask makes the constant small, and it is the same trick as Chapter16's `Bitset`, scaled down to a single word per group.
+Time and space are constant: 81 cells visited once and 27 ledger integers. There is no `n`; the board size is part of the problem. The bitmask keeps the constant small, the same trick as Chapter16's `Bitset`, scaled to one word per group.
 
 Edge cases and a violation
 
-A board of all dots is valid. A board with a duplicate in a row fails on the second occurrence, and the box check catches duplicates that no row or column sees, which is the case people forget to test. The input is assumed to be exactly 81 bytes in row-major order; a malformed length is a programming error the loop would read past, so validate it at the boundary. The variation: use a `Set<u8>` per group instead of bitmasks, which is clearer but slower and allocates; or use the same bitmask idea to *solve* the board with backtracking, where the masks make placing and un-placing a digit `O(1)`.
+An all-dots board is valid. A row duplicate fails on its second occurrence, and the box check catches duplicates no row or column sees, the case people forget to test. The input is assumed to be exactly 81 bytes in row-major order; a malformed length would be read past, so validate at the boundary. Variation: use a `Set<u8>` per group, clearer but slower and allocating; or use the same bitmasks to *solve* the board with backtracking, where placing and un-placing is O(1).
 
 26.14 Exercises
 
-1. Comprehension. In 25.1, why is the current number inserted into the map *after* its complement is looked up, rather than before? Give the input and target that expose the bug if you reverse the order.
+1. Comprehension. In 25.1, why is the current number inserted *after* its complement is looked up? Give the input and target that expose the bug if reversed.
 
-2. Comprehension. In 25.5, what does the seed entry `0 -> 1` mean, and which subarrays are missed if it is omitted? Construct a concrete array where omitting it gives the wrong count.
+2. Comprehension. In 25.5, what does the seed `0 -> 1` mean, and which subarrays are missed without it? Construct an array where omitting it gives the wrong count.
 
-3. Implementation. Write `bool isIsomorphic(str a, str b)` deciding whether the characters of `a` can be consistently substituted to get `b`. You need two maps (or one bidirectional map). What breaks if you use only one direction?
+3. Implementation. Write `bool isIsomorphic(str a, str b)` deciding whether `a`'s characters can be consistently substituted to get `b`. Why are two maps needed?
 
-4. Implementation. Write `i32 longestConsecutive(const Vec<i32>*)`: the length of the longest run of consecutive integers, order-independent, in O(n) average time. Which set operation makes this possible, and why does the naive sort-based version cost O(n log n)?
+4. Implementation. Write `i32 longestConsecutive(const Vec<i32>*)` for the longest run of consecutive integers in O(n) average time. Which set operation makes this possible, and why does sorting cost O(n log n)?
 
-5. Implementation. Write `Vec<i32> topKFrequent(const Vec<i32>*, i32 k)` returning the k most frequent values. Use a `HashMap` for counts and a `PriorityQueue` (Chapter16) for the ranking. Which part of the cost is the heap?
+5. Implementation. Write `Vec<i32> topKFrequent(const Vec<i32>*, i32 k)` returning the k most frequent values, using a `HashMap` for counts and a `PriorityQueue` (Chapter16) for ranking. Which part of the cost is the heap?
 
-6. Implementation. Solve "word pattern": given a pattern like `"abba"` and a sentence of words, decide whether the words follow the same pattern. Which key-value shape does the map need, and why is one map not enough?
+6. Implementation. Solve "word pattern": given `"abba"` and a sentence, decide whether the words follow the pattern. Which key-value shape is needed, and why is one map not enough?
 
-7. Analysis. In 25.6, prove that `start` never needs to move backward. Then find a string where a careless implementation that resets `start` to `lastSeen + 1` without the `>= start` guard reports too short an answer.
+7. Analysis. In 25.6, prove that `start` never moves backward. Then find a string where an implementation that resets `start` to `lastSeen + 1` without the `>= start` guard reports too short an answer.
 
-8. Ownership. In 25.8, explain in your own words why keying the map on a `String` that is freed at the end of each loop iteration would produce dangling keys and incorrect grouping. Then rewrite the signature keying to use a fixed 26-byte counting key and say what changed about ownership.
+8. Ownership. In 25.8, explain why keying the map on a `String` freed each iteration would produce dangling keys and wrong grouping. Then rewrite the key as a fixed 26-byte count and say what changes about ownership.
 
-9. Sets. Given two `Set<i32>`, express "symmetric difference" (elements in exactly one of the two) using only `union` and `difference` or by hand. What is the running time, and how does it compare to building a fresh set and toggling membership?
+9. Sets. Given two `Set<i32>`, express "symmetric difference" using only `union` and `difference`, or by hand. What is the running time, and how does it compare to toggling membership in a fresh set?
 
-10. Meta. Every problem in this chapter either stored a value, stored a complement, or stored a prefix. Categorize all eight problems into those three buckets, and for each name the exact thing that was stored. The bucket a problem falls into is usually the first decision you make when you see a new hashing problem.
+10. Meta. Every problem here stored a value, a complement, or a prefix. Categorize all eight and name the exact thing stored. That category is usually the first decision on a new hashing problem.

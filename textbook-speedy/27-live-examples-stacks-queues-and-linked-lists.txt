@@ -4,33 +4,33 @@ Live Examples: Stacks, Queues, and Linked Lists
 
 The Shapes of Ordered Access
 
-The last two chapters stored things and looked them up. This chapter is about the *order* in which you get them back, and about a way of storing things that is not an array at all. Three structures carry the chapter, each best introduced by a homely rule.
+The last two chapters stored and looked up data. This one is about retrieval order and about storing without arrays.
 
-A stack is a pile of plates. You put a plate on top, and you take a plate off the top. The last plate you put down is the first one you pick up. Last in, first out. The rule sounds trivial, and yet it is the engine behind undo, behind matching brackets, behind the call stack that runs every recursive function you have ever written.
+A stack is a pile of plates: last in, first out. It drives undo, bracket matching, and call stacks.
 
-A queue is a checkout line. You join at the back and are served at the front. The first person in is the first person through. First in, first out. The rule behind task scheduling, breadth-first search, and any problem where things must be handled in the order they arrive.
+A queue is a checkout line: first in, first out. It drives scheduling and breadth-first search.
 
-A linked list is a treasure hunt. Each clue does not tell you where the treasure is; it tells you where the next clue is. There is no "clue number 5." You reach the fifth clue by following four arrows. That is both its power (insert a clue between two others by rewriting one arrow) and its weakness (to reach a clue you must walk there, and walking means jumping around memory instead of sliding along a contiguous array, which the processor's cache does not like). Chapter16 introduced the standard library's `LinkedList<T>`. Here we mostly build our own nodes, because the point is to manipulate the arrows directly, and the classic list problems ask for exactly that.
+A linked list is a treasure hunt: each clue points to the next. Inserting rewrites one arrow; reaching a clue means walking and jumping around memory. Chapter16 introduced `LinkedList<T>`; here we build nodes to manipulate arrows directly.
 
-One note before the code. Coral has no separate `Stack` type, and that is not an omission. A stack is a `Vec` used with two operations, `push` and `pop`; naming that usage is a comment, not a type. A queue is a `Deque` used at one end, or the library's thin `Queue` wrapper; the underlying ring buffer lives in `std::collections.deque` and `ringbuf` (Chapter16, 16.6). When a problem says "use a stack," reach for a `Vec`. When it says "use a queue," reach for a `Queue` or a `Deque`. The data structure in the algorithm is a pattern of access, and Coral's containers are the storage that supports the pattern.
+Coral has no separate `Stack` type: a stack is a `Vec` used with `push` and `pop`. A queue is a `Deque` at one end or the `Queue` wrapper; the ring buffer lives in `std::collections.deque` and `ringbuf` (16.6). The structure is a pattern of access; Coral's containers supply the storage.
 
 27.1 Valid Parentheses
 
 The problem
 
-Given a string of the characters `()[]{}`, decide whether the brackets are balanced: every opener is closed by the matching kind, in the right order.
+Given a string of `()[]{}`, decide whether the brackets are balanced: each opener closed by the matching kind, in order.
 
 Picture this
 
-A stack of open brackets. When you see an opener, put it on the pile. When you see a closer, take the top opener off the pile and check that it is the matching kind. If the pile is empty when a closer arrives, the closer has nothing to close. If the pile is not empty at the end, some opener was never closed. Both are failures. The order is checked automatically, because the *nearest* unmatched opener is always on top.
+Push openers. On a closer, pop and check the kind. An empty stack means nothing to close; a non-empty stack at the end means an opener was never closed. The nearest unmatched opener is always on top, so nesting is automatic.
 
 Brute force
 
-Repeatedly scan the string and delete adjacent matching pairs until none are left. If the string ends up empty, it balanced. Each scan is linear and you might need many, so it is quadratic. It is also awkward to implement, because deletion in the middle shifts everything.
+Repeatedly delete adjacent matching pairs and rescan: quadratic, and awkward because deletion shifts the string.
 
 The better approach
 
-One pass and a stack. Opener, push. Closer, pop and verify. At the end, the stack must be empty. The stack enforces the "most recent unmatched opener closes first" rule for free, which is the nesting rule.
+One pass: opener push, closer pop and verify, and the stack must end empty. The stack enforces "most recent unmatched opener closes first."
 
 The implementation
 
@@ -56,33 +56,33 @@ The implementation
         return stack.isEmpty();
     }
 
-Two lines do most of the work. The `stack.isEmpty()` check at the top of the closing branch catches a closer with nothing to match; the input `")"` fails there. The final `return stack.isEmpty()` catches the opposite failure, an unmatched opener, as in `"("`. A naive version that forgot the final check would accept `"("` and every broken string that begins with an extra opener.
+The `stack.isEmpty()` check catches a closer with nothing to match (`")"`); the final `return stack.isEmpty()` catches an unmatched opener (`"("`). Forgetting the final check accepts `"("`.
 
 The cost
 
-Time is linear: each character is pushed at most once and popped at most once, so the stack work is bounded by the length. Space is linear in the worst case, a string of all openers, because the stack holds every unmatched opener. Here the extra memory is genuinely proportional to the input, and that is unavoidable: the answer depends on how deep the nesting goes, and the depth is exactly what the stack measures.
+Time is linear: each character is pushed and popped at most once. Space is linear in the worst case (all openers), unavoidable because the answer depends on nesting depth.
 
 Edge cases and a variation
 
-An empty string is valid, and the loop returns true from the final check. A string of odd length can never be valid; add `if (s.len % 2 == 1) return false;` as a cheap early exit. The variation: allow the wildcard `*` to stand for an opener, a closer, or nothing at all. That turns a one-pass check into a small dynamic-programming or greedy-with-stack problem. A second variation, very common in real code, is to report *where* the first mismatch is rather than just a yes or no, by pushing the *index* of each opener instead of the character. The extra information costs nothing and turns the function into a diagnostic.
+An empty string is valid; an odd-length string cannot be, so add `if (s.len % 2 == 1) return false;`. Variation: `*` stands for an opener, closer, or nothing, a small DP or greedy-with-stack problem. Another variation pushes each opener's index to report the first mismatch.
 
 27.2 Min Stack
 
 The problem
 
-Design a stack that, in addition to push and pop, can return its minimum element, all in constant time.
+Design a stack that returns its minimum in constant time.
 
 Picture this
 
-A stack of boxes. Each box, alongside its content, carries a note saying "the smallest item at or below me." The note is cheap to maintain: when a new box goes on, its note is the smaller of its own content and the note on the box beneath it. The smallest item in the whole stack is then simply the note on the top box, read in one glance.
+Each box carries a note: "the smallest item at or below me," the smaller of its content and the note beneath it. The top note is the minimum.
 
 Brute force
 
-Keep the stack, and when asked for the minimum, scan all the elements. That is linear per query, which fails the constant-time requirement.
+Scanning all elements per query is linear, failing the requirement.
 
 The better approach
 
-Two stacks, or one stack of paired values. The first stack holds the data. The second, the "minimum stack," holds at each level the minimum of everything from the bottom up to that level. Pushing a value pushes `min(value, currentMin)` onto the minimum stack; popping the data stack pops the minimum stack in lockstep. The top of the minimum stack is always the answer. This is the note-on-every-box idea made explicit.
+Two stacks. The data stack holds values; the minimum stack holds, at each level, the minimum from the bottom up. Push `min(value, currentMin)`, pop both in lockstep; the top of the minimum stack is the answer.
 
 The implementation
 
@@ -127,33 +127,33 @@ The implementation
         }
     }
 
-The `v <= self.mins.back()` comparison is deliberately non-strict. If a new value equals the current minimum, both copies must go on the minimum stack, because both come off as the data stack pops past them. A strict `<` would drop one of the equal minima, and the minimum stack would lose track of its meaning once the first of the two popped away. This is the same "equal values are not duplicates to be merged" subtlety as the second-largest problem in Chapter24.
+The `<=` is deliberate: equal minima must both go on the minimum stack because both come off as data pops. A strict `<` would corrupt `getMin` once the first popped.
 
 The cost
 
-Every operation is constant time. The data stack costs the same as any Vec stack, constant amortized. The minimum stack adds one more push and pop per operation, also constant, so the query is constant as required. Space is linear, but it is twice the space of a plain stack. That doubling is the price of the constant-time minimum, and it is worth asking whether your problem needs the query often enough to pay it. This is the constant-time trade: precompute a little on every write so every read is free.
+Every operation is constant time, including one extra push and pop for the minimum stack. Space is linear, twice a plain stack; that is the price of a constant-time query. Precompute on writes so reads are free.
 
 Edge cases and a variation
 
-Pushing onto an empty stack makes the value the minimum, handled by the `mins.isEmpty()` branch. Calling `getMin` on an empty stack is a misuse; the underlying `back` asserts, the correct loud failure from Chapter15. The variation with a much smaller memory footprint: instead of storing the minimum at every level, store only the *changes* to the minimum. Keep a single minimum and a stack of the old minima, pushed only when a new smaller value arrives, popped when the current minimum is the value being removed. Constant time, and on inputs that rarely decrease, far less memory.
+The `mins.isEmpty()` branch handles the first push. `getMin` on an empty stack is misuse; the underlying `back` asserts (Chapter15). A frugal variation stores only changes to the minimum: keep one minimum and a stack of old minima, pushed on a new smaller value and popped when it is removed. Constant time, less memory when values rarely decrease.
 
 27.3 Evaluate Reverse Polish Notation
 
 The problem
 
-Evaluate an arithmetic expression in reverse Polish (postfix) notation, where operators come after their operands: `["2", "1", "+", "3", "*"]` means `(2 + 1) * 3 = 9`.
+Evaluate postfix notation, where operators follow operands: `["2", "1", "+", "3", "*"]` means `(2 + 1) * 3 = 9`.
 
 Picture this
 
-Reading postfix is like assembling a value from the bottom up. Each number is a completed piece; each operator takes the two most recently completed pieces, combines them, and leaves the single result as the new most recent piece. The "most recently completed" rule is exactly a stack: numbers go on, and an operator pops two and pushes one.
+Each number is a completed piece; each operator combines the two most recent pieces into one. That is a stack: numbers go on; an operator pops two and pushes one.
 
 Brute force
 
-No meaningful slower approach exists; postfix evaluation is naturally linear. But the naive implementation keeps a list and, at each operator, searches backward for the two operands and splices them out. That search makes it quadratic and obscures the elegance. The stack makes the "two most recent" idea literal.
+Evaluation is naturally linear. A naive list implementation searches backward for operands at each operator, making it quadratic.
 
 The better approach
 
-One pass. On a number, push it. On an operator, pop the right operand, pop the left operand (note the order), apply, and push the result. At the end, exactly one value remains on the stack. That value is the answer.
+One pass: push numbers; on an operator, pop the right operand, then the left, apply, and push. Exactly one value remains.
 
 The implementation
 
@@ -190,33 +190,33 @@ The implementation
         return stack.pop();
     }
 
-The single most important line is which operand is popped first. `b` is popped before `a`, and `applyOp` is then called as `applyOp(op, a, b)`, so the order is right for subtraction and division: `b` was the top of the stack and therefore the *right* operand. Reversing these two pops is the classic bug in every RPN evaluator. It produces programs that are correct for addition and multiplication and wrong only for subtraction and division, the worst kind of bug, because half your test cases pass.
+The critical line is the pop order: `b` before `a`, then `applyOp(op, a, b)`, because `b` was the top and therefore the right operand. Reversing them is the classic RPN bug: correct for addition and multiplication, wrong for subtraction and division.
 
 The cost
 
-Time is linear: one pass, constant work per token (a push, or two pops and a push). Space is linear in the worst case, when the input is a long run of numbers before any operator, because the stack must hold them all.
+Time is linear: one pass, constant work per token. Space is linear in the worst case, a long run of numbers.
 
 Edge cases and a variation
 
-A well-formed expression leaves exactly one value. A malformed expression underflows the stack, and the `pop` assertion catches it loudly. Integer division truncates toward zero in Coral, matching the usual problem statement. Overflow of intermediate results is the real risk; promote the stack to `i64` if the inputs are large. The variation: build the expression tree instead of evaluating it. Push node pointers rather than numbers and, on an operator, pop two subtrees and push a new operator node. That produces an abstract syntax tree, the `Expr` variant of Chapter13, which you can then evaluate, pretty-print, or compile. It shows that a stack is a tool for building trees from postfix order, not just for arithmetic.
+A well-formed expression leaves one value; a malformed one underflows, and the `pop` assertion catches it. Division truncates toward zero. Promote the stack to `i64` for large inputs to avoid overflow. Variation: push node pointers and combine subtrees into operator nodes, building an abstract syntax tree (Chapter13's `Expr` variant) to evaluate, print, or compile.
 
 27.4 Daily Temperatures
 
 The problem
 
-Given a list of daily temperatures, for each day return how many days you must wait until a warmer day. If no warmer day comes, the answer for that day is 0.
+For each day, return how many days until a warmer day, or 0 if none comes.
 
 Picture this
 
-A line of days, each waiting to be told when a warmer day will beat it. The trick is the monotonic stack. We keep a stack of days that are still *waiting*, in decreasing order of temperature from bottom to top. When a new, warmer day arrives, it resolves every waiting day on the stack that it beats; those days are popped and their answers recorded. The stack never holds a day after the day that beats it arrives, and the days are resolved in the order they are beaten.
+Keep a monotonic stack of waiting days, temperatures decreasing bottom to top. A warmer day resolves every waiting day it beats; those pop and record answers. The stack never holds a day after its warmer arrives.
 
 Brute force
 
-For each day, look forward until you find a warmer day. Quadratic in the worst case; a strictly decreasing temperature list makes every search scan to the end.
+Look forward from each day for a warmer one: quadratic when temperatures strictly decrease.
 
 The better approach
 
-One pass with a stack of *indices* whose temperatures are waiting. For each new day i, while the stack is non-empty and today's temperature is greater than the temperature at the top index, pop that index j and record `i - j` as its answer. Then push i as a new waiting day. Days left on the stack at the end never got a warmer day, so their answers stay at the initialized zero.
+One pass with indices of waiting days. For day i, while the stack is non-empty and today is warmer than the temperature at the top index, pop that index j and record `i - j`; then push i. Days left at the end keep zero.
 
 The implementation
 
@@ -240,33 +240,33 @@ The implementation
         return out;
     }
 
-The stack stores indices rather than temperatures, and that is no accident: it lets a later day compute the wait `i - j` for the day it beats. Storing only the temperature would settle the comparison but lose the position, and the answer is a distance. The comparison is strict `>`, so equal temperatures do not resolve each other. A day is only ended by a *warmer* one, not an equally warm one.
+Indices, not temperatures, let a later day compute the wait `i - j`; the answer is a distance. The comparison is strict `>`, so equal temperatures do not resolve each other.
 
 The cost
 
-Time is linear, and again the nested `while` is deceptive. Each index is pushed exactly once and popped at most once, so across the whole run the inner loop performs at most n pops. Space is linear in the worst case; a strictly decreasing list keeps every index on the stack. But that is the input that needs it.
+Time is linear: each index is pushed once and popped at most once. Space is linear in the worst case, a strictly decreasing list.
 
 Edge cases and a variation
 
-An empty or single-element list answers with all zeroes; the loop handles both. Equal temperatures keep both days waiting, so the earlier day is not resolved by its equal twin, which is correct. The variation: instead of waiting for a warmer day, compute the next *greater* element to the right for each position. Same monotonic decreasing stack, same idea. Change "warmer" to "colder" and you use a monotonic increasing stack instead. The monotonic stack is a general tool. Whenever a problem asks "for each element, find the next element that beats it," the answer is usually a monotonic stack, and the only design choice is which order the stack maintains.
+Empty or single-element lists yield all zeroes. Equal temperatures leave both days waiting. Variation: next greater element to the right uses the same decreasing stack; for "colder" use an increasing stack. The only choice is the stack's order.
 
 27.5 Implement a Queue Using Two Stacks
 
 The problem
 
-Implement a first-in-first-out queue using only two stacks, and support enqueue and dequeue.
+Implement a FIFO queue with only two stacks.
 
 Picture this
 
-You have two piles of plates and must serve the oldest first. You enqueue onto one pile, the "in" pile. To dequeue, you move plates one at a time from the in pile to the out pile, which reverses their order, and then take from the top of the out pile. Because the reversal happens only when the out pile is empty, each plate moves at most once, and the service order is exactly the arrival order. The two piles together have the memory of a line.
+Enqueue onto the "in" pile. To dequeue, move plates to the "out" pile, reversing them, then take the top. Reversing only when the out pile is empty means each plate moves once and service order is arrival order.
 
 Brute force
 
-With a single stack you cannot do it: a stack serves the newest first, the opposite of a queue. You could copy the whole stack into a temporary on every dequeue, but that is O(n) per dequeue and gives nothing over the two-stack design.
+One stack serves the newest first. Copying the whole stack on every dequeue is O(n) per dequeue and no better.
 
 The better approach
 
-Two stacks, `inStack` and `outStack`. Enqueue pushes onto `inStack`. Dequeue, when `outStack` is empty, pours every element of `inStack` into `outStack` (which reverses them), then pops from `outStack`. The amortized cost per operation is constant, even though a single dequeue can cost O(n) when it triggers a pour. The key: each element is poured at most once per arrival, so the total work across all operations is linear.
+Two stacks, `inStack` and `outStack`. Enqueue pushes onto `inStack`. Dequeue, when `outStack` is empty, pours all of `inStack` into `outStack`, then pops. A single dequeue can cost O(n), but each element is poured once, so the amortized cost is constant.
 
 The implementation
 
@@ -306,33 +306,33 @@ The implementation
         }
     }
 
-The lazy pour is the heart of it. Pour on every enqueue instead, and each element could move many times. By pouring only on a dequeue that finds the out stack empty, and pouring everything at once, each element moves exactly twice in its lifetime: once into the in stack, once into the out stack. That is what makes the amortized cost constant.
+The lazy pour is the point: pour on every enqueue and elements move repeatedly. Pouring only when needed moves each element exactly twice, into the in stack and then the out stack.
 
 The cost
 
-A single enqueue is constant. A single dequeue is O(n) in the worst case, when it triggers a pour of n elements, but the *amortized* cost (total work divided by the number of operations) is constant, because each element is poured once. This is the first genuine amortized analysis in these chapters. It is the same reasoning that makes a growing `Vec`'s pushes constant on average (Chapter16): an occasional expensive operation paid for by many cheap ones. Space is linear.
+Enqueue is constant; dequeue is O(n) when it pours but amortized constant, because each element is poured once. This is the same accounting that makes `Vec` pushes constant on average (Chapter16). Space is linear.
 
 Edge cases and a variation
 
-Dequeuing from an empty queue asserts, the correct loud failure. An enqueue followed by a dequeue works on the first pour. The variation with a practical note: the standard library already ships a queue, `std::collections::queue { Queue }`, whose `enqueue`, `dequeue`, and `peek` are constant time on every call, because it is a ring buffer, not two stacks (Chapter16, 16.6). The two-stack queue is a *classic interview problem*. It exists to test whether you understand amortized analysis and the relationship between the two orderings. It is not a thing to ship when the library has the real one. Knowing when a clever construction is a teaching exercise and when it is production code is part of the skill.
+Dequeuing from empty asserts. An enqueue then dequeue works on the first pour. In practice, `std::collections::queue { Queue }` provides constant-time `enqueue`, `dequeue`, and `peek` from a ring buffer (16.6). The two-stack queue is an interview exercise in amortized analysis, not production code.
 
 27.6 Reverse a Linked List
 
 The problem
 
-Given the head of a singly linked list, reverse it and return the new head.
+Given a singly linked list's head, reverse it and return the new head.
 
 Picture this
 
-Reversing a chain of arrows means walking the chain and turning each arrow around as you pass. You need three fingers: one on the node *before* the current one, one on the current node, and one on the node after, because you are about to overwrite the current node's arrow and would otherwise lose your place. That third finger, the "next" saved before the rewrite, is the detail everyone forgets the first time.
+Walk and turn each arrow around. Keep three fingers: previous, current, and next, because overwriting the current arrow would lose your place. Saving "next" before the rewrite is the detail people forget.
 
 Brute force
 
-Copy the values into an array, then rebuild the list in reverse. Linear time and linear extra space, and it treats the list as if it were an array, which misses the point: the whole difficulty is manipulating the links in place.
+Copy values into an array and rebuild in reverse: linear time and space, but it misses the point of manipulating links in place.
 
 The better approach
 
-Iterate with three pointers. Save `next`, point the current node's `next` backward at `prev`, then advance all three. When the current node falls off the end, `prev` is standing on the new head. Each node's arrow is flipped exactly once.
+Iterate with three pointers: save `next`, point current's `next` at `prev`, then advance all three. When current falls off the end, `prev` is the new head.
 
 The implementation
 
@@ -363,7 +363,7 @@ The implementation
         return prev;
     }
 
-The recursion version is a nice mirror of the same idea and worth seeing, because it shows what the explicit "next" finger is doing:
+The recursive version shows what the explicit "next" finger does:
 
     Node* reverseRec(Node* head) {
         if (head == null || head->next == null) {
@@ -375,33 +375,33 @@ The recursion version is a nice mirror of the same idea and worth seeing, becaus
         return newHead;
     }
 
-The recursive version reverses the tail first, then stitches the current node onto the end of the reversed tail. Shorter, and worse: it uses stack space proportional to the list length, so a list of a hundred thousand nodes can overflow the call stack, while the iterative version uses constant space. This is the rare case where the prettier code is the wrong code, and it is why the iterative version is the one to remember.
+It reverses the tail, then stitches the current node onto the end. Shorter and worse: stack space is proportional to length, so a hundred thousand nodes can overflow the call stack; the iterative version uses constant space.
 
 The cost
 
-Iterative: linear time, one pass, constant space for the three pointers. Recursive: linear time but linear space for the call stack. The asymptotic time is the same; the space is the difference, and for lists that is often the difference between working and crashing. Freeing the nodes is a separate concern from reversing them (see the exercises), and this is the boundary between an algorithm and the ownership discipline of Chapter11: the algorithm rearranges pointers, but it does not decide who owns the memory.
+Iterative: linear time, one pass, constant space. Recursive: linear time but linear stack space. Freeing nodes is separate from reversing (see the exercises), the boundary between an algorithm and Chapter11's ownership discipline.
 
 Edge cases and a variation
 
-An empty list returns null; a single-node list returns that node unchanged, and both fall out of the loops. The variation: reverse only the sub-list between positions `m` and `n`, leaving the rest attached. It uses the same three-pointer walk, with a saved node before the start of the interval and one extra stitch at the end, and it is a good exercise in keeping the outside connections straight while flipping the inside ones.
+An empty list returns null; a single node returns itself. Variation: reverse the sub-list between `m` and `n`, using the same walk plus a saved node before the interval and one extra stitch.
 
 27.7 Merge Two Sorted Linked Lists
 
 The problem
 
-Given the heads of two sorted linked lists, merge them into one sorted list and return its head, reusing the existing nodes.
+Given two sorted linked lists, merge them into one sorted list, reusing nodes.
 
 Picture this
 
-Two sorted queues of cards. You repeatedly compare the two front cards, take the smaller, and append it to the output. Because both inputs are sorted, the smallest remaining card is always at one of the two fronts, so the greedy choice is correct. A placeholder node, called a dummy, sits at the front of the output so you do not have to special-case the very first card. Keep a finger on the last output node and extend from it.
+Compare the two fronts, take the smaller, and append. The smallest remaining card is always at a front, so the greedy choice is correct. A dummy head avoids special-casing the first card; keep a tail pointer.
 
 Brute force
 
-Collect both lists into arrays, concatenate, sort, and rebuild. That throws away the sortedness both inputs already have, costs O((m+n) log(m+n)) instead of O(m+n), and allocates.
+Collect both lists, concatenate, sort, and rebuild: O((m+n) log(m+n)) instead of O(m+n), and it allocates.
 
 The better approach
 
-Merge in place with a dummy head and a tail pointer. While both lists have a node, append the smaller one and advance that list. When one list runs out, append the entire remainder of the other: it is already sorted and already linked, so it is a single pointer assignment, not a loop. Finally, free the dummy and return its next.
+Merge in place with a dummy head and tail. While both lists have nodes, append the smaller and advance that list. When one runs out, append the other's entire remainder with one pointer assignment. Free the dummy and return its next.
 
 The implementation
 
@@ -439,33 +439,33 @@ The implementation
         return result;
     }
 
-The `<={` comparison makes the merge stable: when the two fronts are equal, the node from `a` comes first, preserving the original relative order of equal elements. Change it to `<` and equal elements from `b` jump ahead of their equals from `a`, a legitimate merge but a different one. The dummy node is the other trick worth naming. Without it, the first output node would need its own branch to be installed as the head, and every other iteration would need a different path. The dummy turns "first" into "just another" and removes the special case.
+The `<={` makes the merge stable: equal fronts take `a` first. With `<`, equal elements from `b` jump ahead. The dummy makes the first output node just another node, removing the special case.
 
 The cost
 
-Time is linear in the combined length: each iteration consumes one node, and the trailing append of the remainder is constant. Space is constant: a handful of pointers and one temporary dummy node, freed before returning. The nodes themselves are reused, not copied, so no allocation happens inside the loop at all.
+Time is linear in the combined length; each iteration consumes one node. Space is constant: a few pointers and a temporary dummy, freed before returning. Nodes are reused, so the loop allocates nothing.
 
 Edge cases and a variation
 
-If either input is empty, the loop does not run and the entire other list is appended, which is correct. If both are empty, the result is null. The variation: merge k sorted lists. Merging them two at a time costs O(N log k), where N is the total length and one full list is rescanned at each level of the pairwise reduction. Better: keep a min-heap of the k current fronts and repeatedly pop the smallest, O(N log k) with no rescans. That is exactly Chapter16's `PriorityQueue`. The same greedy choice, generalized with the right data structure.
+An empty input appends the other list; two empty inputs give null. Variation: merge k sorted lists. Pairwise merging is O(N log k) with rescans; better is a min-heap of the k fronts, O(N log k) with no rescans, exactly Chapter16's `PriorityQueue`.
 
 27.8 Linked List Cycle
 
 The problem
 
-Decide whether a linked list contains a cycle, a node whose `next` eventually leads back to a node already in the list.
+Decide whether a linked list contains a cycle.
 
 Picture this
 
-Two runners on the same track. One runs one step per tick, the other two. If the track is a straight line, the fast runner pulls away and eventually reaches the end. If the track loops, the fast runner enters the loop first, then sooner or later laps the slow runner from behind. The moment they stand on the same spot, you know there is a loop. This is Floyd's tortoise-and-hare, and it needs no extra memory at all.
+Two runners, one step and two steps per tick. On a straight track the fast one reaches the end; on a loop it laps the slow one. Standing on the same spot proves a cycle. This is Floyd's tortoise-and-hare, using no extra memory.
 
 Brute force
 
-Walk the list and record every visited node in a set. If you ever arrive at a node already in the set, there is a cycle. Linear time, but linear extra space. And if the nodes had no comparable identity, you would be storing pointers, which is fine but wasteful for a question this simple.
+Record visited nodes in a set; reaching a recorded node means a cycle. Linear time and linear extra space.
 
 The better approach
 
-Two pointers, slow and fast. Advance slow by one and fast by two each iteration. If fast ever falls off the end, there is no cycle. If slow and fast ever point at the same node, there is a cycle. Constant space, and the running time is linear, because the fast pointer closes the gap by one node each tick once both are inside the loop.
+Slow advances one, fast two. If fast falls off the end, no cycle; if they meet, a cycle. Constant space and linear time, since the gap shrinks by one each tick inside the loop.
 
 The implementation
 
@@ -497,33 +497,33 @@ The implementation
         return false;
     }
 
-The loop condition must check both `fast != null` and `fast->next != null` before the body dereferences `fast->next->next`. Checking only `fast` would cover the first of the two hops but not the second, and the missing guard is a null dereference waiting for any list of even length. This is the same discipline as the two-pointer loops in Chapter25: whenever a pointer takes two steps, both steps must be guarded.
+The condition must check `fast != null` and `fast->next != null` before `fast->next->next`. Checking only `fast` misses the second hop, a null dereference on any even-length list.
 
 The cost
 
-Time is linear. In the acyclic case the fast pointer reaches the end after about n/2 ticks. In the cyclic case, once both pointers are in the loop the distance between them shrinks by one each tick, so they meet within one loop length. Space is constant, two pointers and nothing else, which is the point of Floyd's algorithm over the set-marking version.
+Time is linear: acyclic fast reaches the end in about n/2 ticks; cyclic the pointers meet within one loop length. Space is constant, the point over set-marking.
 
 Edge cases and a variation
 
-An empty list and a single node with no self-loop both return false. A node that points to itself forms a cycle of length one, and the loop detects it on the first iteration, because `slow` and `fast` both land on it. The variation, and a lovely one: find not only *whether* there is a cycle but *where* it begins. Once the two pointers meet, move one pointer back to the head and advance both one step at a time; they meet again exactly at the entry node of the cycle. The proof is a short piece of arithmetic on the distances traveled, and implementing it is the standard follow-up. The same tortoise-and-hare idea also solves Chapter26's Happy Number in constant space, a nice sign that you have understood the pattern rather than memorized it for lists.
+Empty and single-node lists return false; a self-loop is detected immediately. Variation: find the cycle entry. After the meeting, move one pointer to the head and advance both one step; they meet at the entry. The proof is distance arithmetic. The same idea solves Chapter26's Happy Number.
 
 27.9 Sliding Window Maximum
 
 The problem
 
-Given an array and a window width `k`, return the maximum of every contiguous window of width `k`. So for `[1, 3, -1, -3, 5, 3]` with `k = 3`, the windows are `[1,3,-1]`, `[3,-1,-3]`, `[-1,-3,5]`, and `[-3,5,3]`, giving `[3, 3, 5, 3]`.
+Given an array and width `k`, return the maximum of every contiguous window. For `[1, 3, -1, -3, 5, 3]` with `k = 3`, the answer is `[3, 3, 5, 3]`.
 
 Picture this
 
-A monotonically decreasing deque of *candidate* indices. Its front is always the index of the current window's maximum. When a new value arrives, it kicks off the back every candidate it beats, because those can never be the maximum again while the new, larger value is still in the window. The new index then enters at the back. When the front index falls out the left side of the window, drop it. Keeping indices, not values, is what lets us notice that the front has left the window.
+Keep a decreasing deque of candidate indices; its front is the window maximum. A new value removes from the back every candidate it beats, since they can never be maximum while it remains. Insert it; drop the front when it leaves the window. Indices let you detect that.
 
 Brute force
 
-For each window, scan its `k` elements and take the maximum. There are about `n` windows and each scan is `k` steps, so `O(n · k)`, which is quadratic when `k` is a constant fraction of `n`.
+Scan each window's `k` elements: O(n · k), quadratic when `k` is a constant fraction of `n`.
 
 The better approach
 
-One pass with a double-ended queue of indices whose values are strictly decreasing from front to back. Before inserting index `i`, pop from the back while the back's value is less than or equal to `v[i]`; those are dominated forever. Insert `i`. If the front index is now outside the window, pop it from the front. Once the window is full, the front is the answer. Each index enters and leaves the deque once, so the total work is linear even though the inner loop looks nested.
+One pass with a deque of indices whose values strictly decrease. Before inserting `i`, pop from the back while its value is less than or equal to `v[i]`; those are dominated forever. Insert `i`, pop the front if outside the window, and once full the front is the answer. Each index enters and leaves once.
 
 The implementation
 
@@ -549,33 +549,33 @@ The implementation
         return out;
     }
 
-The `<=` in the back-pop is deliberate: a new value equal to a candidate also retires it, because the newer index will outlive the older one as the window slides. Using strict `<` would leave stale equal-valued indices in the deque and waste space, though it would still be correct. The front-eviction test `dq.front() + k <= i` says "the front index is no longer inside `[i - k + 1, i]`," which is exactly when it must leave.
+The `<=` is deliberate: a new equal value retires the old candidate because the newer index outlives it. Strict `<` leaves stale equals and wastes space but remains correct. `dq.front() + k <= i` means the front has left `[i - k + 1, i]`.
 
 The cost
 
-Time is linear: each index is pushed once and popped at most once from either end, so the total number of inner-loop iterations across the whole run is bounded by `n`. Space is `O(k)`, the most indices the deque can hold, which is the window width. The quadratic scan collapses to linear because the monotonic property lets each element be discarded once and only once.
+Time is linear: each index is pushed once and popped once from either end. Space is O(k). Each element is discarded once.
 
 Edge cases and a variation
 
-A window wider than the array yields an empty result, because the `i + 1 >= k` test never fires. `k = 1` returns the array itself. A strictly decreasing array keeps every index until it ages out, which is the worst case for space and still linear in time. The variation: return the maximum *with* its index, by outputting `dq.front()` instead of the value at it. A second variation: sliding-window *minimum* flips the comparison, giving a monotonically increasing deque. The only design choice, as with every monotonic structure in this chapter, is the direction the deque is kept sorted in.
+A window wider than the array yields an empty result; `k = 1` returns the array. A strictly decreasing array keeps every index, the worst case for space and still linear time. Variation: return the maximum with its index via `dq.front()`; a sliding minimum flips the comparison to an increasing deque.
 
 27.10 Implement a Stack Using Queues
 
 The problem
 
-Implement a last-in-first-out stack using only queue operations (enqueue at the back, dequeue from the front), and support push and pop.
+Implement a LIFO stack using only enqueue and dequeue.
 
 Picture this
 
-A queue serves the oldest first, the opposite of what a stack wants. The trick is to make a push wait its turn behind everything already present, and then reverse the order by rotating: after enqueuing the new element, dequeue and re-enqueue every older element once, so the new element ends up at the front. Now the front is always the most recently pushed value, and pop is just a dequeue. One queue, a full rotation on push.
+A queue serves oldest first. Make a push wait behind everything present by rotating: enqueue the new element, then dequeue and re-enqueue every older element once, so the new one reaches the front. Then pop is just dequeue.
 
 Brute force
 
-A single queue has no way to pop the newest element directly. You could dequeue everything into a temporary, take the last one, and enqueue the rest back, which is `O(n)` per pop and reinvents the rotation on the wrong side.
+A single queue cannot pop the newest directly. Dequeuing everything, taking the last, and re-enqueuing is O(n) per pop.
 
 The better approach
 
-One queue and a rotation on push. Push `v`, note how many elements were already in the queue, then move exactly those older elements from the front to the back by dequeuing and re-enqueuing them. After the rotation, `v` sits at the front and pop is `O(1)`. The cost simply moves from pop to push: push is `O(n)`, pop is `O(1)`, which is the mirror image of the two-stack queue of 26.5.
+One queue, rotate on push. Push `v`, note the older count, then move exactly those elements from front to back. Now `v` is at the front and pop is O(1). Push is O(n), the mirror image of 26.5.
 
 The implementation
 
@@ -611,33 +611,33 @@ The implementation
         }
     }
 
-`older` is captured *before* the enqueue, so the rotation moves exactly the elements that were present before the new one, leaving the new one at the front. Rotate one too few or one too many and the new value ends up in the wrong place. `peek` gives the top without changing the order, because the queue's front is already the newest element.
+`older` is captured before the enqueue, so the rotation moves exactly the elements that preceded `v`. Rotate the wrong count and `v` lands wrong. `peek` reads the front, already the newest.
 
 The cost
 
-Push is `O(n)` and pop is `O(1)`, a clean trade against 26.5's stack queue, where enqueue is `O(1)` and dequeue is amortized `O(1)`. There is no way to make both ends constant with a single queue, and that asymmetry is the point of the problem: the direction you pay on is a choice. Space is linear in the number of elements.
+Push O(n), pop O(1), trading against 26.5's enqueue O(1), dequeue amortized O(1). Both ends cannot be constant with one queue; the asymmetry is the point. Space is linear.
 
 Edge cases and a variation
 
-Popping from an empty stack asserts through the underlying queue's dequeue, the correct loud failure. Pushing onto an empty stack rotates nothing, so the value is immediately the top. The variation: build it with *two* queues instead, always enqueuing onto the secondary queue and then moving the primary into it, swapping their roles; the amortized analysis is the same as 26.5 read backward. A second variation: make push `O(1)` and pop pay the rotation instead, which some argue is the more natural stack behavior. Write both and compare, because the exercise is really about noticing that the expensive operation can be pushed to either side.
+Popping empty asserts through dequeue. Pushing empty rotates nothing. Variation: use two queues, enqueuing onto the secondary and moving the primary into it; the analysis is 26.5 backward. A second variation makes push O(1) and pop pay the rotation.
 
 27.11 Remove the Nth Node From the End
 
 The problem
 
-Given the head of a linked list and an integer `n`, remove the `n`th node counting from the end, and return the (possibly new) head. Do it in one pass.
+Given a linked list and `n`, remove the `n`th node from the end in one pass.
 
 Picture this
 
-Two runners spaced `n` nodes apart. Start the fast runner `n` steps ahead of the slow one. When the fast runner reaches the last node, the slow runner is standing exactly `n` nodes from the end, which means the node it must remove is the one *after* it. Advance them in lockstep until fast runs out, then unlink the target. The spacing is set up once and maintained mechanically.
+Space fast `n` nodes ahead of slow. When fast reaches the last node, slow is exactly `n` from the end, so the target is after slow. Advance in lockstep, then unlink.
 
 Brute force
 
-Walk the list once to count its length, then walk again to the `(length - n)`th node and unlink it. Two passes, and the arithmetic is easy to get off by one. It is correct and it does not hold any extra pointers.
+Count the length, then walk to `(length - n)` and unlink. Two passes and easy off-by-one arithmetic, but correct.
 
 The better approach
 
-One pass with two pointers and a *dummy* node before the head. The dummy exists so that removing the first node is not a special case: slow starts at the dummy, fast starts at the dummy, fast takes `n + 1` steps to open the gap, and when fast reaches null, slow sits on the node just before the target. Unlink, free, and return `dummy->next`.
+One pass with two pointers and a dummy before the head. Slow and fast start at the dummy, fast takes `n + 1` steps, and when fast is null, slow is just before the target. Unlink, free, and return `dummy->next`.
 
 The implementation
 
@@ -684,33 +684,33 @@ The implementation
         return result;
     }
 
-The gap is `n + 1`, not `n`, and that off-by-one is the entire difficulty of the problem. With a gap of `n + 1`, when `fast` falls off the end, `slow` is on the node *before* the one to remove, which is exactly the node whose `next` must be rewritten. A gap of `n` would land `slow` on the target itself, with no way to reach its predecessor in a singly linked list.
+The gap is `n + 1`, not `n`: when fast falls off the end, slow is on the node before the target, whose `next` must be rewritten. A gap of `n` lands slow on the target, unreachable predecessor.
 
 The cost
 
-Time is linear: one pass, each node visited a constant number of times. Space is constant, the two pointers and one temporary dummy node. The dummy node is freed before returning; the removed node is freed at unlink time. This is the same dummy-head trick that made 26.7's merge clean, applied to deletion.
+Time is linear, one pass. Space is constant: two pointers and a dummy, freed before returning. The removed node is freed at unlink time. This is 26.7's dummy trick applied to deletion.
 
 Edge cases and a variation
 
-Removing the only node leaves the head null, which works because slow is the dummy and `dummy->next` becomes null. Removing the first node of a longer list is handled without a special branch, the whole reason for the dummy. If `n` exceeds the list length, the gap loop stops at the end and the function removes nothing rather than crashing, which is a choice worth documenting. The variation: remove the middle node given only a pointer to it, in `O(1)`, by copying the next node's value into it and unlinking the next. It is a party trick that fails on the last node, and it is a good example of how the singly linked list's one-way arrows constrain every solution.
+Removing the only node leaves the head null. Removing the first node of a longer list needs no branch, the reason for the dummy. If `n` exceeds the length, nothing is removed rather than crashing. Variation: remove a middle node given only a pointer in O(1) by copying the next value and unlinking the next; it fails on the last node.
 
 27.12 Add Two Numbers
 
 The problem
 
-You are given two non-negative integers represented as linked lists whose digits are stored in reverse order, one digit per node. Add them and return the sum as a linked list in the same format. So `(2 -> 4 -> 3)` plus `(5 -> 6 -> 4)` is `(7 -> 0 -> 8)`, because 342 + 465 = 807.
+Two non-negative integers are linked lists of digits in reverse order, one digit per node. Add them and return the sum in the same format. `(2 -> 4 -> 3)` plus `(5 -> 6 -> 4)` is `(7 -> 0 -> 8)`, since 342 + 465 = 807.
 
 Picture this
 
-Primary-school column addition, but the columns arrive as list nodes from least significant digit upward, which is convenient: you add the two current digits and the carry, write the units digit, and pass the tens digit along. A dummy head owns the result, and a tail pointer extends it. The process continues while either list still has digits *or* a carry remains, and that last condition is the one people forget.
+Column addition, least significant digit first. Add the digits and carry, write the units digit, pass the tens along. A dummy head owns the result and a tail extends it. Continue while either list has digits or a carry remains.
 
 Brute force
 
-Convert each list to an integer, add, and convert back. It works for small numbers and silently overflows for the length of list that makes the problem interesting. It also discards the whole point, which is to do the addition position by position.
+Convert each list to an integer, add, and convert back: it overflows for interesting lengths and discards position-by-position addition.
 
 The better approach
 
-Walk both lists together with a running `carry`. Each step, sum the carry with whichever current digits exist, compute the new digit as `sum % 10` and the new carry as `sum / 10`, then append the digit. The loop's three-way condition, `a` not done, `b` not done, or carry nonzero, guarantees a final carry becomes its own node.
+Walk both lists with `carry`. Sum the carry and existing digits, set the new digit to `sum % 10` and carry to `sum / 10`, then append. The condition `a` not done, `b` not done, or carry nonzero lets a final carry become a node.
 
 The implementation
 
@@ -754,33 +754,33 @@ The implementation
         return result;
     }
 
-Digits are stored least-significant first precisely so the carry flows in the same direction as the list, so no reversal is needed. The elements of the two input lists are read but not consumed or freed; the caller still owns them. Only the dummy is allocated and freed here, and the new nodes are owned by the returned list.
+Least-significant-first digits let the carry flow with the list, with no reversal. Inputs are read but not consumed; the caller owns them. Only the dummy is allocated and freed; the new nodes belong to the result.
 
 The cost
 
-Time is linear in the longer list, plus one step if there is a final carry. Space is linear in the length of the result, which is at most one node longer than the longer input. No arithmetic wider than `i32` is needed because each column sums at most `9 + 9 + 1 = 19`.
+Time is linear in the longer list, plus one step for a final carry. Space is linear in the result, at most one node longer than the longer input. Each column sums at most `9 + 9 + 1 = 19`, so `i32` suffices.
 
 Edge cases and a variation
 
-Two empty lists sum to zero, which the loop produces as a single `0` node because `carry` is zero but both lists are null; adjust the condition if you want an empty result instead. Lists of different lengths are handled by the `if (a != null)`/`if (b != null)` guards. The variation: store the digits most-significant first instead, which forces a reversal of both inputs or a recursive solution that defers the carry. A second variation: subtract two numbers by borrowing, which is the same skeleton with the carry replaced by a borrow and a sign test.
+Two empty lists give a single `0` node; adjust if you want empty. Different lengths work through the null guards. Variation: most-significant-first digits force a reversal or recursive carry deferral. A second variation subtracts with borrowing, the same skeleton with borrow and sign.
 
 27.13 Palindrome Linked List
 
 The problem
 
-Decide whether a singly linked list reads the same forwards and backwards, in `O(n)` time and `O(1)` extra space.
+Decide whether a singly linked list is a palindrome in O(n) time and O(1) extra space.
 
 Picture this
 
-Find the middle with two pointers at different speeds, reverse the second half in place, then compare the two halves from the outside in. The first half is unchanged; the second half now runs toward the middle. When the comparisons finish, reverse the second half again to restore the list, because a good function leaves its input as it found it.
+Find the middle with slow and fast pointers, reverse the second half, and compare from the outside in. Then reverse the second half again to restore the list; a good function leaves its input unchanged.
 
 Brute force
 
-Copy the list's values into a vector, then use the two-pointer palindrome test of 24.2 on the vector. Linear time, but linear extra space, which the problem forbids.
+Copy values into a vector and use 24.2's two-pointer test: linear time but linear extra space.
 
 The better approach
 
-Slow and fast pointers to the middle, the 26.6 reversal for the back half, then a lockstep comparison, then a second reversal to undo the damage. The middle finding and the reversal are both problems already solved in this chapter; the new idea is only that they combine, and that the mutation must be repaired before returning.
+Middle pointers, 26.6's reversal for the back half, a lockstep comparison, then a restore. The new idea is only that these combine and the mutation must be undone.
 
 The implementation
 
@@ -838,33 +838,33 @@ The implementation
         return ok;
     }
 
-The middle-finding loop stops with `slow` on the last node of the first half for both even and odd lengths, so `slow->next` is always the start of the second half and the split is clean. The comparison runs while `p2` is non-null, which correctly ignores the middle node of an odd-length list. The final `reverseList(second)` restores the link, so the list is left exactly as it arrived.
+The middle loop leaves `slow` on the last node of the first half for even and odd lengths, so `slow->next` starts the second half. Comparing while `p2` is non-null ignores the odd middle node. `reverseList(second)` restores the link.
 
 The cost
 
-Time is linear: the middle walk, the reversal, the comparison, and the restore each touch each node a constant number of times. Space is constant: four pointers, no allocation, no array. This is the `O(1)`-space answer to a problem the brute force solves with a full copy, and it earns its keep only when the list is large.
+Time is linear: each pass touches each node a constant number of times. Space is constant: four pointers, no allocation. This earns its keep only for large lists.
 
 Edge cases and a variation
 
-An empty list and a single node are palindromes, returned before any mutation. A two-node list is a palindrome only when both values are equal, which the middle walk handles with `slow` on the first node. The critical discipline is the restore: skip it and the caller's list is silently reordered, a bug that may not surface until much later. The variation: if the problem permits destroying the input, drop the final reversal and save the work. A second variation: check whether the list is a palindrome *after deleting at most one node*, which follows 24.2's "valid palindrome II" by trying both skips when the comparison first disagrees.
+Empty and single-node lists are palindromes before any mutation. A two-node list is a palindrome only if values match. Skipping the restore silently reorders the caller's list. Variation: drop the final reversal if destroying the input is allowed. A second variation checks a palindrome after at most one deletion, following 24.2.
 
 27.14 Largest Rectangle in Histogram
 
 The problem
 
-Given bar heights along a baseline, find the area of the largest rectangle that fits entirely under the skyline. So for `[2, 1, 5, 6, 2, 3]` the answer is 10, from the two bars of height 5 and 6 with a width of 2.
+Given bar heights, find the largest rectangle entirely under the skyline. For `[2, 1, 5, 6, 2, 3]` the answer is 10, from the bars of height 5 and 6.
 
 Picture this
 
-Each bar can be the short side of a rectangle that stretches left and right until it hits a shorter bar. So the question for each bar is: how far left and right can it extend before something shorter blocks it? A monotonically increasing stack answers exactly that. When a new, shorter bar arrives, every taller bar on the stack now knows its right boundary, and its left boundary is the bar just below it on the stack. Pop, compute the area, and keep the best.
+Each bar can stretch left and right until a shorter bar blocks it. A monotonic increasing stack finds the boundaries: when a shorter bar arrives, each taller bar learns its right boundary, and its left boundary is the bar below on the stack. Pop, compute area, keep the best.
 
 Brute force
 
-For each bar, expand left and right while the neighbours are at least as tall, and compute the width times height. That is `O(n²)` and it re-expands through the same gaps for every bar.
+Expand left and right from each bar while neighbours are at least as tall: O(n²), re-expanding the same gaps.
 
 The better approach
 
-One pass with a stack of indices kept in increasing height order. Before pushing index `i`, pop every index whose height is greater than or equal to `h[i]`, because `i` is their right boundary. For a popped index `j`, its height is the rectangle's height, its left boundary is the index now on top of the stack (or the start of the array), and its width is `i` minus that left boundary. A sentinel bar of height zero at the end flushes the stack, since zero is shorter than everything. Widen the areas to `i64`; a wide histogram times a tall bar overflows `i32` easily.
+One pass with a stack of increasing heights. Before pushing `i`, pop every index with height greater than or equal to `h[i]`, because `i` is its right boundary. For a popped `j`, height is `h[j]`, left boundary is the new top plus one (or 0), and width is `i - left`. A zero-height sentinel at the end flushes the stack. Use `i64`; wide histograms overflow `i32`.
 
 The implementation
 
@@ -890,38 +890,38 @@ The implementation
         return best;
     }
 
-The virtual bar at `i == n` with height zero is the sentinel, and it is why the loop runs one step past the end. When a bar is popped, the new top of the stack is the nearest shorter bar to its left, so `stack.back() + 1` is the first column the rectangle can occupy on the left. The `>=` comparison retires equal-height bars too; using `>` would still be correct but would leave them for a later pop, and either way each bar is popped exactly once.
+The zero bar at `i == n` is the sentinel, hence the loop runs one past the end. The new top after a pop is the nearest shorter bar on the left, so `stack.back() + 1` is the first column. `>=` retires equal heights too; `>` is still correct but defers them. Each bar pops once.
 
 The cost
 
-Time is linear: each index is pushed once and popped at most once, so the inner loop does `O(n)` work in total across the whole run. Space is `O(n)` in the worst case, a strictly increasing histogram that keeps every index until the sentinel. This is the same "nested loop, linear total" accounting as the monotonic stack of 26.4, and the same structure answers both, only with different bookkeeping when the item is popped.
+Time is linear: each index is pushed once and popped once. Space is O(n), a strictly increasing histogram. The same accounting as 26.4's monotonic stack, with different bookkeeping on pop.
 
 Edge cases and a variation
 
-An empty histogram returns zero, because the loop's single sentinel step pops nothing. A single bar returns its own height. A non-decreasing histogram keeps every bar on the stack until the sentinel, at which point they are popped right to left with increasing widths. The variation: the *maximal rectangle* in a binary matrix, which runs this routine once per row, treating the 1s as heights and resetting a column's height to zero wherever the row has a 0. That is the same monotonic stack applied row by row, and it is the natural next problem from this one.
+An empty histogram returns zero; a single bar returns its height. A non-decreasing histogram keeps every bar until the sentinel, then pops right to left. Variation: maximal rectangle in a binary matrix, running this per row with 1s as heights and a 0 resetting a column. The same stack, row by row.
 
 27.15 Exercises
 
-1. Comprehension. In 26.1, why does the stack automatically enforce the *nesting* rule, not just the counting of opens and closes? Give a string with equal numbers of each bracket that is invalid, and trace the stack to show where it fails.
+1. Comprehension. In 26.1, why does the stack enforce nesting, not just counts? Give an invalid string with equal bracket counts and trace where the stack fails.
 
-2. Comprehension. In 26.2, why is the comparison `v <= currentMin` and not `v < currentMin`? Construct the sequence of pushes and pops where the strict version corrupts `getMin`.
+2. Comprehension. In 26.2, why `v <= currentMin`, not `v < currentMin`? Show pushes and pops where the strict version corrupts `getMin`.
 
-3. Implementation. Using the stack of 26.1, write `i32 longestValidParentheses(str)` returning the length of the longest balanced substring. Push indices and use a sentinel base; explain what each stack entry means.
+3. Implementation. Using 26.1's stack, write `i32 longestValidParentheses(str)` returning the longest balanced substring. Push indices with a sentinel and explain each entry.
 
-4. Implementation. Write a `StackQueue` (26.5) whose `dequeue` also provides `peek`, and argue that `peek` is also amortized constant. Then replace the whole thing with `std::collections::queue { Queue }` and list everything that disappears.
+4. Implementation. Extend `StackQueue` (26.5) with amortized-constant `peek`, then replace it with `std::collections::queue { Queue }` and list what disappears.
 
-5. Implementation. Write `Node* removeNthFromEnd(Node*, i32 n)` using two pointers offset by n, in one pass. Why does the dummy-head trick from 26.7 help here too?
+5. Implementation. Write `Node* removeNthFromEnd(Node*, i32 n)` with two pointers offset by n in one pass. Why does 26.7's dummy help?
 
-6. Implementation. Write `bool isPalindromeList(Node*)` in O(n) time and constant space, using the reverse-in-place technique of 26.6 on the second half and then restoring it afterward. What must you remember to undo?
+6. Implementation. Write `bool isPalindromeList(Node*)` in O(n) time and constant space using 26.6's second-half reversal, then restore it. What must you undo?
 
-7. Analysis. In 26.6, compare the iterative and recursive reversals for a list of one million nodes. What is the space cost of each, and what specifically fails in the recursive version?
+7. Analysis. In 26.6, compare iterative and recursive reversal for one million nodes. Give each space cost and what fails recursively.
 
-8. Design. In 26.4, modify the monotonic stack to return, for each day, the index of the next warmer day rather than the distance. Which line changes? Then do the same problem with a brute-force O(n²) scan and compare the operation counts on a strictly decreasing list.
+8. Design. In 26.4, return the index of the next warmer day rather than the distance. Which line changes? Compare with an O(n²) scan on a decreasing list.
 
-9. Cycles. Implement the "find the cycle entry" variation of 26.8 and prove, with the distances traveled, that the meeting-after-reset really lands on the entry node. Why does the proof not depend on the loop's length?
+9. Cycles. Implement 26.8's cycle-entry variation and prove the meeting-after-reset lands on the entry. Why does loop length not matter?
 
-10. Ownership. Every list function in 26.6 through 26.8 allocates nodes with `alloc<Node>` but none of them frees the list. Write `void freeList(Node*)` that frees every node in an acyclic list, then explain why calling it on a cyclic list is a bug and how `hasCycle` would protect the caller. Where does this leave you relative to Chapter11's RAII, and would a `LinkedList<T>` from Chapter16 have avoided the manual free?
+10. Ownership. The list functions in 26.6 through 26.8 allocate but never free. Write `void freeList(Node*)` for an acyclic list, explain why a cyclic list is a bug and how `hasCycle` helps. How does this relate to Chapter11's RAII? Would Chapter16's `LinkedList<T>` avoid the free?
 
-11. Selection. Queue, Deque, and RingBuf all model first-in-first-out in some way. For each of these tasks, name the right container and justify it: (a) a task scheduler that never grows past a fixed size and overwrites the oldest entry when full; (b) a breadth-first search frontier that grows and shrinks at both ends; (c) a simple job queue with no size limit.
+11. Selection. Choose the right FIFO container: (a) a fixed-size scheduler that overwrites the oldest entry; (b) a BFS frontier that grows and shrinks at both ends; (c) an unbounded job queue.
 
-12. Meta. This chapter used a stack for four problems, a queue for one, and linked lists for three. For each, state in one sentence why the *order* the structure provides was the reason it was chosen, not its storage, but its ordering. That is the question to ask before reaching for any container.
+12. Meta. This chapter used a stack for four problems, a queue for one, and linked lists for three. For each, give one sentence on why its order, not its storage, was the reason. That is the question to ask before choosing any container.

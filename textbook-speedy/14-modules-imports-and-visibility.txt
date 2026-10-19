@@ -4,19 +4,17 @@ Modules, Imports, and Visibility
 
 Why Programs Need Seams
 
-A program of two hundred lines fits in your head. A program of two hundred thousand does not, and the only way to keep working on it is to cut it into pieces small enough to hold, then agree on how the pieces may talk to each other. A module system is that agreement. It is not a folder organising convention; it is a contract about names, about reach, and about what a caller is allowed to depend on. Get the module system right and a codebase can be understood one file at a time. Get it wrong and every file knows about every other file, and the only way to change anything is to hold the whole thing in your head at once.
+A program of two hundred thousand lines cannot fit in your head, so it must be cut into pieces that can. A module system is the agreement about how those pieces may talk: a contract about names, reach, and what a caller may depend on, not a folder convention.
 
-Here is a picture that will carry us through the chapter. Think of a public library. The building has many rooms, and each room has shelves, and each shelf is full of books. But you do not wander the back offices and the storage basements looking for a title. You go to the front desk, and the front desk has a catalogue: a short list of exactly what this library lends and exactly what each item is called. The catalogue is the contract. Behind it, the library may have a thousand books nobody outside ever sees, and the library is free to move them, rebind them, or throw them out, so long as the catalogue still describes what is available.
+A Coral module is a folder; its source files are the contents; its catalogue is `lib.crl`, which lists exactly what the module makes public. Everything else is real but invisible to outsiders.
 
-A Coral module is that library. A module is a folder. The books are the source files. The catalogue is a file called `lib.crl`, and it lists, in a handful of lines, exactly what the module makes public. Everything not in the catalogue is the back office: real, useful, and invisible to the outside. Once you hold that picture, the rest of this chapter is detail.
-
-Coral's module system is deliberately small. There is a source file, a module surface, four import forms, and one visibility keyword. That is the entire vocabulary. The complexity that most languages carry, namespace hierarchies, header files, forward declarations, circular-dependency workarounds, is absent, and its absence is a design decision rather than an omission. This chapter explains the pieces and, just as importantly, the rules that keep them predictable.
+Coral's module system is deliberately small: a source file, a module surface, four import forms, and one visibility keyword. Namespace hierarchies, header files, forward declarations, and circular-dependency workarounds are absent by design.
 
 14.1 Files, Folders, and the Module Surface
 
-A Coral source file ends in `.crl`. A folder that participates in a build is a module. A module's public face is a file named `lib.crl` in that folder. Everything the module exports to the rest of the program is listed in `lib.crl`, and everything `lib.crl` re-exports becomes the module's namespace.
+A Coral source file ends in `.crl`. A folder that participates in a build is a module, and its public face is a file named `lib.crl`: everything the module exports is listed there, and everything `lib.crl` re-exports becomes the module's namespace.
 
-Let us be careful about the word "namespace," because it is doing real work here. The namespace is the set of names an outsider can write after the module's name. If `lib.crl` contains one line exporting a submodule called `string`, then `text::string` is a name outsiders can reach; if it does not, `text::string` is not a name at all outside the module, no matter how many string files sit in the folder. The namespace is not the folder's contents. The namespace is the catalogue's contents.
+The namespace is the set of names an outsider can write after the module's name. The namespace is the catalogue's contents, not the folder's: if `lib.crl` does not export a `string` submodule, `text::string` is not a name at all outside the module.
 
 Consider a folder `src/text/`:
 
@@ -33,19 +31,17 @@ The surface declares what the module offers:
     pub mod strutil = import strutil;
     pub mod ascii   = import ascii;
 
-Each `pub mod NAME = import TARGET;` line takes a sibling, gives it a public name, and makes it reachable as `text::NAME` from outside. Read the line left to right as a sentence: "publicly, this module has a submodule called `string`, and it is the sibling file `string`." The `NAME` on the left is the name the outside world uses; the `TARGET` on the right is the sibling the name refers to. They are usually the same, but they do not have to be, and Section14.5 shows why you would want them to differ.
+Each `pub mod NAME = import TARGET;` line takes a sibling, gives it a public name, and makes it reachable as `text::NAME` from outside. `NAME` is the outside name; `TARGET` is the sibling it refers to; they need not be the same (Section14.5).
 
-Code that does not appear in `lib.crl` is not part of the module's surface; it is visible only within the module's own files. That single rule, the surface file is the contract, is what lets a module have a large private implementation and a small public face. A `text` module might have ten helper files inside it, full of internal machinery, and expose four submodules. A reader of the outside code never has to know the ten exist.
+Code not in `lib.crl` is not part of the surface; it is visible only within the module. That rule lets a module have a large private implementation and a small public face.
 
-Hold on, how is it that `string.crl` can be reached by an outsider at all, if it is just a file? Through the `pub mod` line, and only through it. The mechanism is worth stating plainly because it explains the whole chapter: a sibling file is not automatically part of the module. It becomes part of the module when the surface exports it. Until then it is a book in the back office. This is the opposite of how many languages work, where putting a file in a folder is itself a kind of export, and it is deliberate. In Coral, being reachable is a decision someone wrote down, not a side effect of where a file was saved.
-
-If you are new to modules, the plain version is this: creating a file does not show it to the world. Only the catalogue, `lib.crl`, shows anything. It is like a shop's window display: the shop may hold hundreds of items in the back, but only the ones placed in the window are visible from the street.
+A sibling file is not automatically part of the module; it becomes part when the surface exports it. Being reachable is a decision someone wrote down, not a side effect of where a file was saved.
 
 14.2 The Four Import Forms
 
-A file brings names into scope with `import`. Four forms exist, and each answers a different question. Learn the question each one answers and you will never have to memorise the syntax.
+A file brings names into scope with `import`. Four forms exist, each answering a different question.
 
-The first form imports a sibling file by bare name. No quotes, no extension; the name is the file name without `.crl`, resolved in the importing file's own directory:
+The first form imports a sibling file by bare name: no quotes, no extension, resolved in the importing file's own directory:
 
     import lexer { Lexer, Token };
 
@@ -257,6 +253,8 @@ The order is "most specific wins," which is the same principle as local variable
 A common beginner mistake is to give a project module the same name as a library module the project also uses. Because the most specific definition wins, the local one may be chosen where you expected the library's, and the compiler's complaint will point at a name that looks correct. When a name resolves somewhere surprising, first check whether two modules are sharing it.
 
 Here is a small illustration of how the roots divide. If you need `println`, you reach it through `std::io::ios`. If you need the integer limits, you reach them through `core::limits`. If you need to call `mmap`, you reach it through a platform binding, because `mmap` is not portable and pretending otherwise would be a lie. The three roots are the three honest answers to "is this portable, language-fundamental, or tied to my machine?"
+
+Not every name needs an import. A fixed set of names is merged into every translation unit by the compiler prelude, so these are already in scope with no import: `Vec`, `String`, the fixed-size array `Arr`, the methods on `str`, `Option` and `Result`, and the console names from `std::io::ios` (`print`, `println`, `eprint`, `eprintln`, `readLine`, `read`). Everything else must be imported.
 
 Why this matters: knowing which root a name lives under tells you how far it will travel. A `std` import works on every platform the library supports; a `core` import is part of the language's own floor; a `platform` import is a conscious bet on one machine. When you review a dependency, the root is the first clue about whether the code is portable.
 

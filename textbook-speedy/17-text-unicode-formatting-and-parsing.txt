@@ -4,13 +4,13 @@ Text, Unicode, Formatting, and Parsing
 
 A String Is Not a Pointer With a Zero Somewhere
 
-In C, a string is a pointer to bytes, and its end is marked by a zero byte. There is no length. Every string bug of the last fifty years grows from that single decision: `strlen` walking off the end of a buffer that was never terminated; a substring that cannot be taken without copying, because a view has nowhere to record where it stops; a function that takes a string and does not know whether it will be handed the text or a pointer to the middle of it. Coral does not repeat the decision.
+In C, a string is a pointer to bytes ended by a zero byte, with no length. Every string bug of the last fifty years grows from that decision. Coral does not repeat it.
 
-The centre of Coral's text layer is a pair of types with clearly separated jobs. `str` is the borrowed view: a pointer and a length, never owning the bytes it points at. `String` is the owned, growable buffer: heap storage, a length, and a capacity, exactly like a `Vec<u8>` with text-aware methods. Around them sit small modules for ASCII, UTF-8, searching, regular expressions, URIs, formatting, and parsing. This chapter is a tour of that layer, and it ends where text usually ends, turned into structure.
+Coral's text layer centres on two types. `str` is the borrowed view: a pointer and a length, never owning its bytes. `String` is the owned, growable buffer, like a `Vec<u8>` with text-aware methods. Around them sit modules for ASCII, UTF-8, searching, regex, URIs, formatting, and parsing.
 
 17.1 str: The Borrowed View
 
-`str` is built into the language rather than declared by a library. Conceptually it is two words:
+`str` is built into the language, not a library. Conceptually it is two words:
 
     // conceptually
     struct str {
@@ -18,17 +18,17 @@ The centre of Coral's text layer is a pair of types with clearly separated jobs.
         usize len;
     }
 
-A string literal is a `str`. A substring taken with `slice` is a `str` that points into the original buffer. Passing a string to a function passes the pointer and the length, not a copy of the characters. Because the length travels with the pointer, measuring a string is not a scan:
+A string literal is a `str`; `slice` returns a `str` pointing into the original buffer; passing a string passes the pointer and length, not a copy. Measuring is therefore O(1):
 
     str greeting = "hello";
     usize n = greeting.len;               // 5, known, never a strlen walk
     u8 first = greeting.ptr[0];           // 'h'
 
-This is why `str` is the default type for a parameter. A function that only reads a string should take a `str`, because a `str` accepts a literal, a slice of a `String`, and a window into a larger buffer, all without copying. It is the borrow of Chapter11: a `str` never owns its bytes, so its lifetime is bounded by whatever does own them. A `str` stored beyond the call that produced it is a dangling view unless the source buffer outlives it, and the type system will not stop you, which is why `str` is for parameters and short-lived locals, not for struct fields that outlive their source.
+A `str` is the default parameter type for read-only text: it accepts a literal, a slice of a `String`, or a window into a larger buffer without copying. It never owns its bytes, so its lifetime is bounded by the owner; a stored `str` can dangle. Use it for parameters and short-lived locals, not for struct fields that outlive their source.
 
-An analogy makes the two types easy to keep apart. A `str` is a window into a book someone else is holding: you can read the pages, but you do not own the book, and if the holder puts it down (frees the buffer) your window looks at empty air. A `String` is a notebook you bought yourself: you can add pages, cross things out, and it stays yours until you throw it away. Simply put, `str` is for reading and `String` is for building.
+A `str` is a window into a book someone else holds; a `String` is a notebook you own. `str` is for reading, `String` for building.
 
-The methods that read a `str` live in `core::str`, and `std::text::strutil` adds free-function versions for the cases you would rather call with functional syntax. The `str` methods themselves are:
+Read methods live in `core::str`; `std::text::strutil` adds free-function forms. The `str` methods are:
 
     str s = "  Coral Text  ";
 
@@ -57,7 +57,7 @@ The methods that read a `str` live in `core::str`, and `std::text::strutil` adds
 
     String alias = s.asString();          // ALIASES these bytes, see the warning below
 
-Two methods handle Unicode rather than bytes. `codepointCount` counts codepoints, not bytes, and `nextCodepoint` decodes one at a time while threading a byte cursor:
+Two methods handle Unicode: `codepointCount` counts codepoints, and `nextCodepoint` decodes one at a time with a threaded byte cursor:
 
     usize count = s.codepointCount();     // characters, not bytes
 
@@ -67,23 +67,23 @@ Two methods handle Unicode rather than bytes. `codepointCount` counts codepoints
         println("{}", c);
     }
 
-The `idx` is threaded through so each call continues where the last stopped. This is how UTF-8 is decoded forward without a separate cursor object, and it is how a `str` stays a zero-cost view while still being character-aware when you ask it to be.
+`idx` continues where the last call stopped, so UTF-8 decodes forward without a cursor object and `str` stays a zero-cost view.
 
-What the view does *not* have is any method that mutates or reallocates, there is no `toUpper`, no `replace`, no `push` here, because a view owns nothing and cannot grow. Every transform lives either on the owned `String` or as a free function in `strutil` that returns a fresh value. `equals` and `compare` are the two content comparisons (`compare` returns a negative, zero, or positive `i32` for less, equal, greater); `findView`, `findByte`, and `rfindByte` return a byte index, and they report "absent" by returning `len`, so `containsView` and `containsByte` are simply the same call tested against `len`.
+The view has no mutating or reallocating methods: no `toUpper`, `replace`, or `push`, because it owns nothing and cannot grow. Transforms live on `String` or in `strutil` and return a fresh value. `equals` and `compare` compare content (`compare` returns negative, zero, or positive); `findView`, `findByte`, and `rfindByte` return a byte index, or `len` when absent, so `containsView` and `containsByte` test that result against `len`.
 
-Two constructors matter when you are interfacing with the outside world:
+Two constructors interface with C:
 
     str a = str::fromCstr(cstr);                  // borrow a NUL-terminated C string
     str b = str::fromParts(ptr, len);             // wrap a pointer and a length
     str empty = str::empty();                     // the zero-length view
 
-`fromCstr` takes the `strlen` hit once and then hands you a proper length-carrying view for everything afterwards.
+`fromCstr` pays the `strlen` scan once and returns a length-carrying view thereafter.
 
-One trap is worth stating plainly. `str::asString` does not allocate and does not copy. It builds a `String` whose pointer and length alias the very bytes the `str` points at, leaving the capacity at zero. It exists so you can hand a borrowed view to code that insists on a `String` without paying for a copy, but the result is a borrowed view wearing a `String`'s clothes: it does not own the bytes, so you must never `free` it or bind it to a local whose end of scope runs `@drop`, either one deallocates memory that belongs to a string literal or another buffer. Pass it straight to a call (`takesString(s.asString())`) and let it vanish, or, when you genuinely need an owned copy, use `String::from(s)` (or `s.asString().clone()`, though that copies twice). Rule of thumb: `asView` to borrow a `String` as a `str`, `String::from` to own a `str` as a `String`, and `asString` only as a zero-copy bridge in argument position.
+`str::asString` does not allocate or copy: it builds a `String` whose pointer and length alias the `str`'s bytes, with capacity zero. It is only safe as a zero-copy bridge in argument position; never `free` it or let `@drop` run, or you deallocate someone else's memory. Use `String::from(s)` for an owned copy, and `asView` to borrow a `String` as a `str`.
 
 17.2 String: The Owned Buffer
 
-When you need to build a string, accumulate, edit, grow, you use `String`. Its declaration is the same three-field shape as a Vec:
+Use `String` to build, accumulate, edit, or grow text. Its declaration matches a Vec's three-field shape:
 
     pub struct String {
         u8*   ptr;
@@ -101,11 +101,11 @@ Construct one empty, with reserved capacity, from a view, or from a C string:
     String d = String::fromCstr(cstr);   // copy a C string
     String e = c.clone();                // an independent copy
 
-`String::new` does not start empty-and-allocation-free; it allocates a seventeen-byte buffer (capacity sixteen plus a trailing NUL) so that the first few appends do not reallocate. `withCap` reserves at least seven bytes regardless of what you ask for, so `withCap(0)` still yields a usable buffer. `from` sizes the buffer to exactly the view's length, which is why it is the constructor to prefer when you already know the final length. Every `String` keeps a NUL byte one past `len` so that `asCstr` can hand the buffer to C without a copy, but Coral never relies on that NUL for length, `len` is always authoritative.
+`String::new` allocates a seventeen-byte buffer (capacity sixteen plus a trailing NUL) so early appends do not reallocate. `withCap` reserves at least seven bytes. `from` sizes exactly to the view's length. Every `String` keeps a NUL one past `len` for `asCstr`, but `len` is always authoritative.
 
-Simply put, `String::new` is like renting a small locker in advance so that your first few items do not each trigger a trip to the rental office. You start with an empty string (`len` is zero) but a little room already reserved, so the first appends are cheap. The trailing NUL is a courtesy for C, which reads until it hits a zero byte; Coral itself always trusts `len`.
+`String::new` starts with `len` zero but room already reserved, so the first appends are cheap. The trailing NUL is a courtesy for C; Coral trusts `len`.
 
-Appending is the most common thing you do, and there is a method for each kind of source:
+Appending has a method for each source:
 
     String sb = String::new();
     sb.pushView("Hello, ");        // append a str, no copy of the middle
@@ -116,9 +116,9 @@ Appending is the most common thing you do, and there is a method for each kind o
     sb.pushByte(0x0A);             // append one byte
     sb.appendView(" more");        // an alias for pushView
 
-`pushChar` appends a single raw byte; `pushCodepoint` takes a Coral `char` (a Unicode scalar value) and appends its one-to-four-byte UTF-8 encoding, substituting the replacement character for an invalid codepoint. Keeping those two names distinct is the whole point: a program that means "a character" and writes the byte method is a program with a latent Unicode bug, and the names make the intent visible at the call site.
+`pushChar` appends one raw byte; `pushCodepoint` appends a `char` as one-to-four UTF-8 bytes, substituting the replacement character for an invalid codepoint. The distinct names make the Unicode intent visible.
 
-Repeating and editing cover the rest of the buffer's vocabulary:
+Repeating and editing:
 
     sb.pushRepeat('-', 20);            // "--------------------"
     sb.insertView(0, ">> ");           // insert at a byte offset
@@ -129,7 +129,7 @@ Repeating and editing cover the rest of the buffer's vocabulary:
     sb.shrinkToFit();                  // release unused capacity
     sb.free();                         // free now, by hand
 
-Search and inspect while you edit:
+Search and inspect while editing:
 
     usize n    = sb.countChar('a');
     usize i    = sb.findView("needle");
@@ -142,7 +142,7 @@ Search and inspect while you edit:
     bool  same = sb.equals(&other);
     bool  eqv  = sb.equalsView("hello");
 
-And transform in place or produce a new String:
+Transform in place or produce a new `String`:
 
     sb.toUpper();
     sb.toLower();
@@ -155,18 +155,18 @@ And transform in place or produce a new String:
     String trimmed = sb.trim();
     Vec<str> parts = sb.splitByte(',');
 
-A few of these repay a second look. `substr` takes `(start, end)`, an exclusive end index, not a length, which is the opposite convention from `strutil::substr` (which takes a length), so read the call site carefully. `splitByte` returns `Vec<str>` whose elements are *views into* `sb`; they are valid only until the next mutation that reallocates, so either consume them immediately or copy each into an owned `String`. `toUpper` and `toLower` are byte-wise ASCII folds, not Unicode-aware case mapping, and `reverse` reverses bytes, which will corrupt any multi-byte character, those three are the string methods that quietly assume ASCII, and the `ascii`, `utf8`, and `char_util` modules exist precisely for the cases where that assumption is false. `replaceAll` mutates in place and handles a self-referential argument (the needle or replacement pointing into `sb` itself) by taking a defensive copy first, so `sb.replaceAll(sb.asView(), "x")` is defined rather than undefined. Finally, `clear` resets the length to zero but keeps the buffer, and `shrinkToFit` is the explicit request to give that capacity back.
+`substr` takes `(start, end)`, an exclusive end, unlike `strutil::substr`, which takes a length. `splitByte` returns views into `sb`, valid only until a reallocating mutation; consume or copy them. `toUpper`, `toLower`, and `reverse` are byte-wise and assume ASCII. `replaceAll` mutates in place and handles self-referential arguments with a defensive copy. `clear` keeps the buffer; `shrinkToFit` releases unused capacity.
 
-Two conversions matter and are easy to confuse. `asView` borrows the buffer without copying; `clone` allocates an independent copy:
+Two conversions are easy to confuse: `asView` borrows, `clone` allocates an independent copy.
 
     str borrowed = sb.asView();        // no allocation, tied to sb's lifetime
     String owned  = sb.clone();        // allocates
 
-Use `asView` to pass a `String` to a function that takes a `str`; use `clone` when the copy must outlive the original. A `String` is freed by `free` or, more usually, by its `@drop` conformance when it goes out of scope. A `str` is never freed because it never owned anything. The pairing, an owned buffer and a borrowed cursor into it, is the ownership discipline of Chapter11 applied to text, and it is worth internalising, because every text bug in a systems language is ultimately an ownership mistake.
+Use `asView` to pass a `String` where a `str` is wanted; use `clone` when the copy must outlive the original. A `String` is freed by `free` or `@drop`; a `str` is never freed. This is Chapter11 ownership applied to text.
 
 17.3 The strutil Free Functions
 
-Some operations read more naturally as functions than as methods, and `std::text::strutil` provides them. They are the same logic the `str` methods use, exposed for functional-call style and for building pipelines:
+`std::text::strutil` exposes the same logic as free functions for functional style and pipelines:
 
     import(lib) std::text::strutil {
         split, splitVec, trim, trimLeft, trimRight,
@@ -175,7 +175,7 @@ Some operations read more naturally as functions than as methods, and `std::text
         replace, join, joinVec, substr, equalsIgnoreCase
     };
 
-The signatures and a short use of each:
+Signatures and short uses:
 
     usize split(str sv, u8 delim, str* out, usize maxParts);
     Vec<str> splitVec(str sv, u8 delim);
@@ -185,7 +185,7 @@ The signatures and a short use of each:
     Vec<str> all = splitVec(line, ',');            // as many as there are
     dealloc<str>(pieces);
 
-Note the two shapes carefully, because they answer different questions. `split` writes into a caller-provided array and stops after `maxParts`; the final element receives the unsplit remainder when the cap is reached. `splitVec` allocates a Vec and returns every field, so it is the one to reach for when you do not know the count.
+`split` writes into a caller array and stops after `maxParts`, putting the unsplit remainder in the final element; `splitVec` allocates and returns every field.
 
     str trimmed  = trim(sv);              // both ends, whitespace bytes
     str left     = trimLeft(sv);
@@ -206,17 +206,17 @@ Note the two shapes carefully, because they answer different questions. `split` 
 
     bool ci      = equalsIgnoreCase("Hello", "hELLo");
 
-`indexOf` returns an `isize`, not a `usize`, precisely so that "-1 means not found" is expressible without a sentinel that collides with a real index. And `substr` takes a `start` and a `length` and returns a `str`, a view into the original, not a copy, so it is safe only while the source outlives it. Note the deliberate mismatch with the method of the same name: `strutil::substr(sv, start, len)` takes a length, while `String::substr(start, end)` takes an exclusive end index. The two are the same idea wearing different conventions, and the compiler cannot warn you because both are just `usize`s.
+`indexOf` returns `isize` so `-1` can mean not found without colliding with a real index. `substr` takes `start` and `length` and returns a view, safe only while the source outlives it. Note the mismatch: `strutil::substr(sv, start, len)` takes a length, while `String::substr(start, end)` takes an exclusive end.
 
-Simply put, whenever you see `substr`, check where the second number is counted from: `end` means an index one past the last byte you want, while `len` means how many bytes you want. Off-by-one text bugs live exactly here, so slow down at every `substr` call.
+At every `substr`, check whether the second number is an end index or a length; off-by-one bugs live here.
 
 17.4 ASCII, UTF-8, and the Layers of Text
 
-Text has layers, and Coral names them, which is how you avoid the classic bug of counting the wrong unit. A byte is a `u8`. An ASCII character is a byte with ASCII meaning. A codepoint is a Unicode scalar value, up to 21 bits, stored as `char`. An encoded character is one to four bytes of UTF-8. Reach for the layer that matches what you mean.
+Text has layers: a byte is a `u8`; an ASCII character is a byte with ASCII meaning; a codepoint is a Unicode scalar value stored as `char`; an encoded character is one to four UTF-8 bytes. Use the layer that matches your intent.
 
-A useful analogy is mail. A byte is a single envelope. A codepoint is the idea of a letter, one address in Unicode's worldwide postal system. A UTF-8 encoded character is however many envelopes it takes to mail that letter, sometimes one and sometimes up to four. Counting envelopes and counting letters give different answers, and only one of them is what you meant.
+A byte is an envelope, a codepoint is a letter, and a UTF-8 character is the one-to-four envelopes needed to mail it. Counting envelopes and counting letters differ.
 
-The `std::text::ascii` module classifies and converts bytes, and every function is O(1):
+`std::text::ascii` classifies and converts bytes in O(1):
 
     import(lib) std::text::ascii {
         isAscii, isAsciiDigit, isAsciiAlpha, isAsciiAlnum,
@@ -230,7 +230,7 @@ The `std::text::ascii` module classifies and converts bytes, and every function 
     u8 value = asciiDigitVal('7');         // 7
     u8 hexv  = asciiHexVal('f');           // 15
 
-For the common case of lowercasing text known to be ASCII, identifiers, protocol keywords, command names, this is all you need, and it is faster than any Unicode-aware routine because it does not have to be careful. The `ascii` module also carries a small set of UTF-8 helpers in its own right:
+For text known to be ASCII, these are all you need and faster than Unicode-aware routines. The module also carries UTF-8 helpers:
 
     u32 bytes = utf8ByteCount(b0);                  // length of the sequence b0 starts
     u32 cp    = utf8Decode(buf, &bytesOut);         // decode one codepoint
@@ -239,7 +239,7 @@ For the common case of lowercasing text known to be ASCII, identifiers, protocol
     bool ok   = utf8IsValid(s);                     // well-formed UTF-8?
     u32 w16   = utf16ToUtf8(0x00E9, out);           // one UTF-16 unit -> UTF-8
 
-The general-purpose module is `std::text::utf8`, and it works on `(pointer, length)` buffers and returns `String` for the operations that allocate:
+`std::text::utf8` works on `(pointer, length)` buffers and returns `String` when it allocates:
 
     import(lib) std::text::utf8;
 
@@ -253,11 +253,11 @@ The general-purpose module is `std::text::utf8`, and it works on `(pointer, leng
     Option<char> next = utf8::nextChar(s, len, &consumed);  // -> Some/None
     String one = utf8::encodeChar(c);                       // -> String
 
-The separation lets a caller state which level of text it is working at. A function that claims to count characters and counts bytes instead is one of the classic text bugs; naming the layer in the call, `countCodepoints`, never a byte count, is how that bug becomes visible. And there is a `core::char_util` beneath both, with the per-`char` operations `charIsDigit`, `charIsAlpha`, `charIsValid`, `charIsAscii`, `charToUpper`, `charToLower`, `charEncodeUtf8(char, u8*)`, and its decoding counterpart `charDecodeUtf8(const u8*, usize, usize*)`, for when you are working with `char` values rather than buffers. The same module also carries the byte-level classics (`isDigit`, `isAlpha`, `toUpper`, `digitValue`, `encodeUtf8`, `decodeUtf8`), which is what the one-letter-named functions on the `ascii` module delegate to. One behavioural difference matters: the `ascii` module's `utf8Decode` and `utf8ByteCount` assume the bytes are well-formed and do not check, whereas `utf8::isValid` and `ascii::utf8IsValid` are the functions that answer that question, so validate once at the boundary and then trust the fast routines inside.
+Naming the layer makes the classic byte-versus-character bug visible. Beneath both is `core::char_util`, with per-`char` operations `charIsDigit`, `charIsAlpha`, `charIsValid`, `charIsAscii`, `charToUpper`, `charToLower`, `charEncodeUtf8(char, u8*)`, and `charDecodeUtf8(const u8*, usize, usize*)`, plus byte-level classics (`isDigit`, `isAlpha`, `toUpper`, `digitValue`, `encodeUtf8`, `decodeUtf8`) that `ascii` delegates to. `ascii::utf8Decode` and `utf8ByteCount` assume well-formed bytes; `utf8::isValid` and `ascii::utf8IsValid` validate. Validate once at the boundary, then trust the fast routines.
 
 17.5 Formatting: print, println, and the Format Language
 
-Coral's formatting is checked at compile time, which is what makes it safe and what makes its limits visible and crisp. The entry points are the print family in `std::io::ios`:
+Coral's formatting is checked at compile time. The entry points are the print family in `std::io::ios`:
 
     pub void print<comptime T>(T fmt, ...)
     pub void println<comptime T>(T fmt, ...)
@@ -267,24 +267,24 @@ Coral's formatting is checked at compile time, which is what makes it safe and w
 
     import(lib) std::io::ios { print, println, eprint, eprintln };
 
-Each takes a format string and a variadic tail. The `comptime` parameter from Chapter7 is what lets the compiler inspect the format and the argument types together, so a mismatch is a build error rather than a runtime surprise. The compiler parses the literal: `{}` takes the next argument, `{{` and `}}` are literal braces, and the argument count must match the placeholder count exactly.
+Each takes a format string and a variadic tail. The `comptime` parameter lets the compiler check format and argument types together, so mismatches are build errors. `{}` takes the next argument, `{{` and `}}` are literal braces, and placeholder and argument counts must match exactly.
 
-The default placeholder `{}` renders by dispatching on the argument's type. The dispatcher handles every built-in scalar, `bool`, `cchar`, `char`, both C strings, `str`, `String`, `rawptr`, the manipulator types, and any type implementing the built-in `@toStr` trait from Chapter6:
+`{}` dispatches on the argument's type. It handles built-in scalars, `bool`, `cchar`, `char`, both C strings, `str`, `String`, `rawptr`, manipulators, and any type implementing `@toStr`:
 
     println("x = {}, y = {}", x, y);
     println("name = {}, age = {}", name, age);
 
-A type that implements neither a built-in printer nor `@toStr` is a compile error at the call site, which is the correct behaviour: you cannot accidentally print a struct as raw bytes. The error names the type, and the fix is to add a `@toStr` conformance.
+A type with neither a built-in printer nor `@toStr` is a compile error, so a struct cannot be printed as raw bytes. Add a `@toStr` conformance to fix it.
 
-Explicit placeholders select a rendering. `{:d}` renders an integer in decimal, `{:x}` in hexadecimal, `{:b}` in binary, `{:p}` renders a pointer, and `{..}` spreads a whole iterable, rendering each element through the default dispatch and separating them with a comma and a space:
+Explicit placeholders select a rendering: `{:d}` decimal, `{:x}` hexadecimal, `{:b}` binary, `{:p}` pointer, and `{..}` spreads an iterable with comma-and-space separators:
 
     println("value = {:d} hex = {:x} bin = {:b}", n, n, n);
     println("at {:p}", ptr);
     println("items: {..}", vec);
 
-The integer formats are integer-only, a non-integer argument is a compile error, and `char` counts as an integer, rendering its codepoint numerically, so the compiler catches the mistake of formatting a float with `{:x}` rather than silently producing nonsense. The spread `{..}` relies on range-for over the argument and is likewise a compile error on a non-iterable, so a typo is caught at build time.
+The integer formats accept only integers (`char` counts and renders its codepoint), so formatting a float with `{:x}` is a compile error. `{..}` requires a range-for-able argument and is likewise checked.
 
-The format specifiers are deliberately few, and everything they do not cover is handled by manipulators: small values that render specially when passed as an argument. The `ios` module defines them, and because they implement the built-in printer, they work through the plain `{}` placeholder:
+Format specifiers are few; manipulators handle the rest. They render specially and work through `{}`:
 
     import(lib) std::io::ios { spaces, repeat, hex, bin, fixed };
 
@@ -294,9 +294,9 @@ The format specifiers are deliberately few, and everything they do not cover is 
     println("{}", bin(0b1010));                  // 0b1010
     println("{}", fixed(3.14159, 2));            // 3.14
 
-The exact signatures are `spaces(u64 count)`, `repeat(u8 ch, u64 count)`, `hex(u64 value)`, `bin(u64 value)`, and `fixed(f64 value, u64 precision)`. Note that `ios::repeat` takes a `u8` character and a count, while `fmt::repeat` (below) takes a `str` and a count, two different tools with the same name in two different modules, so import carefully.
+Signatures are `spaces(u64 count)`, `repeat(u8 ch, u64 count)`, `hex(u64 value)`, `bin(u64 value)`, and `fixed(f64 value, u64 precision)`. `ios::repeat` takes a `u8` and a count, while `fmt::repeat` takes a `str` and a count; import carefully.
 
-Here is a three-line program that puts the format language to work in context:
+A three-line program using the format language:
 
     import(lib) std::io::ios { println };
 
@@ -305,9 +305,9 @@ Here is a three-line program that puts the format language to work in context:
         println("dec {:d} hex {:x} bin {:b}", n, n, n);
     }
 
-Why this matters: nearly every command-line tool, log line, and report prints a number in more than one base at some point, and knowing that `{}` consumes the next argument while `{{` prints a literal brace saves a confusing afternoon.
+Printing a number in several bases is common, and knowing `{}` consumes an argument while `{{` prints a literal brace saves confusion.
 
-For building a `String` rather than printing, the `std::fmt` module's `formatX` family converts a single value and returns an owned `String`:
+For building a `String`, `std::fmt`'s `formatX` family converts one value and returns an owned `String`:
 
     import(lib) std::fmt::fmt {
         formatInt, formatUint, formatFloat, formatHex,
@@ -325,15 +325,15 @@ For building a `String` rather than printing, the `std::fmt` module's `formatX` 
     String pad = padLeft("hi", 5, ' ');          // "   hi"
     String pad2= padRight("hi", 5, '.');         // "hi..."
 
-The signatures are `formatInt(i64 val, u64 radix, bool upper)`, `formatUint(u64 val, u64 radix, bool upper)`, `formatFloat(f64 val, u64 precision)`, `formatHex(u64 val, bool prefix)`, `formatBin(u64 val, bool prefix)`, and `formatChar(char c)`. There are also `padLeft(str sv, usize width, u8 pad)`, `padRight(str sv, usize width, u8 pad)`, `repeat(str sv, usize count)`, `join(const str* parts, usize count, str sep)`, and `joinVec(const Vec<String>* parts, str sep)`. And `String` itself has `padLeft`, `padRight`, `repeat`, and a static `join` if you would rather keep the methods on the value.
+Signatures are `formatInt(i64 val, u64 radix, bool upper)`, `formatUint(u64 val, u64 radix, bool upper)`, `formatFloat(f64 val, u64 precision)`, `formatHex(u64 val, bool prefix)`, `formatBin(u64 val, bool prefix)`, and `formatChar(char c)`. Also `padLeft(str sv, usize width, u8 pad)`, `padRight(str sv, usize width, u8 pad)`, `repeat(str sv, usize count)`, `join(const str* parts, usize count, str sep)`, and `joinVec(const Vec<String>* parts, str sep)`. `String` has `padLeft`, `padRight`, `repeat`, and a static `join`.
 
-One honest caveat belongs in the text, in bold. The `std::fmt` module also exposes a function named `format`, declared `String format(str f, ...)`, and it is a stub: it deletes exact `{}` pairs from the format string and substitutes nothing, copying every other byte through unchanged, so a typed placeholder like `{:x}` is left in the output literally, not even removed. It does not interpolate. If you call `format("x = {}", 3)` expecting "x = 3", you will get "x = " and no error, because a variadic tail with no use is not a mistake the stub can see. Interpolation lives in `print`, `println`, `eprint`, and `eprintln`, which do substitute, and string-building from pieces is the job of the `formatX` family above. The chapter states this plainly because a reader who reaches for `format` expecting interpolation will be quietly wrong, and a stub that fails silently is exactly the kind of trap a textbook exists to flag.
+One caveat: `std::fmt` also exposes `String format(str f, ...)`, and it is a stub. It deletes exact `{}` pairs and substitutes nothing, copying every other byte unchanged; `{:x}` is left literally. It does not interpolate. `format("x = {}", 3)` yields `"x = "` with no error. Interpolation lives in `print`, `println`, `eprint`, and `eprintln`; use the `formatX` family to build strings.
 
 17.6 The Parsing Layer
 
-Text becomes structure through the parser modules, and Coral ships enough of them that most programs do not need a dependency. They share a design: a type models the parsed document, a parse function returns a `Result`, and a serialise function writes one back. Failure is a value, not an exception, exactly as Chapter15 describes.
+Coral ships parsers for most common formats. They share a design: a type models the document, a parse function returns a `Result`, and a serialise function writes one back. Failure is a value, not an exception.
 
-The JSON parser is the model to learn. Its value type is a struct with a tag rather than a recursive variant, which is worth seeing because it is a common design when a format has a fixed handful of shapes:
+The JSON parser is the model. Its value type uses a tag rather than a recursive variant:
 
     pub enum JsonType {
         Null, Bool, I64, F64, String, Array, Object
@@ -354,7 +354,7 @@ The JSON parser is the model to learn. Its value type is a struct with a tag rat
         JsonValue value;
     }
 
-Construction goes through named constructors, and the parser returns a `Result` so malformed input is a value rather than a crash:
+Construction uses named constructors, and parsing returns a `Result`:
 
     import(lib) std::parser::json { parseJson, serialize, JsonValue, JsonType, JsonPair };
 
@@ -368,7 +368,7 @@ Construction goes through named constructors, and the parser returns a `Result` 
         eprintln("bad json");
     }
 
-The value is read by switching on its `type` tag, which the compiler checks for exhaustiveness just as it checks any enum:
+Read a value by switching on its `type` tag; the compiler checks exhaustiveness:
 
     f64 numberField(JsonValue* doc, str key) {
         switch (doc->type) {
@@ -388,7 +388,7 @@ The value is read by switching on its `type` tag, which the compiler checks for 
         }
     }
 
-CSV gets its own reader because CSV is genuinely a streaming format with quoting rules. `CsvReader` reads one row at a time:
+CSV has its own streaming reader because of quoting rules. `CsvReader` reads one row at a time:
 
     import(lib) std::parser::csv { CsvReader };
 
@@ -402,7 +402,7 @@ CSV gets its own reader because CSV is genuinely a streaming format with quoting
         // fields[0], fields[1], ...
     }
 
-The other formats follow the same pattern. TOML parses to a `TomlDoc` with ordered lookups; INI parses to an `IniFile` of named sections; XML parses to an `XmlNode` tree with attributes and children; UUID provides identifiers; and Regex and URI round out the lower-level tools:
+Other formats follow the same pattern: TOML returns a `TomlDoc`, INI an `IniFile`, XML an `XmlNode` tree, and UUID provides identifiers. Regex and URI round out the lower-level tools:
 
     // TOML
     import(lib) std::parser::toml { parseToml, TomlDoc, TomlValue, TomlValueType };
@@ -429,13 +429,13 @@ The other formats follow the same pattern. TOML parses to a `TomlDoc` with order
     String fresh = uuidV4();                 // a new random v4 id as text
     Result<Uuid, ParseError> id = parseUuid("...");
 
-Because each models its format as a typed document and each returns a `Result`, the exhaustiveness checking of Chapter13 applies to the results and the failure path is handled as Chapter15 describes rather than thrown. The parsers are a small demonstration of the same principles the rest of the book is about, which is why reading their source is a good exercise once the earlier chapters have landed.
+Each parser models a typed document and returns a `Result`, so exhaustiveness checking and the failure path apply as in Chapters13 and 15.
 
 17.7 Regular Expressions and URIs
 
-Two more text tools deserve their own mention because they solve problems that come up constantly.
+Two more text tools come up constantly.
 
-`std::text::regex` wraps a regular-expression engine with a small, explicit API. A `Regex` is compiled once and reused:
+`std::text::regex` wraps a regular-expression engine with a small API. Compile a `Regex` once and reuse it:
 
     import(lib) std::text::regex { Regex, regexFlags };
 
@@ -454,9 +454,9 @@ Two more text tools deserve their own mention because they solve problems that c
     }
     re.free();
 
-`compile` takes the pattern and a `caseInsensitive` flag and returns whether the pattern was valid. `matches` is an *anchored, whole-string* test: it returns true only when the pattern covers the entire input, so it is the right tool for validating a field against a strict pattern and the wrong one for "does this substring occur somewhere", use `find` for that. `find` searches the input, fills a `Vec<str>` with the whole match in slot zero followed by each capture group, and returns whether it found anything; a group that did not participate is reported as the empty string rather than omitted, so the vector's length always matches the pattern's group count. The captured `str`s are views into the `Regex`'s own reusable scratch buffer, not into your input, they stay valid only until the next `find` or `free` on the same `Regex`, which is why you copy anything you intend to keep. Call `free` when you are done, or let the `@drop` conformance do it; `free` also releases that scratch buffer.
+`compile` takes a pattern and a `caseInsensitive` flag and reports validity. `matches` is anchored and whole-string, so it validates strict patterns; use `find` for substring search. `find` fills a `Vec<str>` with the whole match in slot zero and each capture after it; a non-participating group is the empty string, so the vector length matches the group count. The captured `str`s are views into the `Regex`'s scratch buffer and stay valid only until the next `find` or `free`, so copy anything you keep. `free` also releases the scratch buffer.
 
-`std::text::uri` parses a URL into its parts, which saves you from writing the split-on-scheme, split-on-authority, split-on-query dance by hand:
+`std::text::uri` parses a URL into its parts, saving the manual split-on-scheme, authority, and query dance:
 
     import(lib) std::text::uri { Uri };
 
@@ -471,11 +471,11 @@ Two more text tools deserve their own mention because they solve problems that c
         println("fragment = {}", u.fragment.asView());
     }
 
-`parse` returns whether the input looked like a URI; the fields are `String`s you can read through `asView`. Like every owning text type, a `Uri` frees its fields when it drops.
+`parse` reports whether the input looked like a URI; its fields are `String`s readable through `asView`. A `Uri` frees its fields when it drops.
 
 17.8 A Worked Example: A CSV Reader
 
-Put the layer to work. A CSV reader must split lines into fields, handle quoted fields containing commas, and convert numbers. Each step uses a different part of the toolkit, and the library's `CsvReader` does the hard part.
+A CSV reader must split lines into fields, handle quoted fields containing commas, and convert numbers. The library's `CsvReader` handles the hard part:
 
     import(lib) std::parser::csv { CsvReader, ParseError };
     import(lib) std::text::string { String };
@@ -518,13 +518,13 @@ Put the layer to work. A CSV reader must split lines into fields, handle quoted 
         fields.dispose();
     }
 
-The reader handles the quoting rules for you, including embedded commas and doubled quotes inside a quoted field. `parseF64` converts a `str` to a number and reports success through an out-parameter, the library's lightweight alternative to a `Result` when the caller only needs a yes-or-no. This is the shape most text processing takes: scan for structure, slice out views, trim, convert, and only allocate a `String` when the text must be owned and outlive its source. If you want to see the byte-level version of the same logic, write it once by hand, walk the bytes, toggle an `inQuotes` flag, slice with `substr`, and you will understand exactly what `CsvReader` is doing on your behalf.
+The reader handles quoting, including embedded commas and doubled quotes inside a quoted field. `parseF64` converts a `str` and reports success through an out-parameter, a lightweight alternative to `Result` for yes-or-no. This is the usual text-processing shape: scan for structure, slice views, trim, convert, and allocate a `String` only when the text must be owned.
 
-Two ownership details make the example correct rather than merely plausible. First, `CsvReader::new(text)` stores the text's pointer and length and never copies it, so the input `str` must outlive the reader. Second, `readRow` frees the previous row's `String`s and reuses the same `Vec` each call, so `fields` always describes only the current row, which is why the loop can reuse it, and why the explicit cleanup before returning is the only place the last row's `String`s are released. `Result` handling appears twice in miniature here: `isErr` for the malformed-input channel and the `Ok(false)` value for the clean end of stream, exactly the split Chapter15 describes between failure and an ordinary "no more."
+Two ownership details make the example correct. `CsvReader::new(text)` stores the text's pointer and length without copying, so the input `str` must outlive the reader. `readRow` frees the previous row's `String`s and reuses the same `Vec`, so `fields` describes only the current row; the explicit cleanup before returning releases the last row. `Result` handles malformed input, while `Ok(false)` means clean end of stream.
 
 17.9 A Worked Example: Human-Readable Sizes
 
-Formatting is as much a part of the text layer as parsing, and a small formatter shows the `formatX` family and `String` assembly working together.
+Formatting is part of the text layer. A small size formatter shows the `formatX` family and `String` assembly together:
 
     import(lib) std::fmt::fmt { formatFloat, padLeft };
     import(lib) std::text::string { String };
@@ -560,7 +560,7 @@ Formatting is as much a part of the text layer as parsing, and a small formatter
 
     println("cache: {}", humanSize(1536.0));     // cache:     1.5 KiB
 
-`formatFloat` renders the scaled value with one decimal place; `padLeft` aligns it to seven characters; `pushView` and `pushChar` assemble the final buffer. The pattern, convert each value with the format function it deserves, assemble with the append methods, and only print at the end, is how a program builds a message when it must return the string rather than print it. It is more verbose than a single `println`, and it is the right tool exactly when the string has to outlive the call.
+`formatFloat` renders one decimal place, `padLeft` aligns to seven characters, and `pushView`/`pushChar` assemble the result. Convert with the right format function, assemble with append methods, and print only at the end. It is more verbose than `println`, and correct when the string must outlive the call.
 
 17.10 Exercises
 

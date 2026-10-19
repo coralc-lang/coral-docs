@@ -4,19 +4,19 @@ Live Examples: Bits, Bytes, and Bit Manipulation
 
 The Layer Under the Layer
 
-Everything in a computer is a bit, and almost no program is written as if that were true. You work with `i32`s and `f64`s and strings, and the language lets you, because thinking in bits about a shopping cart is a waste of your attention. But there is a class of problem where the bit is not an implementation detail. It is the subject. A file format packs three fields into a single 16-bit word. A network packet has flags in the high nibble and a length in the low twelve bits. A permission mask in an operating system is a set of bits, one per capability. A hash table rounds its size to a power of two so that the modulo becomes a mask. A game stores whether an entity is alive, visible, and hostile in three bits rather than three booleans, because there are a million entities. In all of these, the code is shorter, the data is smaller, and the intent is clearest when you stop pretending memory is made of numbers and start treating it as what it is.
+Some problems are about bits: file formats pack fields into one word, network flags live in a nibble, permission masks are sets of bits, hash tables round to powers of two, and games pack entity flags. There the bit is the subject, and bit code is shorter, smaller, and clearer.
 
-Coral's bit operators are the C ones, on purpose: `&` and, `|` or, `^` xor, `~` not, `<<` shift left, `>>` shift right. They act on the fixed-width integer types, and they mean exactly what the hardware means, including the parts that surprise people. This chapter is about using them well: seeing bytes in a debugger, turning bits on and off by name, counting them, recognising the special shapes, and understanding endianness so that the bytes you write are the bytes you meant. It is also about the edges: the shifts by the width of the type, the sign of `>>` on a negative number, and the aliasing bug in the cleverest five-line bit trick in the book.
+Coral uses the C operators: `&`, `|`, `^`, `~`, `<<`, `>>`. They act on fixed-width integers and mean exactly what the hardware means. This chapter covers seeing bytes, setting bits by name, counting them, recognising special shapes, endianness, and the edges: shifts by the type width, `>>` on negatives, and the aliasing bug in a famous trick.
 
-A word on what "the width of the type" means, because every example depends on it. A `u8` is eight bits, a `u32` is thirty-two, a `u64` is sixty-four. The bits are numbered from the right, starting at zero: bit 0 is the least significant (the ones place), and bit 7 of a `u8` is the most significant. Unsigned types hold zero through two-to-the-width minus one. Signed types use two's complement: the top bit is the sign, a `-1` is all ones, and adding one to the largest positive number wraps to the most negative. This representation is not Coral's invention. It is the machine's, and it is what the shifts and masks are defined against.
+Width matters: a `u8` is eight bits, a `u32` thirty-two, a `u64` sixty-four. Bits number from the right at zero. Unsigned types hold zero through two-to-the-width minus one; signed types use two's complement, where the top bit is the sign, `-1` is all ones, and adding one to the largest positive wraps to the most negative. Shifts and masks are defined against this machine representation.
 
 32.1 Seeing Bits and Bytes
 
-The problem. Before you can manipulate bits, you have to be able to look at them. A number printed in decimal tells you almost nothing about its bits: `255` and `256` look similar and are utterly different bit patterns. You need the hex and binary views, and you need them long enough to count.
+The problem. Decimal tells you almost nothing about bits: `255` and `256` look alike and are utterly different patterns. You need hex and binary views long enough to count.
 
-The intuition. Hex is the programmer's shorthand for binary, because four bits spell exactly one hex digit. A byte is two hex digits, so `0xFF` is eight ones and `0x1` is one one, and reading `0xB4` as bits is a matter of splitting it into `B` (1011) and `4` (0100). Decimal offers no such ladder. Binary is the honest view, good for small fields and for counting offsets. Hex is the compact view, good for addresses and byte dumps. You will use both constantly, and the library gives you both directly.
+The intuition. Hex is shorthand for binary, four bits per digit, so a byte is two digits: `0xB4` is `B` (1011) and `4` (0100). Binary is the honest view for small fields and offsets; hex is the compact view for addresses and dumps.
 
-The approach. The `println` family accepts format specifiers: `{:d}` for decimal, `{:x}` for hexadecimal, `{:b}` for binary. For a fixed-width binary view with leading zeros, which decimal and hex do not give you, write a small helper that walks the bits from high to low.
+The approach. `println` accepts `{:d}`, `{:x}`, and `{:b}`. For fixed-width binary with leading zeros, write a helper that walks the bits high to low.
 
 The implementation.
 
@@ -55,19 +55,19 @@ The implementation.
         println("padded {}", bits8(flags));   // 10110100
     }
 
-Cost and notes. The format specifiers cost nothing extra over any other print. The helper allocates a small `String` and writes one character per bit, which is O(width); at a debugger or a log line, that is irrelevant. The only subtlety is the cast on the shift amount. The helper counts with an `i32` so the loop can stop below zero, and it shifts by a `(u32)` because the shift operators take the count as an unsigned value.
+Cost and notes. The format specifiers cost nothing extra. The helper allocates a small `String` and writes one character per bit, O(width), which is irrelevant for a log line. The subtlety is the shift amount: the loop counts with an `i32` so it can stop below zero, and shifts by `(u32)` because the operators take an unsigned count.
 
-Edge cases. `{:b}` and `{:x}` render only the significant bits, so `1` prints as `1`, not as a wall of zeros. The helper exists for when the leading zeros are the point. `{:x}` on a signed negative number prints its two's-complement pattern, because that is what the bits are. And `String::withCap` takes a lower bound on capacity, not an exact size; the string grows if needed, so the estimate is a hint.
+Edge cases. `{:b}` and `{:x}` render only significant bits, so `1` prints as `1`; the helper exists for leading zeros. `{:x}` on a negative signed value prints its two's-complement pattern. `String::withCap` is a capacity hint, not an exact size.
 
-Variation. Write `dumpBytes(const u8* data, usize n)` that prints a hex dump: offset, then sixteen bytes in hex, then the printable ASCII with dots for non-printing bytes. This is the tool you will reach for the first time you look at a binary file, and writing it once is worth the effort.
+Variation. Write `dumpBytes(const u8* data, usize n)` printing offset, sixteen hex bytes, and printable ASCII with dots for non-printing bytes.
 
 32.2 Masks: Set, Clear, Toggle, Test
 
-The problem. You have a bit, identified by index, inside a word. You want to turn it on, turn it off, flip it, or ask whether it is on. Doing this with raw `<<`, `&`, and `|` at every call site is where off-by-one errors live.
+The problem. You have a bit at an index and want to set, clear, toggle, or test it. Raw shifts at every call site invite off-by-one errors.
 
-The intuition. Each operation is one tiny identity, and the identities are worth memorising because they are the alphabet of the whole subject. To set bit `i`, OR the word with a mask that has only bit `i` on: `x | (1 << i)`. To clear it, AND with a mask that has only bit `i` off: `x & ~(1 << i)`. To toggle it, XOR with the single-bit mask: `x ^ (1 << i)`. To test it, AND with the mask and compare to zero: `(x & (1 << i)) != 0`. Four operations, four one-line functions, and every larger routine is built from them.
+The intuition. Four identities form the alphabet: set `x | (1 << i)`, clear `x & ~(1 << i)`, toggle `x ^ (1 << i)`, test `(x & (1 << i)) != 0`.
 
-The approach. Wrap each in a named function. Use `u64` for the word and `u32` for the index, and be honest about the index's valid range.
+The approach. Wrap each in a named function over a `u64` word and a `u32` index, and state the index's valid range.
 
 The implementation.
 
@@ -109,19 +109,19 @@ The implementation.
         println("{:b}", lights);             // 0
     }
 
-Cost and notes. Every one is a single machine instruction on the values in registers. Wrapping them costs nothing and buys a great deal of clarity, because the name states the intent and the function states the boundary. The masking identity `(1 << i)` is where overflow lurks in a fixed type: in a `u32`, `1 << 31` is legal but `1 << 32` is not defined. The assertion turns that into a diagnostic rather than a quiet disaster.
+Cost and notes. Each is one machine instruction. Wrapping costs nothing and buys clarity: the name states intent, the function states the boundary. In a fixed type `1 << 32` is undefined; the assertion turns that into a diagnostic.
 
-Edge cases. The index must be strictly less than the width. Shifting by the width, or more, is undefined in the underlying machine and not something Coral defines; the assertion is the contract. In `setBit` and `clearBit`, the cast `(u64)1` matters. If the literal were a `u32`, then `1 << 40` would be evaluated in thirty-two bits and produce zero, and the operation would silently do nothing. Getting the type of the one right is half of writing shift code.
+Edge cases. The index must be strictly below the width; shifting by the width or more is undefined. In `setBit` and `clearBit`, `(u64)1` matters: a `u32` literal would make `1 << 40` evaluate to zero and silently do nothing.
 
-Variation. Write the four operations generically over a mask instead of an index, `applyMask(x, mask, op)`, and define a small enum `BitOp { Set, Clear, Toggle }` to select the operation. It is more machinery than four functions need, and it is the right shape when a permissions system has to record which operation to apply from data.
+Variation. Write `applyMask(x, mask, op)` over a `BitOp { Set, Clear, Toggle }` enum, the right shape when a permissions system records operations from data.
 
 32.3 Counting Bits: Popcount and Parity
 
-The problem. Given a word, count how many of its bits are one (the population count, or popcount), and determine whether that count is even or odd (the parity). They turn up in hash functions, in error-detecting codes, in chess engines that count the pieces on a board, and in the internals of cryptography.
+The problem. Count the one bits (popcount) and determine whether that count is even or odd (parity). They appear in hashes, error-detecting codes, chess engines, and cryptography.
 
-The intuition. The obvious loop shifts one bit at a time, tests it, and counts: one operation per bit, so up to sixty-four. There is a small and beautiful improvement. The expression `x & (x - 1)` clears the lowest set bit of `x`, because subtracting one borrows through the trailing zeros and turns the lowest one into a zero while leaving everything above it. So instead of visiting every bit, you visit only the set bits. Loop while `x` is nonzero, do `x = x & (x - 1)`, and count. A word that is mostly zeros finishes in a couple of steps. Parity is the same count taken modulo two, and it has its own bit-folding trick: XOR the halves together repeatedly until one bit is left.
+The intuition. The obvious loop costs one step per bit. Better: `x & (x - 1)` clears the lowest set bit, so looping on that visits only set bits. Parity is the count modulo two, and it folds by XORing halves until one bit remains.
 
-The approach. Kernighan's popcount, then the folding parity, then a byte-table popcount for when you are counting millions of words and want constant time with a small table.
+The approach. Kernighan's popcount, then folding parity, then a byte-table popcount for constant time with a small table.
 
 The implementation.
 
@@ -160,7 +160,7 @@ The implementation.
                (u32)table[(u8)(x >> 56)];
     }
 
-The parity fold works because XOR is associative and commutative on bits: the parity of a word is the XOR of all its bits, and you can combine halves in any order. Each line folds the high half onto the low half, and six lines for a `u64` leave the answer in bit zero. The byte table version splits the word into eight bytes, each a constant-time lookup into a 256-entry table. The table itself is built once:
+The parity fold works because XOR is associative and commutative: the parity of a word is the XOR of all its bits, so halves combine in any order. Six folds leave the answer in bit zero. The table version splits the word into eight bytes, each a constant-time lookup; the table is built once:
 
     pub Vec<u8> buildPopcountTable() {
         // popcount of every byte value
@@ -175,17 +175,17 @@ The parity fold works because XOR is associative and commutative on bits: the pa
         return t;
     }
 
-Cost and notes. Kernighan's popcount is O(number of set bits), so between one and sixty-four steps. The parity fold is always six steps, regardless of the value. The table version is a constant eight lookups and eight additions, plus the one-time cost of building 256 bytes. For a handful of words, Kernighan is fine. For a hot loop over millions, the table wins. The table build is another use of `x & (x - 1)`, which should convince you it is worth knowing.
+Cost and notes. Kernighan is O(number of set bits), one to sixty-four steps. The fold is always six steps. The table is eight lookups and additions, plus building 256 bytes once. Kernighan suits a handful of words; the table wins in a hot loop.
 
-Edge cases. `popcount(0)` is zero; the loop does not run. The byte-table version must mask each byte with `(u8)` before indexing, or a shift could leave high bits set and index out of the table. The parity fold's shifts are all strictly less than the width, so there is no undefined shift. And a table smaller than 256 entries, or one with wrong values, is a bug the compiler cannot catch. The build routine above exists so the table is generated, not transcribed.
+Edge cases. `popcount(0)` is zero; the loop does not run. Mask each byte with `(u8)` before indexing, or high bits can index out of the table. All fold shifts are below the width. A table with fewer than 256 entries or wrong values is a bug the compiler cannot catch.
 
-Variation. Implement `popcount32` and `popcount8` by reusing the folding idea: for a `u32`, fold halves with masks (`x = (x & 0x55555555) + ((x >> 1) & 0x55555555)` and so on) so that the count is computed in parallel across the word with no loop and no table. It is the classic bit-twiddling exercise and a good way to internalise what a mask does.
+Variation. Implement `popcount32` and `popcount8` by folding with masks (`x = (x & 0x55555555) + ((x >> 1) & 0x55555555)` and so on), computing the count in parallel with no loop and no table.
 
 32.4 Power-of-Two Checks and the Low Bit
 
-The problem. Recognise the special shapes that show up again and again in systems code: is this number a power of two (so the compiler can use a mask instead of a modulo)? What is its lowest set bit (so you can isolate a single-item bucket)? What is the next power of two above a request (so an allocation can be rounded up)?
+The problem. Recognise recurring shapes: is a number a power of two (so a mask replaces a modulo), what is its lowest set bit, and what is the next power of two above a request?
 
-The intuition. Powers of two have a signature. A power of two has exactly one bit set, and one less than it is a run of ones in the low positions with zeros above. AND them together and you get zero. So `x != 0 && (x & (x - 1)) == 0` is the test. The lowest set bit falls out of the same subtraction: `x & (x - 1)` removes it, so `x ^ (x & (x - 1))` is exactly that bit, and there is a slicker unsigned identity, `x & (0 - x)`, that isolates it in one operation. The next power of two spreads the highest set bit downward with a chain of shifts, then adds one.
+The intuition. A power of two has one bit set, and one less is a run of low ones, so `x != 0 && (x & (x - 1)) == 0` tests it. The lowest set bit is `x & (0 - x)` in unsigned arithmetic. The next power smears the highest bit downward with shifts, then adds one.
 
 The approach. Three tiny functions plus the shift-smear trick, with a note on the overflow boundary.
 
@@ -216,21 +216,21 @@ The implementation.
         return x + 1;
     }
 
-The `nextPowerOfTwo` smear is worth reading slowly. After subtracting one, the highest set bit sits somewhere. OR-ing the number with itself shifted right by one turns that bit into two adjacent ones; shifting by two turns two into four; and so on, doubling the run of ones each time, until everything below the original high bit is one. Add one and the run carries into a single bit one position higher. The seven shifts cover a sixty-four-bit word because 1 + 2 + 4 + 8 + 16 + 32 exceeds it.
+The smear: after subtracting one, OR the number with itself shifted by one, then by two, four, eight, sixteen, and thirty-two, doubling the run of ones each time. Adding one carries it into a single higher bit. The shifts cover a sixty-four-bit word.
 
-Cost and notes. The power-of-two test and the low-bit isolate are single arithmetic operations, constant time. The next-power smear is seven shifts and ORs, constant time, and it is the fastest portable way to do it without a hardware instruction. The low-bit identity relies on unsigned wraparound: `0 - x` in an unsigned type is the two's complement of `x`, whose AND with `x` leaves exactly the lowest set bit. In a signed type the same expression can overflow and is not portable, so use unsigned.
+Cost and notes. The test and the low-bit isolate are single arithmetic operations. The smear is seven shifts and ORs, the fastest portable version without a hardware instruction. The low-bit identity relies on unsigned wraparound; the same expression on a signed type can overflow and is not portable.
 
-Edge cases. Zero is not a power of two, despite `0 & -1` being zero; the explicit `x != 0` guard is required. `lowestSetBit(0)` is zero, which is a defensible and useful answer. `nextPowerOfTwo` overflows when the input is above two to the sixty-third, because the answer would not fit; a production version returns an error or saturates for that range. And the power-of-two test's AND with `x - 1` underflows when `x` is zero, which is why the zero check must come first and must short-circuit. It does, because `&&` does not evaluate its right side when the left is false.
+Edge cases. Zero is not a power of two, so the explicit `x != 0` guard is required and must short-circuit before `x - 1` underflows. `lowestSetBit(0)` is zero. `nextPowerOfTwo` overflows above two to the sixty-third; production code returns an error or saturates.
 
-Variation. Write `isPowerOfTwoMask(x)` that returns zero when `x` is not a power of two and `x - 1` when it is, so a caller can use it directly as a mask. This is the exact shape a hash table wants when it converts a hash to a bucket index: `hash & (tableSize - 1)`, valid precisely when the table size is a power of two.
+Variation. Write `isPowerOfTwoMask(x)` returning zero when `x` is not a power of two and `x - 1` when it is, exactly what a hash table uses as `hash & (tableSize - 1)`.
 
 32.5 Endianness
 
-The problem. An integer is a sequence of bytes in memory, and the order of those bytes is not one thing. A machine may store the least significant byte first (little-endian) or the most significant first (big-endian). When you write an integer to a file or send it over a network, you must know which order you mean, or two programs will disagree about the same bytes.
+The problem. An integer is a sequence of bytes, least significant first on little-endian machines or most significant first on big-endian ones. Data crossing a file, socket, or shared segment must agree on the order.
 
-The intuition. Think of the number 0x01020304 as four bytes, from least significant to most: 01, 02, 03, 04. On a little-endian machine, byte zero in memory is the 04. On a big-endian machine, byte zero is the 01. Both are valid; they are conventions. The trouble is that they are invisible until data crosses a boundary, such as a file, a socket, or a shared memory segment, and then the same bytes are read as two different numbers. The rule that saves you: choose one order for anything that leaves the machine (big-endian is the network convention), and convert explicitly at the boundary, so the rest of the program can ignore the question entirely.
+The intuition. `0x01020304` is bytes 01, 02, 03, 04 from most to least significant; little-endian stores the 04 first, big-endian the 01. Both are conventions, and the difference is invisible until data crosses a boundary. Choose one order for anything leaving the machine (big-endian is the network convention) and convert explicitly there.
 
-The approach. Detect the host order once; write byte-swap routines; extract and assemble bytes explicitly rather than through a union, because explicit is portable and the compiler cannot be relied on to optimise a union pun.
+The approach. Detect the host order once, write byte-swap routines, and extract and assemble bytes explicitly rather than through a union.
 
 The implementation.
 
@@ -270,19 +270,19 @@ The implementation.
                (u32)in[3];
     }
 
-Cost and notes. The endianness probe is a single load and compare, done once at startup or compiled to a constant. The byte swaps are a handful of shifts and masks, constant time; on machines with a byte-swap instruction, the compiler emits it. The explicit pack and unpack are a few shifts and ORs, and unlike a union interpretation they have well-defined behaviour: the bytes you write are exactly the bytes you specified, in the order you specified, on every target. This is why serious serialisation code never punned a struct over a byte buffer. It writes fields one at a time.
+Cost and notes. The probe is one load and compare, done once. The swaps are a few shifts and masks, constant time, often a single instruction. Explicit pack and unpack have well-defined behaviour on every target, which is why serious serialisation never puns a struct over a byte buffer.
 
-Edge cases. The probe reads a `u32` through a `u8*` and assumes the two are the same bytes in the same order, which is exactly what it is testing, so keep the probe in a separate function and do not generalise it. The shift in `fromBigEndianBytes` casts each byte to `u32` before shifting; without the cast, a `u8` shifted left by twenty-four would lose all its bits. Alignment is a related hazard. A cast of an arbitrary `u8*` to a `u32*` can be misaligned and fault on some targets, which is another reason to assemble bytes by hand.
+Edge cases. The probe reads a `u32` through a `u8*` and tests exactly that assumption, so keep it isolated. `fromBigEndianBytes` casts each byte to `u32` before shifting; without it a `u8` shifted by twenty-four loses all bits. Casting an arbitrary `u8*` to `u32*` can also be misaligned and fault.
 
-Variation. Write `readU32OrBigEndian(u32 value, bool hostIsLittle)` that converts a host value into a canonical big-endian value and back, so the rest of the program works in one order. Test it by round-tripping values and, if you have access to two machines of different endianness, by exchanging a file between them.
+Variation. Write `readU32OrBigEndian(u32 value, bool hostIsLittle)` to convert a host value to canonical big-endian and back, and round-trip values to test it.
 
 32.6 The Bitset
 
-The problem. You need a set of small integers from a dense, bounded universe: "which sockets are open," up to four thousand and ninety-six; "which frames have arrived," up to a million. You want membership, insertion, and counting to be cheap and the memory to be small.
+The problem. You need a set over a dense bounded universe: which sockets are open, which frames arrived. Membership, insertion, and counting should be cheap and memory small.
 
-The intuition. A `Set<u32>` stores each element in a hash entry, dozens of bytes apiece, and pays a hash and a probe per operation. But if the universe is the numbers zero through `n`, there is a representation that is one bit per element and one machine instruction per operation: the bit at index `i` is on exactly when `i` is a member. The whole set is an array of 64-bit words, and membership is a shift and an AND. This is not a general-purpose set; the universe must be a fixed dense range. Within that range, nothing beats it.
+The intuition. A `Set<u32>` pays dozens of bytes and a hash per element. For the numbers zero through `n`, one bit per element gives one machine instruction per operation: bit `i` is on exactly when `i` is a member. This is not general purpose; the universe must be a fixed dense range, and within it nothing beats it.
 
-The approach. Coral's `std::collections::bitset` provides exactly this. Learn the interface by building a sieve with it, which is the canonical dense-membership problem, then use the richer operations.
+The approach. Coral's `std::collections::bitset` provides exactly this. Build a sieve, the canonical dense-membership problem, then use the richer operations.
 
 The implementation.
 
@@ -313,19 +313,19 @@ The implementation.
         println("even composites: {}", evenComposites.countOnes());
     }
 
-Cost and notes. `set`, `clear`, `toggle`, and `test` are O(1): a divide to find the word, a shift to find the bit, one instruction. The whole-set operations `and`, `or`, `xor`, and `not` are O(n/64), one operation per word rather than per bit, which is where the representation pays off. `countOnes` and `countZeros` walk the words and use the same `x & (x - 1)` from 32.3, so they are O(number of set bits) per word. The memory is `n/8` bytes plus a small header, an eight-fold saving over a byte array and far more over a set.
+Cost and notes. `set`, `clear`, `toggle`, and `test` are O(1): a divide, a shift, one instruction. Whole-set `and`, `or`, `xor`, and `not` are O(n/64), one operation per word. `countOnes` and `countZeros` use `x & (x - 1)` per word. Memory is `n/8` bytes plus a header.
 
-Edge cases. The universe is fixed at construction: `Bitset::new(n)` has bits zero through `n - 1`, and every operation that takes a bit index asserts that the index is inside that range. An out-of-bounds bit is a loud diagnostic rather than silent neighbour corruption. The constructor rounds up to whole 64-bit words, so `Bitset::new(65)` allocates two words, and the padding bits of the second must be kept clear. The library's `_maskPadding` does this for the whole-set operations, which is why you should use them instead of poking words. And `and`, `or`, and `xor` require the two bitsets to have the same declared bit count; mismatches are asserted.
+Edge cases. `Bitset::new(n)` covers bits zero through `n - 1`, and every indexed operation asserts the range, so an out-of-bounds bit is a loud diagnostic. The constructor rounds up to whole 64-bit words, and `_maskPadding` keeps the padding clear; use the whole-set operations rather than poking words. `and`, `or`, and `xor` require equal declared bit counts.
 
-Variation. Implement a Bloom filter on top: a bitset plus `k` hash functions, where insertion sets `k` bits and membership tests them all. It is a probabilistic set with false positives and no false negatives, and it is the reason a bitset is in the library at all: most large systems use one to avoid a costly lookup before doing it.
+Variation. Implement a Bloom filter: a bitset plus `k` hash functions, insertion setting `k` bits and membership testing them all. It has false positives, no false negatives, and is why bitsets are used to avoid costly lookups.
 
 32.7 The XOR Swap, and the Bug in the Cleverest Trick
 
-The problem. Swap two integers without a temporary variable, using three XORs. It is a famous trick, it is in every interview-preparation list, and it has a bug that bites exactly when the two operands are the same place.
+The problem. Swap two integers with three XORs and no temporary. It is famous, and it has a bug that bites when both operands are the same place.
 
-The intuition. XOR has a property that makes the trick work: applying the same value twice undoes it. Take `a` and `b`. Replace `a` with `a ^ b`; replace `b` with `b ^ (a ^ b)`, which is the original `a`; replace `a` with `(a ^ b) ^ a`, which is the original `b`. Three lines, no temporary. It is genuinely correct when the two operands are distinct storage. Now suppose the caller passes the same pointer for both, swapping a value with itself, and trace it. `*a` becomes `*a ^ *a`, which is zero, and then every subsequent line operates on zero. The value is destroyed. A normal swap with a temporary is idempotent when the locations coincide; the XOR version is not, and that asymmetry is the whole lesson.
+The intuition. XOR undoes itself: replace `a` with `a ^ b`, then `b` with `b ^ (a ^ b)` (the original `a`), then `a` with `(a ^ b) ^ a` (the original `b`). Correct for distinct storage. If the caller passes the same pointer, `*a` becomes `*a ^ *a`, which is zero, and every later line operates on zero. A temporary swap is idempotent when the locations coincide; the XOR version is not.
 
-The approach. Show the trick, show the guard, and then show why you would almost never use it. The temporary swap is as fast on any modern machine and has no aliasing hazard at all.
+The approach. Show the trick, show the guard, and show why you would almost never use it: the temporary swap is as fast on modern machines and has no aliasing hazard.
 
 The implementation.
 
@@ -357,17 +357,17 @@ The implementation.
         println("{}", z);            // 7, because of the guard
     }
 
-Cost and notes. On the register-level machines of the 1970s, the XOR swap avoided a load and a store, and it mattered. On every machine you are likely to write for, the temporary version optimises to the same instructions or better, the CPU handles the dependency chain more efficiently, and the XOR version's three dependent reads and writes are not a win. Write the temporary version. Teach the XOR version because it is a beautiful demonstration of what XOR is, and because the aliasing bug is a lesson about pointers that generalises far beyond swapping.
+Cost and notes. The XOR swap avoided a load and a store on 1970s machines. Today the temporary version optimises to the same or better instructions, and the XOR version's dependency chain is no win. Write the temporary version; teach the XOR version for what it reveals about XOR and pointers.
 
-Edge cases. The aliasing case is the one that matters, and the guard must compare the pointers, not the values. Two different variables that happen to hold the same number must still be swapped. The trick requires the two locations to be distinct storage of the same type. And on a signed type, XOR is defined on the bit pattern, so the intermediate values can be negative in ways that have no arithmetic meaning. The trick is about bits, not numbers, and reading the intermediate as a number is meaningless.
+Edge cases. The guard must compare pointers, not values: two variables holding the same number must still swap. The locations must be distinct storage of the same type. On a signed type the intermediate values can be negative and have no arithmetic meaning; the trick is about bits, not numbers.
 
-Variation. Write the swap for a generic type `T` using a temporary, and note that XOR swapping cannot be made generic because it needs bitwise operations, and not every type has them. Then write a swap that reverses an entire array using the temporary form, which is the version you actually want. `reverse` in the standard library is exactly this loop with paired indices.
+Variation. Write a generic temporary swap for `T`, noting that XOR swapping cannot be generic because not every type has bitwise operations. Then reverse an array with the temporary form; `reverse` in the standard library is exactly that loop.
 
 32.8 Gray Code
 
-The problem. Enumerate values so that consecutive values differ in exactly one bit. This is the Gray code, used in rotary encoders (where a single-bit change cannot produce a wild reading mid-transition), in error-correcting codes, in Karnaugh maps, and in the bit-reflection stage of some fast transforms.
+The problem. Enumerate values so consecutive values differ in exactly one bit. Gray code is used in rotary encoders, error-correcting codes, Karnaugh maps, and bit-reflection stages of fast transforms.
 
-The intuition. Count in binary and watch the bits: from three (`011`) to four (`100`), three bits change at once. If a physical sensor reads the bits while they are changing, any combination is possible during the transition, and the reading can be wildly wrong. Gray code fixes this by ordering the values so each step flips one bit. The binary-reflected Gray code is built by a one-line rule: the Gray value of `n` is `n XOR (n >> 1)`. Going back is a fold. XOR the value with itself shifted down repeatedly until it is zero, accumulating as you go.
+The intuition. Binary three (`011`) to four (`100`) changes three bits at once, and a sensor reading mid-transition can be wildly wrong. Gray code orders values so each step flips one bit. The rule: `n XOR (n >> 1)`. Decoding folds the value with itself shifted down until zero.
 
 The approach. The two conversions, plus a demonstration that consecutive Gray values differ by one bit, verified with the tools from 32.3.
 
@@ -409,19 +409,19 @@ The implementation.
         }
     }
 
-Cost and notes. `grayEncode` is one shift and one XOR, constant time. `grayDecode` is one XOR per bit, so O(log n). The adjacent-difference test is the power-of-two check from 32.4 applied to the XOR of the two values: two values differ in exactly one bit if and only if their XOR is a power of two. That reuse is the theme of the chapter in miniature. A handful of primitives, combined, answer a question that at first looked like a new problem.
+Cost and notes. `grayEncode` is one shift and one XOR. `grayDecode` is one XOR per bit, O(log n). The difference test is the power-of-two check from 32.4 applied to the XOR: two values differ in one bit exactly when their XOR is a power of two.
 
-Edge cases. `grayEncode` and `grayDecode` are exact inverses for every `u64`, including zero; the round trip is worth asserting in a test. The difference test must reject `diff == 0`, because XOR of a value with itself is zero, and zero is not a power of two. Otherwise the function would call two identical values "one bit apart." The decoder's loop terminates because the shift eventually drives `g` to zero, in at most the number of bits in the type.
+Edge cases. The conversions are exact inverses for every `u64`, including zero. The difference test must reject `diff == 0`, since zero is not a power of two. The decoder terminates in at most the type width.
 
-Variation. Generate the Gray sequence directly by the reflected construction: start with `[0]`, and to extend, take a copy of the current list in reverse, set the new high bit on each, and append. It produces the same sequence with different mechanics, and seeing both makes it clear why it is called binary-reflected.
+Variation. Generate the sequence by the reflected construction: start with `[0]`, copy the list in reverse, set the new high bit on each copy, and append. Seeing both makes the name clear.
 
 32.9 The Single Number (XOR)
 
-The problem. An array holds a large number of integers in which every value appears exactly twice except one, which appears exactly once. Find the loner. You may not use a set, a sort, or any extra memory proportional to the input.
+The problem. Every value in an array appears twice except one, which appears once. Find the loner without a set, a sort, or memory proportional to the input.
 
-The intuition. Reach for the three properties of XOR and the answer is immediate. A value XORed with itself is zero; a value XORed with zero is itself; and XOR is commutative and associative, so the order does not matter. XOR the whole array together and every value that appears twice annihilates its twin, leaving only the singleton. There is no bookkeeping because the operation itself is the bookkeeping.
+The intuition. XOR with itself is zero, XOR with zero is itself, and XOR is commutative and associative. XOR the whole array and every pair annihilates, leaving the singleton. The operation is the bookkeeping.
 
-The approach. Fold the array with XOR. One accumulator, one pass, constant memory.
+The approach. Fold the array with XOR: one accumulator, one pass, constant memory.
 
 The implementation.
 
@@ -450,21 +450,21 @@ The implementation.
         return ones;
     }
 
-In the three-times version the pair of accumulators counts each bit modulo three: `ones` holds the bits seen one more time than a multiple of three, `twos` the bits seen twice, and the masks move a bit between them on each sighting. The lesson of the first function is that XOR is a parity machine, and parity is exactly what "everything cancels except one" means.
+In the three-times version, `ones` holds bits seen one more time than a multiple of three and `twos` bits seen twice, with the masks moving a bit between them on each sighting. The first function shows XOR as a parity machine: everything cancels except one.
 
-Cost and notes. `singleNumber` is O(n) time and O(1) space: a single pass with no allocation, and each step is one register XOR. Compare that to the obvious approach of a hash set, which is also O(n) time but O(n) space and a hash per element. This is the clearest example in the chapter of choosing the operation that already does the work.
+Cost and notes. `singleNumber` is O(n) time and O(1) space, one register XOR per step. A hash set is also O(n) time but O(n) space and a hash per element.
 
-Edge cases. An empty array returns zero, which is the identity but not a real answer; the caller is responsible for the precondition that a singleton exists. If the data contains more than one singleton, the result is the XOR of all of them, which is meaningful only if you know the rest pair off. The function is defined on unsigned values; XOR is a bit operation, so thinking of the elements as signed numbers is a category error even though the bits are the same.
+Edge cases. An empty array returns zero, the identity but not a real answer; the caller guarantees a singleton exists. More than one singleton yields the XOR of all of them. The function is defined on unsigned values; XOR is a bit operation.
 
-Variation. Find two singletons instead of one. XOR everything to get `a ^ b`, isolate any set bit of that result, and partition the array by that bit; each part then has a single singleton, recovered with the same function. Two passes, still constant memory.
+Variation. Find two singletons: XOR everything to get `a ^ b`, isolate a set bit, partition the array by that bit, and run the same function on each part. Two passes, constant memory.
 
 32.10 Enumerating Subsets with a Bitmask
 
-The problem. Given `n` items, visit every one of the `2^n` subsets, for a brute-force search, a knapsack, a subset-sum, or any problem small enough to solve by trying all the options.
+The problem. Given `n` items, visit all `2^n` subsets for a brute-force search, knapsack, subset-sum, or any problem small enough to try every option.
 
-The intuition. A subset of `n` items is exactly a bitmask of `n` bits: bit `i` is on when item `i` is in the subset. So the subsets are just the numbers zero through `2^n - 1`, each visited once and never repeated. Testing membership is a shift and an AND, the same primitive as everywhere else in the chapter, and walking the subset's own elements is a matter of testing each bit or peeling set bits with `x & (x - 1)`.
+The intuition. A subset is a bitmask of `n` bits, so the subsets are the numbers zero through `2^n - 1`, each once. Membership is a shift and an AND, and peeling with `x & (x - 1)` walks only the members.
 
-The approach. Loop the mask from zero to `2^n - 1`, and for each mask walk its `n` bits. Wrap it in a small brute-force maximum for concreteness.
+The approach. Loop the mask from zero to `2^n - 1` and walk its `n` bits, wrapped in a small brute-force maximum.
 
 The implementation.
 
@@ -494,21 +494,21 @@ The implementation.
         return best;
     }
 
-Mask zero is the empty subset, and it sums to zero, so `best` starts there rather than at a negative sentinel (there is no negative for `u64`). The mask counts in ordinary binary, and the bit pattern is the subset; the loop is the enumeration. There is nothing hidden.
+Mask zero is the empty subset, summing to zero, so `best` starts there rather than at a negative sentinel. The mask counts in ordinary binary, and the bit pattern is the subset.
 
-Cost and notes. `bestSubsetSum` is O(2^n * n): the outer loop doubles with `n`, and each mask costs a walk over `n` bits. For `n` up to about twenty that is a million times twenty, which is fine; at thirty it is a billion, which is not. The `n <= 32` assertion keeps `1 << n` inside the `u64`, but the practical limit is far lower and is set by time, not by the type.
+Cost and notes. `bestSubsetSum` is O(2^n * n): the outer loop doubles with `n`, and each mask costs a walk over `n` bits. About twenty is fine; thirty is a billion. The `n <= 32` assertion keeps `1 << n` inside the `u64`, but time sets the real limit.
 
-Edge cases. `n` must not exceed the word width, or `(u64)1 << n` is undefined; the assertion refuses it. The caller must pass a vector with at least `n` elements, since the inner loop indexes up to `n - 1`. The mask is `u64` while the index is `u32`, so the shift amount is `i` and the comparison casts nothing because `& 1u` against a `u64` is the same pattern used in 32.2. And a brute force over `2^n` is only as good as its smallest case; an early exit when `best` reaches the sum of all items would save nothing here but is worth remembering when the predicate is a threshold rather than a maximum.
+Edge cases. `n` must not exceed the word width; the assertion refuses it. The vector must hold at least `n` elements. The mask is `u64` while the index is `u32`, and `& 1u` against a `u64` is the pattern from 32.2. Early exit when `best` reaches the sum of all items saves nothing for a maximum but matters for a threshold predicate.
 
-Variation. Replace the per-mask bit walk with the set-bit peel from 32.3: `u64 bits = mask; while (bits != 0) { u32 i = lowBitIndex(bits); sum += items->at((usize)i); bits &= bits - 1; }`. It visits only the members of the subset, which is a real saving when the masks are sparse, and it is exactly the trick from the popcount example reused.
+Variation. Replace the per-mask walk with the set-bit peel from 32.3: `u64 bits = mask; while (bits != 0) { u32 i = lowBitIndex(bits); sum += items->at((usize)i); bits &= bits - 1; }`. It visits only members, a real saving for sparse masks.
 
 32.11 Reversing the Bits of a Word
 
-The problem. Reverse the order of the bits in a word: bit 0 becomes bit 31, bit 1 becomes bit 30, and so on. It is the operation behind a bit-reversal permutation in a fast Fourier transform, behind some hashing and scrambling schemes, and behind CRC variants that feed bits in from the other end.
+The problem. Reverse the bits of a word: bit 0 becomes bit 31, and so on. It underlies bit-reversal permutations in fast Fourier transforms, some hashing and scrambling schemes, and CRC variants.
 
-The intuition. Do it in stages, like sorting a shuffled deck. First swap every adjacent pair of bits. Then swap every adjacent pair of pairs. Then pairs of nibbles, then pairs of bytes. Each stage moves every bit twice as far as the last, and after the stage that swaps the two halves of the word the whole thing is reversed. Every stage is a mask, a shift, and an OR, the alphabet of the chapter, repeated five times.
+The intuition. Work in stages like sorting a deck: swap adjacent bits, then pairs, nibbles, bytes, and finally halves. Each stage moves every bit twice as far, and after the half swap the word is reversed. Every stage is a mask, a shift, and an OR.
 
-The approach. The five-stage masked version for `u32`, the obvious bit-by-bit loop for comparison, and a `u64` built from two `u32` reversals.
+The approach. The five-stage masked version for `u32`, a bit-by-bit loop for comparison, and a `u64` built from two `u32` reversals.
 
 The implementation.
 
@@ -541,21 +541,21 @@ The implementation.
         return (low << 32) | high;
     }
 
-Read the masks as pairs. `0x55555555` is alternating ones and zeros, so it selects the low bit of every pair; shifting that left and the high bits right, then ORing, swaps each pair. `0x33333333` selects the low two bits of every four, doubling the distance. `0x0F0F0F0F` handles nibbles, `0x00FF00FF` handles bytes, and the last line swaps the two sixteen-bit halves outright. The `u64` version reverses each half and then swaps the halves, which is why the two `reverseBits32` results are placed low-then-high.
+Read the masks as pairs. `0x55555555` selects the low bit of every pair; shifting and ORing swaps each pair. `0x33333333` selects the low two bits of every four, doubling the distance. `0x0F0F0F0F` handles nibbles, `0x00FF00FF` bytes, and the last line swaps the sixteen-bit halves. The `u64` version reverses each half and places them low-then-high.
 
-Cost and notes. `reverseBits32` is a fixed five stages, no loop, constant time; on a machine with a bit-reverse instruction the compiler may recognise the pattern, but even without one it is roughly twenty instructions. `reverseBitsLoop` is O(width) and exists mainly to show that the masked version is the same operation unrolled. `reverseBits64` is two calls and one swap, constant time.
+Cost and notes. `reverseBits32` is five stages, no loop, constant time, roughly twenty instructions. `reverseBitsLoop` is O(width) and shows the masked version unrolled. `reverseBits64` is two calls and a swap.
 
-Edge cases. Every shift is by a value strictly less than the width, so nothing is undefined. The masks are written with a `u` suffix so the literals are unsigned; a signed literal would be a mistake in the top mask for a wider type. The loop version starts `result` at zero and shifts it left every iteration, so after thirty-two steps the first bit read has moved to the last position. And the `u64` composition is correct only because `reverseBits32` is a true 32-bit reversal, not a partial one.
+Edge cases. Every shift is below the width, so nothing is undefined. The `u` suffix keeps the masks unsigned; a signed top mask would be a mistake. The loop shifts `result` left each step, so after thirty-two steps the first bit read is last. The `u64` composition needs a true 32-bit reversal.
 
-Variation. Reverse all thirty-two bits of four bytes at once with a 256-entry lookup table that holds each byte reversed, then reorder the bytes: `table[(u8)x] << 24 | table[(u8)(x>>8)] << 16 | ...`. It is the same table-lookup trade the popcount example made, and it pays when you reverse millions of words.
+Variation. Reverse four bytes at once with a 256-entry table of reversed bytes, then reorder the bytes: `table[(u8)x] << 24 | table[(u8)(x>>8)] << 16 | ...`. It pays when reversing millions of words.
 
 32.12 Addition Without +, Using Bits
 
-The problem. Add two integers using only bitwise operations and shifts. It is an interview classic, and it is worth writing once because it makes the ripple-carry adder inside every CPU visible.
+The problem. Add two integers using only bitwise operations and shifts, making the ripple-carry adder inside every CPU visible.
 
-The intuition. Separate the two things an addition does. The sum of two bits ignoring carry is XOR: `0 ^ 0 = 0`, `0 ^ 1 = 1`, `1 ^ 1 = 0`. The carry out of a column is AND: it is one exactly when both bits are one. So XOR the operands to get the sum-without-carries, AND them and shift left one to get the carries, and then add *those* together, which is the same problem again, one position to the left. Repeat until there is no carry left. The carry walks up the word and stops.
+The intuition. Addition is XOR for the sum and AND for the carry. XOR the operands for the sum without carries, AND and shift left one for the carries, then add those, repeating until no carry remains. The carry walks up the word and stops.
 
-The approach. A loop that replaces `(a, b)` with `(a ^ b, (a & b) << 1)` until `b` is zero.
+The approach. Replace `(a, b)` with `(a ^ b, (a & b) << 1)` until `b` is zero.
 
 The implementation.
 
@@ -574,21 +574,21 @@ The implementation.
         return addBits(a, addBits(~b, 1u));   // a + (-b), two's complement
     }
 
-The subtraction is the two's-complement negation `-b = ~b + 1` fed back into the adder. If that looks like cheating, it is not: the whole point is that a CPU has one adder and derives subtraction from it exactly this way.
+Subtraction is the two's-complement negation `-b = ~b + 1` fed back into the adder; a CPU has one adder and derives subtraction exactly this way.
 
-Cost and notes. The loop runs once per carry propagation, so its worst case is the width of the word, adding `0xFFFFFFFF` to `1` walks the carry all the way across, making it O(width) iterations, each constant time. Real hardware does the same thing in parallel with a carry-lookahead circuit, but the serial version is the honest model, and it is what you would write in a puzzle or on a machine with no add instruction.
+Cost and notes. The loop runs once per carry propagation, worst case the word width: adding `0xFFFFFFFF` to `1` walks the carry across, O(width) iterations. Hardware uses a parallel carry-lookahead circuit, but this serial version is the honest model.
 
-Edge cases. The result is fixed-width addition: the carry out of the top bit is discarded, which is precisely the wraparound behaviour of the machine `+`, so `addBits(0xFFFFFFFF, 1)` is zero just as `0xFFFFFFFFu + 1u` is. The loop always terminates within the width, because each iteration moves the lowest set bit of `b` at least one position higher until it falls off the end. The version is written for unsigned types; on signed two's-complement values the bits are identical, but the arithmetic interpretation of the wraparound is the one from the chapter's introduction. And `subtractBits` relies on `~b` being the full-width complement, which it is for a fixed-width unsigned type.
+Edge cases. The carry out of the top bit is discarded, matching machine wraparound, so `addBits(0xFFFFFFFF, 1)` is zero. The loop terminates within the width because the lowest set bit of `b` moves higher each iteration. The version is for unsigned types; signed bits are identical but the arithmetic interpretation is two's complement. `subtractBits` needs a full-width `~b`.
 
-Variation. Write `multiplyBits(a, b)` as repeated shift-and-add: for each set bit of `b`, shift `a` left by that bit's position and feed it into `addBits`. It is O(width) additions and makes the connection between multiplication and the adder explicit. Then check that `subtractBits` matches `a - b` for a range of inputs.
+Variation. Write `multiplyBits(a, b)` as repeated shift-and-add: for each set bit of `b`, shift `a` left and feed it into `addBits`. Then check `subtractBits` against `a - b` over a range.
 
 32.13 Nim: The Game of XOR
 
-The problem. Nim is played with several piles of stones. On your turn you remove any positive number of stones from exactly one pile; whoever takes the last stone wins. Given the pile sizes, decide whether the first player can force a win, and if so which move to make. It is the cleanest example of a combinatorial game whose whole solution is one XOR.
+The problem. Nim has several piles of stones. On your turn remove any positive number from one pile; whoever takes the last stone wins. Decide whether the first player can force a win and which move to make. It is the cleanest game whose solution is one XOR.
 
-The intuition. Compute the XOR of every pile size; call it the nim-sum. The theorem, and it is short to see, is that a position is losing for the player about to move exactly when the nim-sum is zero. From a zero position, any move changes one pile and therefore makes the nim-sum nonzero. From any nonzero position there is a move that restores the nim-sum to zero: find a pile whose size is larger than its size XORed with the nim-sum and reduce it to exactly that value. So every nonzero position hands a zero position to the opponent, and the player who can always do that wins. The bit operation is the strategy.
+The intuition. The nim-sum is the XOR of all pile sizes. A position is losing exactly when the nim-sum is zero. From zero, any move makes it nonzero. From nonzero, reduce a pile larger than its size XORed with the nim-sum to that value, restoring zero. So every nonzero position hands a zero position to the opponent, and the player who can always do that wins.
 
-The approach. Reduce the pile sizes with XOR, then search for the pile that can be reduced to restore a zero nim-sum.
+The approach. XOR the pile sizes, then find the pile that can be reduced to restore a zero nim-sum.
 
 The implementation.
 
@@ -614,13 +614,13 @@ The implementation.
         return -1;                                // unreachable for a nonzero nim-sum
     }
 
-Check the move rule against the XOR identity. Leaving pile `i` at `target` means the new nim-sum is `nimSum ^ pile_i ^ target`, and with `target = pile_i ^ nimSum` that is `nimSum ^ pile_i ^ pile_i ^ nimSum = 0`. Requiring `target < pile_i` guarantees it is a legal reduction, and a nonzero nim-sum always has at least one such pile.
+Check the move rule: leaving pile `i` at `target` makes the new nim-sum `nimSum ^ pile_i ^ target`, which is zero when `target = pile_i ^ nimSum`. Requiring `target < pile_i` guarantees a legal reduction, and a nonzero nim-sum always has one such pile.
 
-Cost and notes. Both functions are O(n) and constant extra space: `nimWins` is a single XOR fold, and `nimWinningMove` adds one more pass to find the move. A game that a naïve search would explore with exponential minimax is decided by one pass over the piles. This is the recurring theme of the chapter, seen as a game: the right bit primitive turns a search into an arithmetic fact.
+Cost and notes. Both functions are O(n) with constant extra space: one XOR fold, plus one pass to find the move. A game that minimax would explore exponentially is decided by one pass over the piles.
 
-Edge cases. No piles is a loss for the player to move (there is nothing to take), and the nim-sum of nothing is zero, which agrees. A pile of zero contributes nothing and can never be the winning move, since no positive target is less than zero. `nimWinningMove` returns `-1` for both a losing position and the impossible "no pile found" case; for a nonzero nim-sum the second is unreachable, but returning the same sentinel for both is the kind of ambiguity the error-handling chapter warns about, so a production version would use an `Option<usize>` and reserve `None` for the genuine loss. The index is cast to `i32`, which is safe for any pile count a person will type.
+Edge cases. No piles is a loss, and the nim-sum of nothing is zero, which agrees. A zero pile can never be the winning move. `nimWinningMove` returns `-1` for both a loss and the impossible no-pile case; production code would use `Option<usize>` and reserve `None` for the genuine loss. The `i32` cast is safe for any realistic pile count.
 
-Variation. Solve misère Nim, where the player who takes the last stone loses. The strategy is identical except for one special case: when every pile has size one, the position is a win iff the number of piles is even, the reverse of the normal rule. Implement both and test them against the piles `(1, 1)`, `(1, 1, 1)`, and `(1, 2, 3)` to feel the difference.
+Variation. Solve misere Nim, where taking the last stone loses. The strategy is identical except when every pile has size one: then the position is a win iff the number of piles is even. Test both on `(1, 1)`, `(1, 1, 1)`, and `(1, 2, 3)`.
 
 32.14 Exercises
 

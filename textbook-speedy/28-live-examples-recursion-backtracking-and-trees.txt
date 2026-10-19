@@ -4,23 +4,23 @@ Live Examples: Recursion, Backtracking, and Trees
 
 The Problem That Contains Itself
 
-There is a family of problems that cannot be written as a straight line of steps. You cannot say "first do this, then this, then this, done." Instead the answer to the problem is built out of smaller answers to the same problem. How tall is this folder tree? Well, it is one plus the tallest of its children, and each child is a folder tree of its own. How many ways can you arrange these letters? Pick one for the front, and then the answer is however many ways you can arrange the ones that are left. Notice that both sentences use the phrase again. That is the whole idea: a problem that contains a smaller copy of itself.
+Some problems are not a straight line of steps: the answer is built out of smaller answers to the same problem. How tall is this folder tree? One plus the tallest child, and each child is a folder tree itself. How many ways to arrange these letters? Pick one for the front, then arrange the rest. That is the whole idea: a problem that contains a smaller copy of itself.
 
-This chapter is about that idea and its two best friends. The first is recursion, a function that calls itself to solve the smaller copy. The second is backtracking, which is what you do when the small copy can go wrong: you try a choice, walk down the path it opens, and if the path dead-ends you walk back and try a different choice. The third is trees, because a tree is the data structure that is literally defined in terms of itself, which makes it the natural home of recursion.
+This chapter covers that idea and two companions: recursion, a function that calls itself on the smaller copy; backtracking, where you try a choice, walk the path it opens, and if it dead-ends you walk back and try another; and trees, the data structure defined in terms of itself and so the natural home of recursion.
 
-If you have not read Chapter5's section on recursion, this is a good moment. That chapter gives the mechanics, the base case, the stack frame, tail calls, and this chapter is entirely about putting those mechanics to work on real problems. When a data shape has cases, we reach for the variants of Chapter13 and the Option and Result of Chapter15. When a search needs a stack or a queue, we reach for the collections of Chapter16.
+If you have not read Chapter5's section on recursion (base case, stack frame, tail calls), do so first. When a data shape has cases we use the variants of Chapter13 and the Option and Result of Chapter15; when a search needs a stack or queue we use the collections of Chapter16.
 
-There is a rhythm to every problem in this chapter, and it is the rhythm of problem-solving in general. First, get the answer by the dumbest means possible, the brute force, because a slow correct program is the best teacher. Then notice what that program wastes, and fix the waste. Then say, honestly, what the better program costs. Along the way, look at the edges: the empty list, the single element, the tree that is a straight line, the input that makes the search explode. An algorithm you have never broken is an algorithm you do not yet understand.
+Every problem here follows a rhythm: get the answer by brute force, notice what it wastes, fix the waste, state the better cost, and check the edges (empty list, single element, straight-line tree, input that makes the search explode). An algorithm you have never broken is one you do not yet understand.
 
-A note on the imports these examples use. The growable list is `import(lib) std::vec { Vec };`, the tree-node allocation is `import(lib) std::mman { alloc, dealloc };`, and where a problem needs to sort its candidates first it uses `import(lib) std::collections::sort { sortI32 };`. The string type `str` and the integer and boolean types are built in and need nothing. Each code block below assumes those imports are present, and each block is otherwise complete.
+A note on imports. The growable list is `import(lib) std::vec { Vec };`, tree-node allocation is `import(lib) std::mman { alloc, dealloc };`, and sorting candidates uses `import(lib) std::collections::sort { sortI32 };`. The string type `str` and the integer and boolean types are built in and need nothing. Each code block assumes those imports and is otherwise complete.
 
 28.1 The Anatomy of a Recursion: Factorial
 
-The problem. Given a non-negative integer n, compute n! ("n factorial"), which is the product of every integer from 1 to n. By convention, 0! is 1.
+The problem. Given a non-negative integer n, compute n! ("n factorial"), the product of 1 through n. By convention, 0! is 1.
 
-Picture this. You are stacking boxes. To know how many ways you can line up n boxes, you put any one of the n boxes at the front, and then the question becomes how many ways you can line up the n−1 boxes that remain. That "and then the same question with fewer boxes" is exactly what a recursive function does. But you must know when to stop, or you will stack boxes forever. The floor is the case of zero boxes: there is exactly one way to arrange nothing, namely doing nothing at all.
+Picture this. To line up n boxes, put any one at the front, then line up the remaining n−1. A recursive function asks the same question with fewer boxes, but must know when to stop: there is exactly one way to arrange zero boxes, doing nothing.
 
-Brute force, then better. The brute-force version is the plain loop:
+Brute force, then better. The brute-force version is a plain loop:
 
     u64 factLoop(u64 n) {
         // start the running product at the multiplicative identity
@@ -32,7 +32,7 @@ Brute force, then better. The brute-force version is the plain loop:
         return result;
     }
 
-That is correct and it does not use the stack at all, which, as we will see, makes it the better of the two for this particular problem. But the loop hides the definition. The recursive version says the definition out loud: n! is n times (n−1)!.
+That is correct, uses no stack, and is the better version here, but the loop hides the definition: n! is n times (n−1)!.
 
     u64 fact(u64 n) {
         // base case: 0! and 1! are both 1, stop here
