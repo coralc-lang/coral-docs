@@ -506,7 +506,7 @@ def shell(root, title_tag, page_title, kicker_html, lead_html, body_html, prev, 
       <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
     </a>
     <nav class="topnav" aria-label="Main navigation">
-      <a href="{root}textbook/index.html">Book contents</a><a href="{root}coral-docs/index.html">Coral Docs</a>
+      <a href="{root}textbook/index.html">Book contents</a><a href="{root}coral-docs/index.html">Coral Docs</a><a href="{root}coral-docs/getting-started/index.html">Install</a>
     </nav>
   </header>
   <main class="content">
@@ -692,7 +692,7 @@ def main():
       <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
     </a>
     <nav class="topnav" aria-label="Main navigation">
-      <a href="../coral-docs/index.html">Coral Docs</a><a href="../coral-docs/tooling/index.html">Tooling</a><a href="./index.html" aria-current="page">Textbook</a>
+      <a href="../coral-docs/index.html">Coral Docs</a><a href="../coral-docs/getting-started/index.html">Install</a><a href="../coral-docs/tooling/index.html">Tooling</a><a href="./index.html" aria-current="page">Textbook</a>
     </nav>
   </header>
   <main class="content">
@@ -764,6 +764,7 @@ def main():
         f"{BASE_URL}/",
         f"{BASE_URL}/textbook/",
         f"{BASE_URL}/coral-docs/",
+        f"{BASE_URL}/coral-docs/getting-started/",
         f"{BASE_URL}/coral-docs/language/",
         f"{BASE_URL}/coral-docs/tooling/",
     ]

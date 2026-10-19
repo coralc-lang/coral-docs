@@ -4,6 +4,28 @@ Static website prototype for Coral's current documentation and the separate Cora
 Textbook project. The book landing page is `textbook/index.html`; individual lessons
 live in numbered chapter folders. The previous site-root `index.html` was removed.
 
+## Install the compiler
+
+The compiler is `coralc`, installed with one command per platform.
+
+Linux — needs `git`, `make`, and a C compiler (`cc`):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/coralc-lang/coralc/main/install.sh | sh
+```
+
+Windows (PowerShell) — needs `git` and `gcc` (w64devkit or mingw-w64); `make` is
+used when present:
+
+```powershell
+irm https://raw.githubusercontent.com/coralc-lang/coralc/main/install.ps1 | iex
+```
+
+Both install to `~/.coral/bin` + `~/.coral/lib` (`%USERPROFILE%\.coral\bin` on
+Windows) and add `bin` to `PATH`; restart the shell afterwards. Override with
+`CORAL_HOME=...` / `--prefix` (or `-Prefix`). The site page is
+`coral-docs/getting-started/index.html`.
+
 ## Folder map
 
 ```text
