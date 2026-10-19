@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Appendix E · Collections from the Coral Book." />
+  <meta name="robots" content="index, follow" />
+  <title>Appendix E · Collections | The Coral Book</title>
+  <link rel="canonical" href="https://coralc-lang.github.io/coral-docs/lengthy/appendix-e-collections/index.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Appendix E · Collections | The Coral Book" />
+  <meta property="og:description" content="Appendix E · Collections from the Coral Book." />
+  <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/lengthy/appendix-e-collections/index.html" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="stylesheet" href="../../lengthy/book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../../textbook/index.html">Editions</a><a href="../../lengthy/index.html">Lengthy</a><a href="../../speed/index.html">Speed</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Reference</p>
+      <h1>Appendix E · Collections</h1>
+      
+      <p>Appendix E, Collections</p>
+<p>This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A, A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.</p>
+<hr />
+<section><h2 id="std-collections">std::collections</h2></section>
+<p>Imported via <code>std::collections</code>. <code>Vec&lt;T&gt;</code> is also re-exported as <code>std::vec</code> and prelude-imported; <code>Arr&lt;T, N&gt;</code> as <code>std::arr</code>.</p>
+<h3 id="7-std-collections-arr-arr-t-n">7. <code>std::collections::arr</code>, <code>Arr&lt;T, N&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Arr&lt;T, N&gt;
+{
+    T data[N];
+
+    #[[inline]] T*       ptr()
+    #[[inline]] const T* constPtr()
+    #[[inline]] usize    count()          // == N
+    bool        isEmpty()
+    T           at(usize i)
+    void        set(usize i, T val)
+    T*          atPtr(usize i)
+    T           front()
+    T           back()
+    void        fill(T val)
+    void        copyTo(T* dst)
+    void        copyFrom(const T* src)
+}</code></pre>
+<h3 id="8-std-collections-vec-vec-t-aka-std-vec">8. <code>std::collections::vec</code>, <code>Vec&lt;T&gt;</code> (aka <code>std::vec</code>)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec&lt;T&gt;
+{
+    T* data;
+    usize len;
+    usize cap;
+
+    static Vec&lt;T&gt; new()
+    static Vec&lt;T&gt; withCap(usize capacity)
+    void   reserve(usize newCap)
+    void   reserveExact(usize newCap)
+    void   push(T val)
+    T      pop()
+    usize  count()
+    T*     atPtr(usize i)
+    const T* atConst(usize i)
+    T      at(usize i)
+    T*     ptr()
+    bool   isEmpty()
+    const T* constPtr()
+    void   set(usize i, T val)
+    T      front()
+    T      back()
+    void   insert(usize i, T val)
+    void   removeAt(usize i)
+    void   removeRange(usize start, usize end)
+    bool   contains(T val)
+    void   fill(T val)
+    void   shrinkToFit()
+    void   clear()
+    void   reverse()
+    bool   isSortedBy(bool(T, T) less)
+    void   sortBy(bool(T, T) less)
+    i64    binarySearchBy(T key, i32(T, T) cmp)
+    void   dispose()
+}
+// helper: void _sortByRange(usize lo, usize hi, bool(T, T) less)
+//         usize _partitionBy(usize lo, usize hi, bool(T, T) less)
+pub extend&lt;T&gt; Vec&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="9-std-collections-bitset-bitset">9. <code>std::collections::bitset</code>, <code>Bitset</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Bitset
+{
+    u64* words;
+    u64  numBits;
+    u64  numWords;
+
+    static Bitset new(u64 numBits)
+    void dispose()
+    u64  count()          // numBits
+    u64  wordCount()
+    void set(u64 bit)
+    void clear(u64 bit)
+    void toggle(u64 bit)
+    bool test(u64 bit)
+    void setAll()
+    void clearAll()
+    u64  countOnes()
+    u64  countZeros()
+    bool hasAny()
+    bool none()
+    bool all()
+    void and(Bitset* other)
+    void or(Bitset* other)
+    void xor(Bitset* other)
+    void not()
+    void _maskPadding()
+}
+pub extend Bitset : @drop { void drop(); }</code></pre>
+<h3 id="10-std-collections-cache-lru-cache-k-v">10. <code>std::collections::cache</code>, LRU <code>Cache&lt;K, V&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct CacheEntry&lt;K, V&gt;
+{
+    K key;
+    V value;
+    CacheEntry&lt;K, V&gt;* prev;
+    CacheEntry&lt;K, V&gt;* next;
+}
+
+pub struct Cache&lt;K, V&gt;
+{
+    HashMap&lt;K, CacheEntry&lt;K, V&gt;*&gt; map;
+    CacheEntry&lt;K, V&gt;* head;
+    CacheEntry&lt;K, V&gt;* tail;
+    usize maxSize;
+    usize(K) hashFn;
+    bool(K, K) eqFn;
+
+    static Cache&lt;K, V&gt; new(usize max, usize(K) hf, bool(K, K) ef)
+    void   dispose()
+    usize  count()
+    usize  maxSizeValue()
+    Result&lt;V, CollectionError&gt; insert(K key, V value)
+    Option&lt;V&gt;  get(K key)
+    Option&lt;V*&gt; getPtr(K key)
+    bool   contains(K key)
+    void   remove(K key)
+    void   clear()
+    void   each(void(K, V) fn)
+    void   resize(usize newMax)
+    // helper: void _moveToFront(CacheEntry&lt;K, V&gt;* entry); void _evict();
+}
+pub extend&lt;K, V&gt; Cache&lt;K, V&gt; : @drop { void drop(); }</code></pre>
+<h3 id="11-std-collections-deque-deque-t">11. <code>std::collections::deque</code>, <code>Deque&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Deque&lt;T&gt;
+{
+    T* data;
+    usize head;
+    usize tail;
+    usize cap;
+    usize mask;
+
+    static Deque&lt;T&gt; new()
+    void   dispose()
+    usize  count()
+    bool   isEmpty()
+    usize  capacity()
+    void   pushFront(T val)
+    void   pushBack(T val)
+    T      popFront()
+    T      popBack()
+    T      front()
+    T      back()
+    T      at(usize i)
+    void   set(usize i, T val)
+    void   clear()
+    void   _grow()
+}
+pub extend&lt;T&gt; Deque&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="12-std-collections-hashmap-hashmap-k-v">12. <code>std::collections::hashmap</code>, <code>HashMap&lt;K, V&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant CollectionError { AllocFailed { str msg; } }
+
+pub struct HashMapEntry&lt;K, V&gt;
+{
+    K key;
+    V value;
+    bool occupied;
+}
+
+pub struct HashMap&lt;K, V&gt;
+{
+    HashMapEntry&lt;K, V&gt;* entries;
+    usize cap;
+    usize len;
+    usize(K) hashFn;
+    bool(K, K) eqFn;
+
+    static HashMap&lt;K, V&gt; new(usize(K) hf, bool(K, K) ef)
+    void   dispose()
+    usize  count()
+    Result&lt;V, CollectionError&gt; insert(K key, V value)
+    Option&lt;V&gt;   get(K key)
+    bool        contains(K key)
+    Option&lt;V*&gt;  getPtr(K key)
+    void        remove(K key)
+    Option&lt;HashMapEntry&lt;K, V&gt;&gt; removeEntry(K key)   // backward-shift deletion
+    void        clear()
+    Vec&lt;K&gt;      keys()
+    Vec&lt;V&gt;      values()
+    void        each(void(K, V) fn)
+    void        eachEntry(void(HashMapEntry&lt;K, V&gt;*) fn)
+}
+pub extend&lt;K, V&gt; HashMap&lt;K, V&gt; : @drop { void drop(); }</code></pre>
+<h3 id="13-std-collections-iter-generic-iteratio">13. <code>std::collections::iter</code>, Generic iteration helpers</h3>
+<p>Free functions over <code>Vec&lt;T&gt;</code>.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Vec&lt;U&gt; map&lt;T, U&gt;(const Vec&lt;T&gt;* v, U(T) fn)
+pub Vec&lt;T&gt; filter&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub T      reduce&lt;T&gt;(const Vec&lt;T&gt;* v, T init, T(T, T) fn)
+pub void   forEach&lt;T&gt;(const Vec&lt;T&gt;* v, void(T) fn)
+pub T      find&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub isize  findIndex&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub bool   hasAny&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub bool   all&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub Vec&lt;T&gt; take&lt;T&gt;(const Vec&lt;T&gt;* v, usize n)
+pub Vec&lt;T&gt; skip&lt;T&gt;(const Vec&lt;T&gt;* v, usize n)
+pub Vec&lt;T&gt; slice&lt;T&gt;(const Vec&lt;T&gt;* v, usize start, usize end)
+pub usize  countIf&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub T      minBy&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T, T) less)
+pub T      maxBy&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T, T) less)
+pub Vec&lt;T&gt; unique&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T, T) eq)
+pub Vec&lt;T&gt; flatten&lt;T&gt;(const Vec&lt;Vec&lt;T&gt;&gt;* v)
+pub Vec&lt;usize&gt; enumerate&lt;T&gt;(const Vec&lt;T&gt;* v)
+pub T      sum&lt;T&gt;(const Vec&lt;T&gt;* v)
+pub f64    average(const Vec&lt;f64&gt;* v)
+
+pub struct Pair&lt;T, U&gt; { T first; U second; }
+pub Vec&lt;Pair&lt;T, U&gt;&gt; zip&lt;T, U&gt;(const Vec&lt;T&gt;* a, const Vec&lt;U&gt;* b)</code></pre>
+<h3 id="14-std-collections-linkedlist-linkedlist">14. <code>std::collections::linkedlist</code>, <code>LinkedList&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct ListNode&lt;T&gt;
+{
+    T value;
+    ListNode&lt;T&gt;* prev;
+    ListNode&lt;T&gt;* next;
+}
+
+pub struct LinkedList&lt;T&gt;
+{
+    ListNode&lt;T&gt;* head;
+    ListNode&lt;T&gt;* tail;
+    usize len;
+
+    static LinkedList&lt;T&gt; new()
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  pushFront(T val)
+    void  pushBack(T val)
+    T     popFront()
+    T     popBack()
+    T     front()
+    T     back()
+    void  insertAfter(ListNode&lt;T&gt;* node, T val)
+    void  remove(ListNode&lt;T&gt;* node)
+    void  each(void(T) fn)
+}
+pub extend&lt;T&gt; LinkedList&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="15-std-collections-map-ordered-avl-map-k">15. <code>std::collections::map</code>, Ordered AVL <code>Map&lt;K, V&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant CollectionError { AllocFailed { str msg; } }
+
+pub struct MapEntry&lt;K, V&gt;
+{
+    K key;
+    V value;
+    i32 height;
+    MapEntry&lt;K, V&gt;* left;
+    MapEntry&lt;K, V&gt;* right;
+}
+
+pub struct Map&lt;K, V&gt;
+{
+    MapEntry&lt;K, V&gt;* root;
+    usize len;
+    i32(K, K) cmpFn;
+    bool failed;
+
+    static Map&lt;K, V&gt; new(i32(K, K) cmp)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    Result&lt;V, CollectionError&gt; insert(K key, V value)
+    Option&lt;V&gt;  get(K key)
+    Option&lt;V*&gt; getPtr(K key)
+    bool  contains(K key)
+    void  remove(K key)
+    void  clear()
+    void  each(void(K, V) fn)
+    // helpers: _max _height _balance _rotateRight _rotateLeft _insert
+    //          _findMin _remove _find _eachInOrder _disposeNode
+}
+pub extend&lt;K, V&gt; Map&lt;K, V&gt; : @drop { void drop(); }</code></pre>
+<h3 id="16-std-collections-priorityqueue-priorit">16. <code>std::collections::priorityqueue</code>, <code>PriorityQueue&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct PriorityQueue&lt;T&gt;
+{
+    T* data;
+    usize len;
+    usize cap;
+    bool(T, T) less;      // constructor takes `cmp`
+
+    static PriorityQueue&lt;T&gt; new(bool(T, T) cmp)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  push(T val)
+    T     pop()
+    T     peek()
+    void  clear()
+    // helpers: _grow _siftUp _siftDown
+}
+pub extend&lt;T&gt; PriorityQueue&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="17-std-collections-queue-fifo-queue-t">17. <code>std::collections::queue</code>, FIFO <code>Queue&lt;T&gt;</code></h3>
+<p>Wraps <code>Deque&lt;T&gt;</code>.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Queue&lt;T&gt;
+{
+    deque::Deque&lt;T&gt; inner;
+
+    static Queue&lt;T&gt; new()
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  enqueue(T val)
+    T     dequeue()
+    T     peek()
+    void  clear()
+}
+pub extend&lt;T&gt; Queue&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="18-std-collections-ringbuf-ringbuf-t">18. <code>std::collections::ringbuf</code>, <code>RingBuf&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct RingBuf&lt;T&gt;
+{
+    T* data;
+    usize cap;
+    usize head;
+    usize tail;
+    bool full;
+
+    static RingBuf&lt;T&gt; new(usize capacity)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    bool  isFull()
+    usize capacity()
+    void  push(T val)
+    T     pop()
+    T     front()
+    T     back()
+    T     at(usize i)
+    void  clear()
+}
+pub extend&lt;T&gt; RingBuf&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="19-std-collections-set-set-t">19. <code>std::collections::set</code>, <code>Set&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Set&lt;T&gt;
+{
+    HashMap&lt;T, bool&gt; inner;
+    usize(T) hashFn;
+    bool(T, T) eqFn;
+
+    static Set&lt;T&gt; new(usize(T) hf, bool(T, T) ef)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  insert(T val)
+    bool  contains(T val)
+    void  remove(T val)
+    void  clear()
+    Vec&lt;T&gt; toVec()
+    void  each(void(T) fn)
+    Set&lt;T&gt; union(const Set&lt;T&gt;* other)
+    Set&lt;T&gt; intersection(const Set&lt;T&gt;* other)
+    Set&lt;T&gt; difference(const Set&lt;T&gt;* other)
+    bool  isSubset(const Set&lt;T&gt;* other)
+    bool  isSuperset(const Set&lt;T&gt;* other)
+}
+pub extend&lt;T&gt; Set&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="20-std-collections-sort-sorting-and-sear">20. <code>std::collections::sort</code>, Sorting and searching</h3>
+<p>Free functions; <code>*Range</code>/<code>partition*</code> variants are internal helpers.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void  sortI32(Vec&lt;i32&gt;* v)
+pub void  sortusize(Vec&lt;usize&gt;* v)
+pub void  sortF64(Vec&lt;f64&gt;* v)
+pub void  sortBy&lt;T&gt;(Vec&lt;T&gt;* v, bool(T, T) less)
+pub bool  isSortedI32(const Vec&lt;i32&gt;* v)
+pub bool  isSortedusize(const Vec&lt;usize&gt;* v)
+pub bool  isSortedBy&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T, T) less)
+pub isize binarySearchI32(const Vec&lt;i32&gt;* v, i32 key)
+pub isize binarySearchusize(const Vec&lt;usize&gt;* v, usize key)
+pub isize binarySearchBy&lt;T&gt;(const Vec&lt;T&gt;* v, T key, i32(T, T) cmp)
+pub void  reverse&lt;T&gt;(Vec&lt;T&gt;* v)</code></pre>
+<h3 id="21-std-collections-tree-tree-t-n-ary">21. <code>std::collections::tree</code>, <code>Tree&lt;T&gt;</code> (n-ary)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct TreeNode&lt;T&gt;
+{
+    T value;
+    Vec&lt;TreeNode&lt;T&gt;*&gt; children;
+}
+
+pub struct Tree&lt;T&gt;
+{
+    TreeNode&lt;T&gt;* root;
+
+    static Tree&lt;T&gt; new()
+    void dispose()
+    bool isEmpty()
+    TreeNode&lt;T&gt;* setRoot(T val)
+    TreeNode&lt;T&gt;* addChild(TreeNode&lt;T&gt;* parent, T val)
+    usize childCount(TreeNode&lt;T&gt;* node)
+    Option&lt;TreeNode&lt;T&gt;*&gt; childAt(TreeNode&lt;T&gt;* node, usize idx)
+    void removeChild(TreeNode&lt;T&gt;* parent, usize idx)
+    void preOrder(void(T) fn)
+    void postOrder(void(T) fn)
+    usize depth(TreeNode&lt;T&gt;* node)
+    usize size()
+    Vec&lt;T&gt; toVec()
+    // helpers: _disposeNode _preOrder _postOrder _count _toVec
+}
+pub extend&lt;T&gt; Tree&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="22-std-collections-trie-trie-byte-keyed">22. <code>std::collections::trie</code>, <code>Trie</code> (byte-keyed)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const u32 TRIE_FANOUT = 256;
+
+pub struct TrieNode
+{
+    TrieNode* children[TRIE_FANOUT];
+    bool isEnd;
+}
+
+pub struct Trie
+{
+    TrieNode* root;
+    usize count;
+
+    static Trie new()
+    void dispose()
+    usize size()
+    bool  isEmpty()
+    void  insert(str key)
+    bool  contains(str key)
+    bool  startsWith(str prefix)
+    bool  remove(str key)
+    void  each(void(str) fn)
+    // helpers: _disposeNode _remove _maxDepth _each
+}
+pub extend Trie : @drop { void drop(); }</code></pre>
+<h3 id="23-std-collections-unordered-map-unorder">23. <code>std::collections::unordered_map</code>, <code>UnorderedMap&lt;K, V&gt;</code></h3>
+<p>Thin wrapper over <code>HashMap&lt;K, V&gt;</code>.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct UnorderedMap&lt;K, V&gt;
+{
+    HashMap&lt;K, V&gt; inner;
+
+    static UnorderedMap&lt;K, V&gt; new(usize(K) hf, bool(K, K) ef)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    Result&lt;V, CollectionError&gt; insert(K key, V value)
+    Option&lt;V&gt;   get(K key)
+    Option&lt;V*&gt;  getPtr(K key)
+    bool        contains(K key)
+    void        remove(K key)
+    void        clear()
+    Vec&lt;K&gt;      keys()
+    Vec&lt;V&gt;      values()
+    void        each(void(K, V) fn)
+}
+pub extend&lt;K, V&gt; UnorderedMap&lt;K, V&gt; : @drop { void drop(); }</code></pre>
+      <nav class="chapter-nav"><a href="../../lengthy/appendix-d-prelude-core-and-platform/index.html">← Previous</a><a href="../../lengthy/appendix-f-text-data-time-and-formatting/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

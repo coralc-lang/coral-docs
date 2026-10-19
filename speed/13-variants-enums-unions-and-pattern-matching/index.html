@@ -12,7 +12,7 @@
   <meta property="og:description" content="The Shape of &quot;One of Several Things&quot;" />
   <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/speed/13-variants-enums-unions-and-pattern-matching/index.html" />
   <meta name="twitter:card" content="summary" />
-  <link rel="stylesheet" href="../../textbook/book.css" />
+  <link rel="stylesheet" href="../../lengthy/book.css" />
   <script src="../../assets/js/script.js" defer></script>
 </head>
 <body>
@@ -21,7 +21,7 @@
       <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">speed edition</span></span>
     </a>
     <nav class="topnav" aria-label="Main navigation">
-      <a href="../../speed/index.html">Speed contents</a><a href="../../textbook/index.html">Lengthy edition</a><a href="../../coral-docs/index.html">Coral Docs</a>
+      <a href="../../speed/index.html">Speed contents</a><a href="../../lengthy/index.html">Lengthy edition</a><a href="../../coral-docs/index.html">Coral Docs</a>
     </nav>
   </header>
   <main class="content">
@@ -29,35 +29,33 @@
       <p class="chapter-kicker">Speed Edition · Chapter 13</p>
       <h1>Variants, Enums, Unions, and Pattern Matching</h1>
       <p class="lead">The Shape of "One of Several Things"</p>
-      <p>Imagine you are building a program that talks to a payment system. A payment, it turns out, is never just "a payment." It is a card payment, or a bank transfer, or a gift card, or maybe a refund. Each of those carries different information. A card payment has a card number and an expiry. A bank transfer has an account number and a routing code. A gift card has a code and a remaining balance. A refund points back at the original payment it is undoing.</p>
-<p>Here is the trouble. You want to write code that handles a payment. But which payment? A card payment and a bank transfer do not even have the same fields. If you give them all the same struct, half the fields are meaningless for any given value, the route number sits empty on every card payment, the card number sits empty on every transfer, and nothing stops a careless line of code from reading the empty one. This is the single most common modelling problem in programming: a value that is one of several different things, where each thing has its own data.</p>
-<p>Coral gives you three different tools for this problem, and they are not interchangeable variants of the same idea. They are genuinely different, and choosing among them is a statement about how much the compiler is allowed to know and how much safety you want.</p>
-<p>They are:</p>
+      <p>A payment is a card payment, a bank transfer, a gift card, or a refund, each carrying different data: card number and expiry, account and routing code, code and balance, or a pointer to the original payment.</p>
+<p>Giving them all the same struct leaves half the fields meaningless for any value, and nothing stops code reading an empty one. This is the most common modelling problem: a value that is one of several things, each with its own data.</p>
+<p>Coral has three non-interchangeable tools, differing in how much the compiler may know:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">enum     a closed, named set of integers, with no extra data attached
 variant  a &quot;tagged union&quot;, one of several cases, each carrying its own data
 union    a raw, unsafe overlapping of storage, with no tag at all</code></pre>
-<p>Read that table again slowly, because the rest of the chapter unpacks it. An enum is a label. A variant is a label plus cargo. A union is no label at all, just a spot on the floor where different things take turns standing.</p>
-<p>Let us start with the simplest one, the one you have probably already wanted without having a name for it.</p>
+<p>An enum is a label. A variant is a label plus cargo. A union is no label at all, just a spot where different things take turns standing.</p>
 <section><h2 id="s13-1">Plain Enums: Giving Integers Names</h2></section>
-<p>Think about a traffic light. It can be red, yellow, or green. Nothing else. There is no fourth colour, no "slightly red," no empty state. If you were writing this in C, you would probably do one of two things, and both of them are quietly dangerous.</p>
-<p>The first is to use raw integers, with a comment pretending they are names:</p>
+<p>A traffic light can be red, yellow, or green, nothing else. In C you would use raw integers with a comment, or constants. Both are quietly dangerous.</p>
+<p>The first is raw integers pretending to be names:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 light = 0;      // 0 = red, 1 = yellow, 2 = green
 ...
 if (light == 3)     // oops, there is no 3, but this compiles</code></pre>
-<p>The comment is not a type. Nothing stops the 3. Nothing stops a function from returning 17 because a branch went wrong. The comment is a wish, and the compiler does not read wishes.</p>
-<p>The second is to define constants:</p>
+<p>The comment is not a type: nothing stops the <code>3</code> or a function returning <code>17</code>. The compiler does not read wishes.</p>
+<p>The second is constants:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const i32 RED = 0;
 const i32 YELLOW = 1;
 const i32 GREEN = 2;</code></pre>
-<p>This is better, at least the names exist, but it changes nothing about the checking the type system provides. A constant is a name for a number; it is not a distinct type. You can still assign 3 to a variable meant to hold a light, and you can still pass a light where an age is expected, because both are just i32 underneath.</p>
-<p>An enum fixes both problems at once. It creates a genuinely new type, and it lists, once and for all, the only values it can hold:</p>
+<p>Better, but constants add no type checking. A constant is a name for a number, not a distinct type: you can still assign <code>3</code> to a light, or pass a light where an age is expected.</p>
+<p>An enum creates a genuinely new type and lists the only values it can hold:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">enum TrafficLight {
     Red,
     Green,
     Yellow,
 }</code></pre>
-<p>Notice three things about this. First, TrafficLight is now a type, as real as i32, and a value of one type cannot be silently used where another is expected, a TrafficLight is not an i32 and an i32 is not a TrafficLight. Second, there are exactly three legal values, and the compiler knows all three. Third, and this is the part that pays off later, the compiler can now reason about sets of lights. When you write a switch over a TrafficLight, the compiler can check whether you have covered every case, because it knows the complete list.</p>
-<p>You write an enum value with two colons:</p>
+<p>Three consequences. <code>TrafficLight</code> is a real type, so a <code>TrafficLight</code> is not an <code>i32</code> and vice versa. There are exactly three legal values. And the compiler knows the complete list, so it can check whether a <code>switch</code> covers every case.</p>
+<p>Write an enum value with two colons:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">TrafficLight light = TrafficLight::Red;
 
 if (light == TrafficLight::Red) {
@@ -67,18 +65,17 @@ if (light == TrafficLight::Red) {
 } else {
     slowDown();
 }</code></pre>
-<p>The double colon :: is just "the case Red of the type TrafficLight." It is how you reach inside a named set.</p>
-<p>In plain words, <code>TrafficLight::Red</code> reads as "the <code>Red</code> member of the <code>TrafficLight</code> family." The double colon is the same operator that reaches into a module (<code>std::io</code>) or a type's static method (<code>Vec::new</code>); the left side is the container, and the right side is the item inside it.</p>
-<p>Why this matters: the moment a value's legal choices have names, the compiler can hold you to them. A function that takes a <code>TrafficLight</code> can never be handed a stray <code>3</code>, and a switch over it can be checked for completeness. The enum converts a fact that used to live only in a comment, "these are the only three lights", into something the compiler reads and enforces.</p>
+<p>The double colon <code>::</code> means "the case <code>Red</code> of the type <code>TrafficLight</code>." The left side is the container, the right side the item inside it, as with a module (<code>std::io</code>) or a static method (<code>Vec::new</code>).</p>
+<p>Enums let the compiler enforce a value's legal choices: a function taking a <code>TrafficLight</code> can never receive a stray <code>3</code>, and a switch over it can be checked for completeness. A fact that used to live in a comment becomes something the compiler enforces.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (light) {
     TrafficLight::Red    =&gt; stop(),
     TrafficLight::Green  =&gt; go(),
     TrafficLight::Yellow =&gt; slowDown(),
 }</code></pre>
-<p>Three arms, no <code>else</code>, and the compiler is satisfied because all three lights are covered. Add a fourth light tomorrow and this switch stops building until the new case is handled.</p>
+<p>Three arms, no <code>else</code>, and the compiler is satisfied because all three lights are covered. Add a fourth light and this switch stops building until the new case is handled.</p>
 <p>A Layer Behind: the actual integers</p>
-<p>Now, here is the "hold on a moment" part. Underneath, an enum really is an integer. Red is 0, Green is 1, Yellow is 2. The compiler picks the numbering for you, starting at zero and counting up in the order you wrote the cases. Most of the time you should not care and should not rely on which number is which, the whole point of the enum is that you refer to it by name, not by number.</p>
-<p>But sometimes the number matters, and when it does, the language lets you say so. Consider file types coming out of an operating system, where the numbers are fixed by the system and are not sequential:</p>
+<p>Underneath, an enum is an integer: Red is 0, Green is 1, Yellow is 2. The compiler numbers cases from zero in declaration order. Normally do not rely on the numbers; the point is to refer to cases by name.</p>
+<p>When the number matters, say so. File types from an operating system have fixed, non-sequential numbers:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">enum FileType : u8 {
     Unknown   = 0,
     Regular   = 1,
@@ -86,14 +83,14 @@ if (light == TrafficLight::Red) {
     Symlink   = 7,
     Socket    = 12,
 }</code></pre>
-<p>Two new pieces of syntax are doing work here. The <code>: u8</code> says the underlying storage is one byte, not the default four. That matters when this enum is a field in a struct and you care whether the struct is eight bytes or thirty-two, a FileType that occupies one byte instead of four can shrink a struct that holds several of them. And the <code>= N</code> on each case pins the numeric value, which is what you want when the numbers are dictated by something outside your program, such as an on-disk format or a system call.</p>
-<p>One rule covers the pins: a case with an explicit value takes it, and a case without one takes the previous case's value plus one. So in the example above, there is no case after Socket; if there were, and it had no <code>=</code>, it would be 13.</p>
-<p>A rule of thumb, then. Reach for an enum when you have a small, closed, unchangeable set of options with no extra data per option. Traffic lights, the days of a week, the states of a connection (Connecting, Open, Closing, Closed), the four suits of a card, the levels of a log (Debug, Info, Warn, Error, Fatal), the kinds of a token in a lexer. These are the values that want names, not numbers.</p>
-<p>And a warning worth putting in bold: never let a raw integer sneak into an enum-typed variable from the outside world without a check. If a byte arrives from a file or a socket and you cast it to a FileType, and the byte happens to be 5, you have manufactured an illegal FileType::5 that does not exist in your list, and every switch over FileType will behave as though the case were impossible. Coral treats the integer-to-enum direction as a checked conversion for exactly this reason. When a value comes from outside, you convert it deliberately and handle the "not one of mine" case, rather than trusting it. <a href="../23-diagnostics-and-the-error-catalogue/index.html">Chapter 23</a> lists the diagnostic that fires for the switch that forgot a case, which is the compiler side of the same concern.</p>
+<p>Two pieces of syntax: <code>: u8</code> sets the underlying storage to one byte instead of the default four, which matters when the enum is a field and struct size is at stake. <code>= N</code> pins a case's numeric value when the numbers are dictated by an external format or system call.</p>
+<p>The pinning rule: a case with an explicit value takes it; a case without one takes the previous value plus one. Here, a case after <code>Socket</code> with no <code>=</code>, would be 13.</p>
+<p>Reach for an enum for a small, closed, unchangeable set of options with no extra data: traffic lights, days of a week, connection states (Connecting, Open, Closing, Closed), card suits, log levels (Debug, Info, Warn, Error, Fatal), token kinds in a lexer.</p>
+<p>Never let a raw integer from outside sneak into an enum-typed variable unchecked. A byte of <code>5</code> cast to <code>FileType</code> manufactures an illegal case absent from your list, and every switch behaves as though it were impossible. Coral treats integer-to-enum as a checked conversion: convert deliberately and handle "not one of mine." <a href="../23-diagnostics-and-the-error-catalogue/index.html">Chapter 23</a> lists the diagnostic for a switch that forgot a case.</p>
 <section><h2 id="s13-2">Variants: When Each Case Carries Its Own Data</h2></section>
-<p>Enums are for options with nothing attached. Now suppose each option carries something, and different options carry different things. This is where you have, at some point in your life, really wanted something and did not have the tool for it.</p>
-<p>Picture a shape. You are writing a drawing program. A shape is a circle, or a rectangle, or a point. A circle has a radius. A rectangle has a width and a height. A point has nothing; it is just a location. You want a single variable, <code>shape</code>, that can be any of these, and you want to compute its area without ever accidentally reading a rectangle's width off a circle.</p>
-<p>You cannot use an enum here, because an enum cannot carry the radius. You could try to bolt the data on, storing a radius and a width and a height in the same struct and using a separate enum to say which fields are meaningful this time:</p>
+<p>Enums are for options with nothing attached. Now each option carries different things.</p>
+<p>Picture a drawing program. A shape is a circle with a radius, a rectangle with a width and height, or a point with nothing. You want one variable, <code>shape</code>, that can be any of these, and you want its area without accidentally reading a rectangle's width off a circle.</p>
+<p>An enum cannot carry the radius. You could bolt the data on with a kind field and all possible fields in one struct:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">enum ShapeKind { Circle, Rectangle, Point }
 
 struct Shape {
@@ -102,33 +99,33 @@ struct Shape {
     f64 width;      // only valid if kind == Rectangle
     f64 height;     // only valid if kind == Rectangle
 }</code></pre>
-<p>This is the C way, and it works, and it is a trap. The comment "only valid if kind == Circle" is again a wish. Nothing prevents code from reading shape.radius on a rectangle, and it will get zero, silently, and draw the wrong thing. The three fields and the kind are four pieces of data that must always agree with each other, and nothing in the language enforces the agreement. Every function that takes a Shape must remember the convention, and every new field added must be threaded through every place that touches a Shape.</p>
-<p>A variant removes the trap. It says, in one declaration, "a Shape is one of these cases, and each case brings its own fields into existence":</p>
+<p>This is the C way, and it is a trap. "Only valid if kind == Circle" is a wish: nothing prevents reading <code>shape.radius</code> on a rectangle, which silently yields zero and draws the wrong thing. The four pieces must always agree, nothing enforces it, and every new field must be threaded through every function touching <code>Shape</code>.</p>
+<p>A variant removes the trap. One declaration says a <code>Shape</code> is one of these cases, and each case brings its own fields into existence:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Shape {
     Circle { f64 radius; }
     Rectangle { f64 width; f64 height; }
     Point,
 }</code></pre>
-<p>The line that made you pause was this one: "a variant value is exactly one of its cases, and each case brings its own fields into existence." Let us take it apart with a concrete picture.</p>
-<p>Think of a job application form that can be for one of several roles. The form is the same piece of paper. But if you are applying to be a driver, it has a field for a licence number. If you are applying to be a chef, it has a field for a food-safety certificate. If you are applying to be a cashier, it has neither. The form is "one of several forms," and which fields it has depends on which role it is for. You cannot ask a driver-application for a food-safety certificate, because that field does not exist on that form.</p>
-<p>A variant value is exactly like that. When you make a Circle, the value contains a radius and does not contain a width or a height. When you make a Rectangle, it contains a width and a height and does not contain a radius. It is not that the other fields are there but empty; they are not there at all. The value is the shape of exactly one case, the one you chose. Underneath, the compiler stores a tiny hidden integer, the tag, that records which case this particular value is, plus enough room for the largest case's fields. When you later look at the value and ask "which case are you?", that tag is how the compiler answers, and it will not let you read the radius of something tagged Rectangle because, as far as the type system is concerned, that radius is not part of this value. This is the same idea as the labelled-box analogy: the box has a label on the outside, and inside it has exactly the cargo for that label and no other.</p>
-<p>Now the syntax. You build a variant value by naming the case and giving its fields:</p>
+<p>A variant value is exactly one of its cases, and each case brings its own fields into existence.</p>
+<p>Think of a job application form that can be for one of several roles. The paper is the same, but a driver application has a licence number, a chef application has a food-safety certificate, and a cashier application has neither. You cannot ask a driver application for a food-safety certificate because that field does not exist on that form.</p>
+<p>A <code>Circle</code> contains a radius and no width or height; a <code>Rectangle</code> contains width and height and no radius. The other fields are absent, not merely empty. Underneath, the compiler stores a hidden tag recording which case this is, plus room for the largest case's fields. It will not let you read the radius of something tagged <code>Rectangle</code>, because that radius is not part of this value. The box has a label outside and exactly the cargo for that label inside.</p>
+<p>Build a variant value by naming the case and giving its fields:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Shape a = Shape::Circle { .radius = 1.0 };
 Shape b = Shape::Rectangle { .width = 3.0, .height = 4.0 };
 Shape c = Shape::Point;</code></pre>
-<p>The <code>{ .radius = 1.0 }</code> is the same "designated field" syntax you would use to initialise a struct: name the field, <code>=</code>, give the value. A case with no fields is written as just the case name, <code>Shape::Point</code>, optionally with empty braces.</p>
-<p>A common beginner mistake is to leave off the case name and write just <code>{ .radius = 1.0 }</code>. That reads as a bare struct literal, not a <code>Shape</code> value: it carries no tag, so the compiler cannot tell which case it is and will refuse it where a <code>Shape</code> is expected. The case name <code>Shape::Circle</code> is what places the value in the right family.</p>
-<p>Here is the same model for a system that sends messages over a network. A message might be a login, a logout, or a piece of data. Each carries different things:</p>
+<p>The <code>{ .radius = 1.0 }</code> is the same designated-field syntax used to initialise a struct. A case with no fields is written as just <code>Shape::Point</code>, optionally with empty braces.</p>
+<p>A common mistake is leaving off the case name: <code>{ .radius = 1.0 }</code> reads as a bare struct literal with no tag, so the compiler cannot tell which case it is and refuses it where a <code>Shape</code> is expected. <code>Shape::Circle</code> places the value in the right family.</p>
+<p>The same model for network messages, where each case carries different things:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Message {
     Login  { str username; str password; }
     Logout { str reason; }
     Data   { u32 sequence; u8[] payload; }
     Ping,
 }</code></pre>
-<p>Every message is exactly one of those four. A Ping carries nothing. A Login carries a username and a password. You cannot send a message that is half Login and half Data. If you need a fifth kind of message later, you add a case, and, this is the payoff, every switch that handles messages will refuse to compile until it handles the new case too. We will see why in a moment.</p>
-<p>Simply put, a variant is a labelled box: the label on the outside says which case this is, and inside the box is exactly the cargo for that label and nothing else. A <code>Login</code> box holds a username and a password and has no room for a payload; a <code>Data</code> box holds a sequence number and a payload and no password. Because the label is part of the value, the compiler can always tell you which cargo is truly there, which is the difference between a variant and a bare union of the same bytes.</p>
+<p>Every message is exactly one of those four. <code>Ping</code> carries nothing; <code>Login</code> carries a username and password. You cannot send a message that is half <code>Login</code> and half <code>Data</code>. Adding a fifth kind makes every switch that handles messages refuse to compile until it handles the new case.</p>
+<p>A variant is a labelled box: the label says which case this is, and inside is exactly the cargo for that label. A <code>Login</code> box has no room for a payload; a <code>Data</code> box has no password. Because the label is part of the value, the compiler always knows which cargo is truly there, which is the difference between a variant and a bare union of the same bytes.</p>
 <p>The recursive example: JSON, and why it matters</p>
-<p>One class of variant deserves a long look, because it is where the feature stops being a convenience and becomes a way to model entire domains. A JSON document is a value that is one of: null, a boolean, a number, a string, an array of more JSON, or an object mapping strings to more JSON. Read that description again and notice that it is already a variant, and that two of its cases refer back to JSON itself:</p>
+<p>Recursive variants matter because they model entire domains. A JSON document is null, a boolean, a number, a string, an array of JSON, or an object mapping strings to JSON. Two cases refer back to JSON itself:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Json {
     Null,
     Bool   { bool value; }
@@ -137,8 +134,8 @@ Shape c = Shape::Point;</code></pre>
     Array  { Vec&lt;Json&gt; items; }
     Object { Map&lt;str, Json&gt; fields; }
 }</code></pre>
-<p>This is a tree whose shape is defined by the variant. An array of JSON holds more JSON, which might themselves be arrays, down as deep as the document goes. The type is self-referential, Json mentions Json, and the variant is what makes that expressible cleanly. If you have ever written a JSON parser in C, you know the alternative: a struct with a <code>type</code> field, a <code>void*</code> payload, and a pile of casts at every use site. The variant turns the casts into a language feature, and the compiler does the bookkeeping of which type the payload is. The standard library's <code>std::parser::json</code> module is built on precisely this declaration.</p>
-<p>Variants can have methods, just like structs, either written inline or in an extend block. Here is the shape example given an area method:</p>
+<p>This is a tree whose shape is defined by the variant. An array holds more JSON, which may themselves be arrays, as deep as the document goes. The type is self-referential, and the variant makes that expressible cleanly. In C you would use a struct with a <code>type</code> field, a <code>void*</code> payload, and casts at every use site. The variant turns the casts into a language feature and the compiler tracks the payload's type. <code>std::parser::json</code> is built on precisely this declaration.</p>
+<p>Variants can have methods, inline or in an extend block. The shape example with an area method:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Shape {
     f64 area() {
         switch (self) {
@@ -148,10 +145,10 @@ Shape c = Shape::Point;</code></pre>
         }
     }
 }</code></pre>
-<p>Inside <code>area</code>, <code>self</code> is the whole Shape value. The <code>switch</code> asks which case it is, and the pattern <code>Shape::Circle { radius }</code> both checks that it is a circle and binds the circle's radius to a local name <code>radius</code> that the arm's body can use. This <code>switch</code> is called pattern matching, and the second half of this chapter is dedicated to it, because it is how a variant is taken apart and it is the reason variants are pleasant rather than merely possible.</p>
+<p>Inside <code>area</code>, <code>self</code> is the whole <code>Shape</code>. The <code>switch</code> asks which case it is, and <code>Shape::Circle { radius }</code> checks that it is a circle and binds its radius to a local. This is pattern matching, the second half of the chapter, and it is why variants are pleasant rather than merely possible.</p>
 <section><h2 id="s13-3">Unions: Overlapping Storage, and Why You Rarely Want It</h2></section>
-<p>The third tool is the raw union, and it is worth understanding even though you will reach for it rarely, because it explains what a variant is not.</p>
-<p>Picture a single parking spot. On Monday a car is parked there. On Tuesday a motorcycle is parked there. On Wednesday a bicycle. The spot is one piece of pavement, but what occupies it changes, and the thing occupying it on a given day is the only valid thing to look at. If you walk up on Wednesday expecting a car, you are wrong, and the pavement does not stop you from measuring the bicycle as though it were a car.</p>
+<p>The raw union is worth understanding even though you will rarely use it, because it explains what a variant is not.</p>
+<p>Picture one parking spot. Monday a car, Tuesday a motorcycle, Wednesday a bicycle. The spot is one piece of pavement, but the occupant changes, and only the current occupant is valid to inspect. On Wednesday the pavement does not stop you from measuring the bicycle as though it were a car.</p>
 <p>A union is that parking spot. It overlaps its fields in the same bytes:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">union Bits {
     u32 whole;
@@ -163,26 +160,26 @@ Shape c = Shape::Point;</code></pre>
 Bits b;
 b.whole = 0x01020304;
 u8 low = b.bytes.b0;      // which byte is this? depends on your machine</code></pre>
-<p>Writing <code>b.whole</code> fills all four bytes with one number. Reading <code>b.bytes.b0</code> looks at the same four bytes as if they were four separate bytes. That is a type pun, reinterpreting the same memory as a different type, and it is occasionally exactly what you want, and most of the time it is exactly what you should not do. The critical difference from a variant is right there in the declaration: a union has no tag. There is no hidden integer recording which field you wrote. So when you read <code>b.bytes.b0</code>, nothing knows whether you last wrote <code>whole</code> or <code>bytes</code>; the language simply lets you read whatever bytes are there, reinterpreted. Get it wrong and you do not get an error; you get a number that looks plausible and is meaningless.</p>
-<p>So when is a union the right tool? Three honest jobs, and almost nothing else:</p>
+<p>Writing <code>b.whole</code> fills all four bytes; reading <code>b.bytes.b0</code> views them as four separate bytes. That is a type pun, and it is occasionally right and mostly wrong. The critical difference from a variant is in the declaration: a union has no tag, so nothing records which field you wrote. Reading <code>b.bytes.b0</code> after writing <code>whole</code> reinterprets whatever bytes are there. Get it wrong and you get no error, just a plausible, meaningless number.</p>
+<p>A union is right in three honest jobs, and almost nothing else:</p>
 <ul><li>Implementing a tagged union by hand at an ABI boundary where you genuinely cannot use Coral's variant (for instance, a C library's struct layout that you must match byte for byte).</li><li>Deliberate, endian-aware type punning, reading an integer as bytes or the reverse, in code that is explicitly about representation.</li><li>Laying out hardware registers or wire-protocol headers where fields are specified to share storage.</li></ul>
-<p>Every one of those is a case where you are dealing with bytes as bytes, and you know the rules of the underlying system. For everything else, for the ninety-nine cases out of a hundred, you want a variant. If you find yourself writing a union and an enum side by side, and a struct that holds both, and code that checks the enum before touching the union, stop: you have reimplemented a variant, worse, and you should have used a variant in the first place.</p>
-<p>If you do use a union, two habits keep it from being a footgun. First, hide it behind a function or a method that documents the invariant and the endianness assumptions, never let raw union access spread across a codebase. Second, keep it private. A union crossing a module boundary as a bare field is a promise no reader can verify; expose a typed accessor instead.</p>
-<p>Why this matters: unions are the tool of last resort, the one you reach for when you are matching a layout the outside world dictated, a C struct, a network header, a hardware register. Every other time, the variant gives you the same compact storage with a label the compiler can check. Using a union where a variant would do is like shipping a parcel with no address on it and hoping the courier guesses.</p>
-<p>One more thing about memory layout, because it comes up with unions and with structs across a program. By default the compiler is free to insert padding between fields and to leave gaps for alignment, and it may reorder fields for efficiency. For a union that must match an external layout, you pin the layout with attributes. <code>#[[packed]]</code> removes the padding so the bytes lie exactly where you put them; <code>#[[reorder]]</code> gives the compiler explicit permission to permute fields for a tighter fit. These are covered properly in <a href="../22-attributes-and-compile-time-metaprogramming/index.html">Chapter 22</a>, but know they exist, because the moment you care what the bytes look like, FFI, files, networks, you will need them.</p>
+<p>Each of those deals with bytes as bytes, with known system rules. Everything else, ninety-nine cases out of a hundred, wants a variant. If you find yourself writing a union and an enum side by side, a struct holding both, and code checking the enum before touching the union, stop: you have reimplemented a variant, worse.</p>
+<p>If you do use a union, two habits keep it safe. Hide it behind a function or method that documents the invariant and endianness assumptions; never let raw union access spread. Keep it private: a bare union field crossing a module boundary is a promise no reader can verify, so expose a typed accessor.</p>
+<p>Unions are the tool of last resort, for matching a layout the outside world dictated: a C struct, a network header, a hardware register. Otherwise a variant gives the same compact storage with a compiler-checked label. A union where a variant would do is a parcel with no address, hoping the courier guesses.</p>
+<p>By default the compiler may insert padding, leave alignment gaps, and reorder fields for efficiency. For a union that must match an external layout, pin the layout with attributes. <code>#[[packed]]</code> removes padding so bytes lie exactly where you put them; <code>#[[reorder]]</code> explicitly permits permutation for a tighter fit. <a href="../22-attributes-and-compile-time-metaprogramming/index.html">Chapter 22</a> covers these; you will need them whenever the bytes matter, as in FFI, files, and networks.</p>
 <section><h2 id="s13-4">Pattern Matching: switch as a Decision Procedure</h2></section>
-<p>We have been building values that are one of several things. Now we take them apart. The tool is <code>switch</code>, and in Coral it is both a statement and an expression, it can decide what to do, and it can compute a value.</p>
-<p>Here is the everyday shape. Suppose you have a command character typed by a user, and you want to do something different for each:</p>
+<p>We have built values that are one of several things. Now we take them apart with <code>switch</code>, which in Coral is both a statement and an expression: it can decide what to do and compute a value.</p>
+<p>Suppose a user types a command character and you want different behaviour for each:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (command) {
     &#x27;q&#x27; | &#x27;Q&#x27; =&gt; quit(),
     &#x27;h&#x27;      =&gt; help(),
     else     =&gt; unknown(),
 }</code></pre>
-<p>Read it left to right as a sentence: for this command, if it is 'q' or 'Q', quit; if it is 'h', help; otherwise, unknown. Each line is called an arm. The thing on the left of <code>=&gt;</code> is a pattern, a shape to match against, and the thing on the right is what to do when it matches. The first arm that matches wins, and the rest are not tried.</p>
-<p>Here is <code>switch</code> walked through with a concrete value. Suppose <code>command</code> is <code>'h'</code>. The switch tests the first arm, <code>'q' | 'Q'</code>: the value is neither, so it moves on. It tests the second arm, <code>'h'</code>: that matches, so it runs <code>help()</code> and the whole switch is done. The <code>else</code> arm is never reached. Now suppose <code>command</code> is <code>'z'</code>: neither of the first two arms matches, so the <code>else</code> arm runs <code>unknown()</code>.</p>
-<p>Notice the <code>else</code>. It is the catch-all, the "anything that did not match above." Notice also the missing piece you might expect from C: there is no <code>break</code> between arms. A Coral switch does not fall through from one arm to the next. Each arm is self-contained; when its body finishes, the whole switch is done. This is the opposite of C, and it is the opposite on purpose, because accidental fallthrough is one of the classic C bugs. If you genuinely want two cases to share a body, you list both patterns on one arm, joined by a vertical bar <code>|</code>, as <code>'q' | 'Q'</code> does above. The <code>|</code> reads as "or": this arm matches 'q' or 'Q'. It is the same separator you would use for a set of alternatives anywhere else, and it is what the standard library and the compiler's own back end (wallvm) use throughout, you will search a switch body and see <code>IrOpcode::Load | IrOpcode::Gep | IrOpcode::AtomicLoad =&gt; ...</code>, one arm covering several opcodes at once.</p>
+<p>Read left to right: if the command is 'q' or 'Q', quit; if 'h', help; otherwise unknown. Each line is an arm. The thing left of <code>=&gt;</code> is a pattern, a shape to match, and the right is what to do. The first matching arm wins.</p>
+<p>For <code>command</code> equal to <code>'h'</code>, the first arm fails because the value is neither <code>'q'</code> nor <code>'Q'</code>. The second matches, so <code>help()</code> runs and the switch is done; <code>else</code> is never reached. For <code>'z'</code>, neither of the first two matches, so <code>else</code> runs <code>unknown()</code>.</p>
+<p>There is no <code>break</code> between arms: a Coral switch does not fall through. Each arm is self-contained, the opposite of C, and deliberately so, because accidental fallthrough is a classic C bug. To share a body, list both patterns on one arm joined by <code>|</code>, as <code>'q' | 'Q'</code> does; <code>|</code> reads as "or." The standard library and the compiler's own back end (wallvm) use this throughout, e.g. <code>IrOpcode::Load | IrOpcode::Gep | IrOpcode::AtomicLoad =&gt; ...</code>.</p>
 <p>The forms a pattern can take</p>
-<p>Patterns match against the shape of a value, and there are a few kinds worth naming.</p>
+<p>Patterns match against the shape of a value. The main kinds:</p>
 <p>Literal patterns match a specific constant. Several literals joined with <code>|</code> mean "any of these":</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (httpStatus) {
     200            =&gt; println(&quot;OK&quot;),
@@ -191,41 +188,41 @@ u8 low = b.bytes.b0;      // which byte is this? depends on your machine</code><
     500 | 502 | 503 =&gt; println(&quot;server error&quot;),
     else           =&gt; println(&quot;other&quot;),
 }</code></pre>
-<p>Variant patterns match a variant case and pull that case's fields out into local names. This is the workhorse:</p>
+<p>Variant patterns match a case and pull its fields into local names. This is the workhorse:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (message) {
     Message::Login { username, password } =&gt; authenticate(username, password),
     Message::Logout { reason }            =&gt; logOut(reason),
     Message::Data { sequence, payload }   =&gt; store(sequence, payload),
     Message::Ping                         =&gt; sendPong(),
 }</code></pre>
-<p>The names inside the braces, <code>username</code>, <code>password</code>, <code>reason</code>, and so on, are fresh local variables, scoped to that arm's body, holding the case's fields. You may name only the fields you actually need; <code>Message::Login { username } =&gt; ...</code> would bind just the username and ignore the password. You can write the shorthand <code>Some { value }</code> or the fully qualified <code>Option::Some { value }</code>; they mean the same thing.</p>
-<p>Tuple patterns match a tuple position by position, which <a href="../12-tuples-and-destructuring/index.html">Chapter 12</a> covers in full. Here is a small one that is genuinely useful, deciding what a pair of signs means:</p>
+<p>The names in braces are fresh locals scoped to that arm. Name only the fields you need: <code>Message::Login { username } =&gt; ...</code> binds just the username and ignores the password. <code>Some { value }</code> and <code>Option::Some { value }</code> mean the same thing.</p>
+<p>Tuple patterns match position by position, covered in <a href="../12-tuples-and-destructuring/index.html">Chapter 12</a>. A small useful one, deciding what a pair of signs means:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch ((x &gt;= 0.0, y &gt;= 0.0)) {
     (true, true)   =&gt; println(&quot;first quadrant&quot;),
     (false, true)  =&gt; println(&quot;second quadrant&quot;),
     (false, false) =&gt; println(&quot;third quadrant&quot;),
     (true, false)  =&gt; println(&quot;fourth quadrant&quot;),
 }</code></pre>
-<p>Because the switch has exactly four possible combinations and all four are listed, this is exhaustive, and the compiler will confirm it. Encoding a decision as a tuple of small closed values and matching on the tuple is a recurring Coral idiom: it turns a chain of <code>if</code>s into a table the compiler can check for completeness.</p>
-<p>Binding patterns give a name to the whole value. A bare identifier in a pattern position is a binding, not a constant to compare against:</p>
+<p>Four possible combinations, all listed, so the switch is exhaustive and the compiler confirms it. Encoding a decision as a tuple of small closed values and matching turns a chain of <code>if</code>s into a table the compiler can check.</p>
+<p>Binding patterns give a name to the whole value. A bare identifier in pattern position is a binding, not a constant to compare against:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (point) {
     (x, 0) =&gt; println(&quot;on the x-axis at {}&quot;, x),
     (0, y) =&gt; println(&quot;on the y-axis at {}&quot;, y),
     (x, y) =&gt; println(&quot;at ({}, {})&quot;, x, y),
 }</code></pre>
-<p>And the wildcard is written <code>else</code>, not an underscore. Coral uses <code>else</code> for "anything not matched above," which reads naturally.</p>
+<p>The wildcard is written <code>else</code>, not an underscore. Coral uses <code>else</code> for "anything not matched above."</p>
 <p>Guards: patterns with a condition</p>
-<p>Sometimes the shape is not enough, and you want to match "a key event, but only the escape key." A guard is an <code>if</code> clause between the pattern and the arrow. It is checked only after the pattern matches, and it may read the names the pattern bound:</p>
+<p>Sometimes shape is not enough and you want "a key event, but only the escape key." A guard is an <code>if</code> clause between pattern and arrow. It is checked only after the pattern matches and may read the names the pattern bound:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (event) {
     Event::Key { code } if code == ESC =&gt; quit(),
     Event::Key { code }                =&gt; handleKey(code),
     Event::Resize { width, height }    =&gt; onResize(width, height),
     else                               =&gt; ignore(),
 }</code></pre>
-<p>The first arm matches any key event, binds its code, and then asks whether that code is ESC. If it is, quit; if not, this arm fails and the next one is tried, which handles all the other keys. Without guards you would have to write one arm per key or nest an <code>if</code> inside the body; with them, the condition lives where the pattern does, and the reader sees the whole decision at once.</p>
+<p>The first arm matches any key event, binds its code, and asks whether it is ESC. If not, the arm fails and the next is tried. Without guards you would need one arm per key or a nested <code>if</code>; with them, the condition lives with the pattern.</p>
 <section><h2 id="s13-5">The Three Rules of a Coral switch</h2></section>
-<p>This is where Coral's switch stops being cosmetic sugar and becomes a safety feature. A switch over an enum or a variant is governed by three rules, and together they mean that forgetting a case is not a runtime surprise but a compiler error.</p>
-<p>The first rule: be exhaustive. A switch over an enum or variant must either cover every case, or include an <code>else</code>. If a case is missing and there is no <code>else</code>, the compiler reports it, and it names the missing cases:</p>
+<p>A switch over an enum or variant is governed by three rules, which together make forgetting a case a compiler error rather than a runtime surprise.</p>
+<p>First, be exhaustive. A switch over an enum or variant must cover every case or include an <code>else</code>. If a case is missing and there is no <code>else</code>, the compiler reports it and names the missing cases:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">enum Color { Red, Green, Blue }
 
 str name(Color c) {
@@ -238,15 +235,15 @@ str name(Color c) {
 
 // error E0608: non-exhaustive switch over Color;
 //   missing cases: Color::Blue</code></pre>
-<p>The error tells you exactly what is missing, so the fix is one line. And this is the property that makes the whole variant style worth adopting. When someone later adds a Color::Purple case to the enum, every switch that did not anticipate it stops compiling, and the compiler hands you the list of every place that needs updating. "I forgot a place" has gone from a silent bug that ships to a build failure that ends in a minute.</p>
-<p>In plain words, exhaustiveness means the compiler will not let you leave a case unhandled. Imagine a form that must be filled in completely: instead of a clerk silently accepting a blank box, the compiler hands the form back and points at the missing line. That is why adding a case to a variant is a safe change, the compiler visits every switch and makes each one decide what to do.</p>
-<p>The second rule: be reachable. An arm that can never run is an error too. If you list a duplicate case, or a variant that an earlier arm already covered, the compiler tells you:</p>
+<p>The error names exactly what is missing. When someone later adds a <code>Color::Purple</code> case, every switch that did not anticipate it stops compiling, and the compiler lists every place needing an update. "I forgot a place" becomes a build failure rather than a shipped bug.</p>
+<p>Exhaustiveness means the compiler will not let you leave a case unhandled. Adding a case to a variant is therefore safe: the compiler visits every switch and makes each decide what to do.</p>
+<p>Second, be reachable. An arm that can never run is an error. A duplicate case, or a case an earlier arm already covered, is reported:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (c) {
     Color::Red   =&gt; ...,
     Color::Red   =&gt; ...,      // error E0609: unreachable case
 }</code></pre>
-<p>This catches the copy-paste mistake where you meant to change the case and forgot, and it catches overlapping ranges (which we will see below).</p>
-<p>The third rule: fallthrough must be deliberate. Coral's arms do not fall through by default, but sometimes you actually want the C behaviour, a case that runs its own code and then continues into the next case. When you want that, you say so with the attribute <code>#[[fallthrough]]</code>:</p>
+<p>This catches a copy-paste mistake and overlapping ranges.</p>
+<p>Third, fallthrough must be deliberate. Arms do not fall through by default, but sometimes you want the C behaviour. Say so with <code>#[[fallthrough]]</code>:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (mode) {
     Mode::Initialize =&gt; {
         setup();
@@ -257,11 +254,11 @@ str name(Color c) {
     }
     else =&gt; {},
 }</code></pre>
-<p>The <code>#[[fallthrough]]</code> on the last statement of the Initialize arm tells the compiler "yes, I meant to fall into Run." Without it, the compiler warns you that the case falls through, because a case that falls through by accident is almost always a bug. With it, you have recorded the intent, and a reader sees it too. Putting <code>#[[fallthrough]]</code> on the very last arm of a switch, where there is nothing to fall into, is itself an error (E0610), because it is always a leftover from copying an arm.</p>
-<p>So the three rules, together, say this: every case is either handled, or caught by <code>else</code>, or deliberately fallen through to the next, and someone must have said so on purpose in every instance. The language refuses to let a case slip through the cracks quietly.</p>
-<p>A common beginner mistake is to assume a missing case is only a warning. It is not: a non-exhaustive switch over an enum or variant is an error (E0608) and the program will not build. The compiler is not being fussy, it is telling you that some value could reach the switch and fall through with nothing to do, and it would rather stop you now than let that value surprise you at runtime.</p>
+<p><code>#[[fallthrough]]</code> on the last statement of <code>Initialize</code> tells the compiler "yes, I meant to fall into <code>Run</code>." Without it, the compiler warns, because accidental fallthrough is almost always a bug. Putting it on the last arm, where there is nothing to fall into, is an error (E0610), always a leftover from copying an arm.</p>
+<p>Together the three rules say every case is handled, caught by <code>else</code>, or deliberately fallen through, and someone said so on purpose.</p>
+<p>A missing case is not just a warning: a non-exhaustive switch over an enum or variant is an error (E0608) and the program will not build. Some value could reach the switch with nothing to do, and the compiler stops you now rather than letting it surprise you at runtime.</p>
 <section><h2 id="s13-6">switch That Computes a Value</h2></section>
-<p>Because the arms produce values, a switch can be the right-hand side of an assignment, the argument to a call, or the body of a function. When every arm yields a value of the same type and the switch is exhaustive, the switch has that type. This is where the construct stops being a statement with a side effect and becomes a way to compute.</p>
+<p>Because arms produce values, a switch can be the right-hand side of an assignment, an argument, or a function body. When every arm yields the same type and the switch is exhaustive, the switch has that type.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str severityLabel(LogLevel level) {
     return switch (level) {
         LogLevel::Debug =&gt; &quot;DEBUG&quot;,
@@ -271,7 +268,7 @@ str name(Color c) {
         LogLevel::Fatal =&gt; &quot;FATAL&quot;,
     };
 }</code></pre>
-<p>Each arm is an expression, and because all the arms are strings and the switch covers every LogLevel, the whole switch is a string, which the <code>return</code> returns. When an arm's body is a block, the block's final expression is the arm's value:</p>
+<p>Each arm is an expression; all arms are strings and every <code>LogLevel</code> is covered, so the switch is a string. When an arm's body is a block, the block's final expression is the arm's value:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">f64 area(Shape s) {
     return switch (s) {
         Shape::Circle { radius } =&gt; 3.14159 * radius * radius,
@@ -282,10 +279,10 @@ str name(Color c) {
         Shape::Point =&gt; 0.0,
     };
 }</code></pre>
-<p>A switch used purely for its side effects is a statement and takes a semicolon like any other. A switch used for a value is written where a value is expected.</p>
-<p>Why this matters: a switch that computes a value lets you turn a label into a result without a chain of temporary variables. The compiler still checks exhaustiveness, so the function that returns <code>switch (level) { ... }</code> cannot silently miss a level, the value it promises is guaranteed for every case in the type.</p>
+<p>A switch used for side effects is a statement and takes a semicolon. A switch used for a value is written where a value is expected.</p>
+<p>A value-computing switch turns a label into a result without temporary variables, and the compiler still checks exhaustiveness, so the promised value exists for every case in the type.</p>
 <section><h2 id="s13-7">Matching on Ranges and the Exhaustiveness Check Applied</h2></section>
-<p>Literal patterns cover exact values. For the very common "between these bounds" case, Coral has range patterns, and the compiler checks them for overlap just as it checks literals for duplicates.</p>
+<p>Literal patterns cover exact values. For the common "between these bounds" case, Coral has range patterns, checked for overlap as literals are for duplicates.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">char grade;
 switch (score) {
     90..=100 =&gt; grade = &#x27;A&#x27;,
@@ -295,18 +292,18 @@ switch (score) {
     0..=59   =&gt; grade = &#x27;F&#x27;,
     else     =&gt; grade = &#x27;?&#x27;,
 }</code></pre>
-<p>The <code>..=</code> is an inclusive range, "from 90 up to and including 100." There is also <code>..</code>, the exclusive range. If two of your ranges overlap, the compiler reports the second one as unreachable (E0609), which is exactly the class of bug that slips past a chain of if-statements.</p>
-<p>The reason to reach for ranges and enums and tuples rather than long if-chains is always the same: the compiler can check a closed, structured decision for completeness and for overlap, and it cannot check a chain of <code>if</code>s at all. Every time you can express a decision as a match over a closed set, you are handing work to the compiler that you would otherwise have to do by reading carefully, late at night, with tired eyes.</p>
+<p><code>..=</code> is an inclusive range, "from 90 up to and including 100." <code>..</code> is exclusive. Overlapping ranges make the second unreachable (E0609), a bug class that slips past <code>if</code> chains.</p>
+<p>Reach for ranges, enums, and tuples rather than long <code>if</code> chains because the compiler can check a closed, structured decision for completeness and overlap, and it cannot check a chain of <code>if</code>s at all. Every decision expressed as a match over a closed set is work handed to the compiler.</p>
 <section><h2 id="s13-8">A Worked Example: An Arithmetic Interpreter</h2></section>
-<p>The classic use of variants and matching is building a little language, and it is worth doing once in full because it shows how the shape of the data and the shape of the code mirror each other. Suppose we want to represent and evaluate arithmetic expressions like <code>(3 + 4) * -(2)</code>.</p>
-<p>Start by defining what an expression is. An expression is a number, or the sum of two expressions, or the product of two expressions, or the negation of one expression. That sentence is already a variant:</p>
+<p>The classic use of variants and matching is a little language, which shows how the shape of the data and the shape of the code mirror each other. Represent and evaluate expressions like <code>(3 + 4) * -(2)</code>.</p>
+<p>An expression is a number, the sum of two expressions, the product of two expressions, or the negation of one. That sentence is already a variant:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Expr {
     Num { f64 value; }
     Add { Expr left; Expr right; }
     Mul { Expr left; Expr right; }
     Neg { Expr operand; }
 }</code></pre>
-<p>Now evaluate one. To evaluate a number, return it. To evaluate a sum, evaluate both sides and add. To evaluate a product, evaluate both sides and multiply. To evaluate a negation, evaluate the operand and negate. Each of those sentences is one arm:</p>
+<p>Evaluate a number by returning it; a sum by evaluating both sides and adding; a product by evaluating both sides and multiplying; a negation by evaluating the operand and negating. Each sentence is one arm:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">f64 eval(Expr e) {
     return switch (e) {
         Expr::Num { value }       =&gt; value,
@@ -315,9 +312,9 @@ switch (score) {
         Expr::Neg { operand }     =&gt; -eval(operand),
     };
 }</code></pre>
-<p>Two things are happening that are worth noticing. First, <code>eval</code> is total: it covers all four cases, so the compiler guarantees no shape of Expr is forgotten. If someone adds <code>Expr::Div</code>, <code>eval</code> stops compiling until it handles division. Second, the structure of the code mirrors the structure of the data. <code>eval</code> recurses on the children; the <code>Num</code> case, which has no children, stops the recursion. This correspondence, one function per operation, one case per shape, is sometimes called the functional style, and the variant is what makes it natural.</p>
-<p>Here is <code>(3 + 4)</code> evaluated, step by step. <code>eval</code> sees <code>Expr::Add { left, right }</code>, so it binds <code>left</code> to <code>Num { .value = 3.0 }</code> and <code>right</code> to <code>Num { .value = 4.0 }</code>, then computes <code>eval(left) + eval(right)</code>. Evaluating <code>left</code> matches the <code>Num</code> arm and returns <code>3.0</code>; evaluating <code>right</code> returns <code>4.0</code>; the sum is <code>7.0</code>. The recursion bottoms out at the <code>Num</code> cases, which is what stops it.</p>
-<p>Now print one, to see the same mirroring from a different operation:</p>
+<p>Two things stand out. <code>eval</code> is total: it covers all four cases, so the compiler guarantees no shape is forgotten. Add <code>Expr::Div</code> and <code>eval</code> stops compiling until it handles division. And the code mirrors the data: <code>eval</code> recurses on children, while <code>Num</code>, which has none, stops the recursion. One function per operation, one case per shape, is the functional style, and the variant makes it natural.</p>
+<p>For <code>(3 + 4)</code>, <code>eval</code> sees <code>Expr::Add</code>, binds <code>left</code> to <code>Num { .value = 3.0 }</code> and <code>right</code> to <code>Num { .value = 4.0 }</code>, then computes <code>eval(left) + eval(right)</code>: <code>3.0</code> and <code>4.0</code>, giving <code>7.0</code>. Recursion bottoms out at the <code>Num</code> cases.</p>
+<p>Printing shows the same mirroring from another operation:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str show(Expr e) {
     return switch (e) {
         Expr::Num { value }       =&gt; formatFloat(value),
@@ -326,31 +323,31 @@ switch (score) {
         Expr::Neg { operand }     =&gt; &quot;-&quot; + show(operand),
     };
 }</code></pre>
-<p>Two functions, two switches, both over the same variant. Add a new operation and you write a new switch; add a new case and you must update both switches, because the compiler insists. That trade, new operations are cheap, new cases touch every operation, is sometimes called the expression problem, and whether it is good depends on which direction you expect to change more. The variant makes the trade explicit and gives you the compiler's help either way.</p>
-<p>One last thing about this example, because it teaches a rule you will need again. <code>Expr::Add</code> stores two <code>Expr</code> values by value, and <code>Expr</code> is recursive, so a naive layout would be infinite in size: to know how big an Expr is, you would need to know how big its children are, forever. The compiler refuses to build such a type; it reports a cyclic type layout of infinite size (E0201). The fix is to put the recursion behind a pointer:</p>
+<p>Two functions, two switches over the same variant. Add an operation and write a new switch; add a case and you must update both switches because the compiler insists. That trade, new operations are cheap while new cases touch every operation, is the expression problem. Whether it is good depends on which direction you expect to change more, and the variant makes the trade explicit.</p>
+<p>One rule from this example: <code>Expr::Add</code> stores two <code>Expr</code> values by value, and <code>Expr</code> is recursive, so a naive layout would be infinite: the size of an <code>Expr</code> needs the size of its children, forever. The compiler refuses such a type with a cyclic type layout of infinite size (E0201). Put the recursion behind a pointer:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Expr {
     Num { f64 value; }
     Add { Expr* left; Expr* right; }
     Mul { Expr* left; Expr* right; }
     Neg { Expr* operand; }
 }</code></pre>
-<p>Now the size of an Expr is the size of a pointer plus the largest non-recursive case, and the tree links through the heap. <a href="../11-memory-management/index.html">Chapter 11</a> covers the ownership and freeing of exactly this kind of data, and the standard library's smart pointers and arena allocator exist to make building trees like this manageable.</p>
+<p>Now an <code>Expr</code> is a pointer plus the largest non-recursive case, and the tree links through the heap. <a href="../11-memory-management/index.html">Chapter 11</a> covers ownership and freeing of exactly this kind of data, and smart pointers and arenas make such trees manageable.</p>
 <section><h2 id="s13-9">A Second Worked Example: A State Machine</h2></section>
-<p>Variants are not only for trees. Any value that changes what it is over time is often a state machine, and a state machine is a variant with methods that move between cases. Consider a network connection. It starts closed, opens, may be reading or writing, and closes again.</p>
+<p>Variants are not only for trees. A value that changes what it is over time is a state machine, which is a variant with methods that move between cases. A network connection starts disconnected, connects, becomes connected, and may fail.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Connection {
     Closed,
     Connecting { str host; u16 port; },
     Open       { i32 fd; },
     Closed
 }</code></pre>
-<p>That is not quite right, and the mistake is instructive: you cannot have two cases named Closed. Let us model it more carefully, with the states a connection really has:</p>
+<p>That is not quite right, and the mistake is instructive: two cases cannot be named <code>Closed</code>. Model the real states:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Connection {
     Disconnected,
     Connecting { str host; u16 port; },
     Connected   { i32 fd; },
     Error       { str reason; }
 }</code></pre>
-<p>Now the operations are methods that match on the current state and produce the next:</p>
+<p>Now the operations are methods that match the current state and produce the next:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Connection {
     Result&lt;Connection, str&gt; open(str host, u16 port) {
         return switch (self) {
@@ -366,7 +363,7 @@ switch (score) {
         }
     }
 }</code></pre>
-<p>The value's identity, Disconnected, Connecting, Connected, Error, is its case, and the data that matters for that case is attached to it. When you are Connected, you have a file descriptor and nothing else; when you are Connecting, you have a host and a port and no descriptor yet. The type stops you from reading the descriptor of a connection that is not yet connected, which is exactly the bug that plagues hand-rolled state machines with a <code>state</code> field and a pile of nullable fields.</p>
+<p>The value's identity, <code>Disconnected</code>, <code>Connecting</code>, <code>Connected</code>, <code>Error</code>, is its case, and that case's data is attached to it. When <code>Connected</code> you have a file descriptor and nothing else; when <code>Connecting</code> you have a host and port and no descriptor yet. The type stops you reading the descriptor of a connection that is not yet connected, exactly the bug that plagues hand-rolled state machines with a <code>state</code> field and nullable fields.</p>
 <section><h2 id="s13-10">Exercises</h2></section>
 <section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>You need a value that is either a number or a string, and you must never read it as the wrong one. Which of the three tools do you use, and why are the other two wrong?</li><li><span class="ex-label">Comprehension</span>In your own words, explain why a variant can store a circle's radius and a rectangle's width in overlapping space while still making it impossible to read the wrong one. What does the variant store that the union does not?</li><li><span class="ex-label">Comprehension</span>Explain the three rules of a Coral switch (exhaustive, reachable, deliberate fallthrough) to someone who has only used C's switch. What does each rule protect against?</li><li><span class="ex-label">Implementation</span>Define <code>variant Temperature { Celsius { f64 deg; }, Fahrenheit { f64 deg; }, Kelvin { f64 deg; } }</code> and write <code>toCelsius(Temperature) f64</code> with an exhaustive switch. Then add a <code>Rankine</code> case and list every place the compiler complains.</li><li><span class="ex-label">Implementation</span>Add a <code>Div</code> case to the interpreter in 13.8. Decide what division by zero should do, return a <code>Result&lt;f64, str&gt;</code>, or abort with <code>@assertOut</code>, and justify your choice in two sentences.</li><li><span class="ex-label">Patterns</span>Write <code>classify(Vec&lt;i32&gt;) str</code> returning "empty", "single", "sorted-ascending", "sorted-descending", or "unsorted", using at least one guard and as few <code>if</code>s as you can manage.</li><li><span class="ex-label">Fallthrough</span>Write a switch where two cases genuinely need to share a tail of code, first with an <code>else</code>, then with <code>#[[fallthrough]]</code>. Which reads better, and when is each appropriate? What does the compiler say if you forget the attribute?</li><li><span class="ex-label">Ranges</span>Write a switch over an <code>i32</code> with arms <code>0</code>, <code>1..=10</code>, <code>-5..=-1</code>, and <code>else</code>. Which values would be covered twice if you wrote <code>0..=10</code> instead of <code>1..=10</code>? Does the compiler catch it?</li><li><span class="ex-label">Design</span>Model the events a text editor handles, a key press, a mouse click, a resize, a file-loaded notification, as a variant, then write the exhaustive switch that dispatches them.</li><li><span class="ex-label">Meta</span>The interpreter separates <code>eval</code> (behaviour) and <code>show</code> (formatting) into two switches over the same variant. Describe what happens to the codebase when you add a new operation versus when you add a new case. Write one paragraph arguing for the variant approach and one arguing for the class-hierarchy approach, then say which you find more convincing.</li></ol></section>
       <nav class="chapter-nav"><a href="../../speed/12-tuples-and-destructuring/index.html">← Previous</a><a href="../../speed/14-modules-imports-and-visibility/index.html">Next →</a></nav>

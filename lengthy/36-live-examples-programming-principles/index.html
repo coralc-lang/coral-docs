@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="The Rules Behind the Rules" />
+  <meta name="robots" content="index, follow" />
+  <title>Chapter 36 · Live Examples: Programming Principles | The Coral Book</title>
+  <link rel="canonical" href="https://coralc-lang.github.io/coral-docs/lengthy/36-live-examples-programming-principles/index.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Chapter 36 · Live Examples: Programming Principles | The Coral Book" />
+  <meta property="og:description" content="The Rules Behind the Rules" />
+  <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/lengthy/36-live-examples-programming-principles/index.html" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="stylesheet" href="../../lengthy/book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../../textbook/index.html">Editions</a><a href="../../lengthy/index.html">Lengthy</a><a href="../../speed/index.html">Speed</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Chapter 36</p>
+      <h1>Live Examples: Programming Principles</h1>
+      <p class="lead">The Rules Behind the Rules</p>
+      <p>Every language feature in this book exists to serve a principle, and the principles are older than the syntax. SOLID, DRY, cohesion, coupling, composition over inheritance, the discipline of failure: these are not ceremonies invented by a consultant. They are descriptions, in advance, of the shapes that make code easy to change and hard to break, and the shapes that make it easy to break. A program is read far more often than it is written, and modified more often than it is read. Every principle in this chapter is a bet that the future will ask something of this code, and a strategy for being ready when it does.</p>
+<p>The trouble with principles is that they are stated abstractly and learned concretely, or not at all. "Single responsibility" means nothing until you have felt a function that changes for four unrelated reasons, and it means everything after. So this chapter teaches each principle the only way it sticks: with a before and an after, both in Coral, both small enough to hold in your head. The before is real code of the kind you have written. It works, it passes its test, and it is quietly carrying a debt. The after is the same code reshaped around the principle, and the difference is the lesson. Nothing here requires object orientation. Coral has no inheritance to inherit from, and that turns out to be a gift: the composition, the traits, and the error discipline that remain are the parts of the principles that actually carry weight in any language.</p>
+<p>A word on how to read the pairs. The before is not stupid code written to be mocked. It is code a competent person writes under deadline pressure, and it works today. The after is not automatically the "right" answer in every situation either. Principles trade one kind of cost for another (more types, more files, more indirection), and the skill is knowing when the trade is worth it. Each example ends with a sentence about when the before is actually fine, because a principle applied everywhere is as much a failure of judgment as one applied nowhere.</p>
+<p>A second word on the theme that ties the examples together. Almost every before/after in this chapter is really one move: taking knowledge that is spread out and duplicated, and giving it a single home with a name. The name is the point. A duplicated loop has no name to change; a named function does. A public field with an implicit contract has no place to enforce it; a constructor does. The programmer's version of "a place for everything, and everything in its place" is exactly this: knowledge gets a home, and the home gets a name.</p>
+<section><h2 id="s36-1">Naming: The Cheapest Documentation</h2></section>
+<p class="step-label">The principle</p>
+<p>A name should tell the reader what a thing is or does, at the level of abstraction the reader is working at. If you have to read the body to know what a function does, the name has failed.</p>
+<p class="step-label">The intuition</p>
+<p>Names are documentation that cannot go stale, because the compiler will not let you rename a thing without touching every use. A comment can lie; a name cannot drift. The cost of a good name is a few extra seconds of thought; the benefit is paid on every future read. The test is simple: can someone who has never seen this file read the call site and know what happens? If not, rename.</p>
+<p>The before.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub f64 calc(f64 a, f64 b) {
+    // what is 0.85? the reader has to guess
+    return a * b * 0.85;
+}
+
+pub bool chk(u32 n) {
+    // and what does the range 3..24 mean?
+    return n &gt;= 3 &amp;&amp; n &lt;= 24;
+}
+
+pub void proc(Vec&lt;f64&gt;* d) {
+    // &quot;proc&quot; says nothing about the 1.2 multiplier
+    for (usize i = 0; i &lt; d-&gt;count(); i += 1)
+        d-&gt;set(i, d-&gt;at(i) * 1.2);
+}</code></pre>
+<p>Every one of these works. Now read a call site: <code>calc(x, y)</code>, <code>chk(n)</code>, <code>proc(v)</code>. You cannot tell what any of them does, what the magic <code>0.85</code> means, or what range <code>3..24</code> represents. The knowledge lives only in the body, and a reader has to open every definition.</p>
+<p>The after.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// the magic number now has a name that states the business rule
+pub const f64 WHOLESALE_MARKUP = 0.85;
+
+pub f64 retailPrice(f64 cost, f64 quantity) {
+    // the call site reads as a sentence
+    return cost * quantity * WHOLESALE_MARKUP;
+}
+
+// bounds carry their meaning
+pub const u32 MIN_USERNAME_LENGTH = 3;
+pub const u32 MAX_USERNAME_LENGTH = 24;
+
+pub bool isValidUsernameLength(u32 length) {
+    return length &gt;= MIN_USERNAME_LENGTH &amp;&amp; length &lt;= MAX_USERNAME_LENGTH;
+}
+
+pub const f64 TAX_RATE = 1.2;
+
+pub void applyTax(Vec&lt;f64&gt;* prices) {
+    // the rate is named, so the intent is visible at the loop
+    for (usize i = 0; i &lt; prices-&gt;count(); i += 1)
+        prices-&gt;set(i, prices-&gt;at(i) * TAX_RATE);
+}</code></pre>
+<p>Now the call sites read as sentences: <code>retailPrice(cost, qty)</code>, <code>isValidUsernameLength(len)</code>, <code>applyTax(prices)</code>. The magic numbers have names, and the names explain the business rule. A reader never has to open a body to know what is happening.</p>
+<p class="step-label">Cost and notes</p>
+<p>Longer names cost keystrokes and horizontal space, and the habit can go wrong: <code>theLengthOfTheUsernameEnteredByTheUser</code> is worse than <code>usernameLength</code>, because a name that tries to be a sentence defeats its own purpose. The standard library's own names are almost aggressively short (<code>len</code>, <code>cap</code>, <code>count</code>, <code>at</code>) because their types and their few lines of use make the meaning obvious; the economy is earned, not assumed. The rule is not "long names," it is "names that carry the information the reader needs and no more."</p>
+<p class="step-label">When the before is fine</p>
+<p>Local loop variables inside a short, obvious loop can be <code>i</code>, <code>j</code>, and <code>n</code>; the surrounding twenty lines give them all the context they need. The principle applies to the names that cross a boundary, function names, type names, public fields, exported constants, because those are the ones a reader sees without the body.</p>
+<p class="step-label">Variation</p>
+<p>Take a function you wrote recently whose name contains <code>do</code>, <code>process</code>, <code>handle</code>, or <code>data</code>, and rename it to say precisely what it does to precisely what. If you cannot, the function is probably doing more than one thing, and the next section applies.</p>
+<section><h2 id="s36-2">DRY: Don't Repeat Yourself</h2></section>
+<p class="step-label">The principle</p>
+<p>Every piece of knowledge in a system should have a single, authoritative representation. When the same rule is written in two places, the two will eventually disagree, and the system will contain a contradiction.</p>
+<p class="step-label">The intuition</p>
+<p>The real enemy is not extra typing; it is the change that has to be made in five places and is made in four. A duplicated piece of logic is a bet that it will never need to change, and that bet loses eventually. DRY is the discipline of finding the duplication and giving it one home, so that a change is one edit in one place. The subtlety is that DRY is about knowledge, not text. Two functions that happen to look similar but express different rules should stay separate, because merging them would couple two things that evolve independently.</p>
+<p class="step-label">The before</p>
+<p>Registration validates a username in three places, each with its own slightly different rule.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub bool registerUser(str name) {
+    // this copy of the username rule...
+    if (name.len &lt; 3 || name.len &gt; 24) return false;      // rule A
+    if (name.len == 0) return false;
+    return true;
+}
+
+pub bool renameUser(str newName) {
+    // ...is duplicated here...
+    if (newName.len &lt; 3 || newName.len &gt; 24) return false;  // rule A again
+    return true;
+}
+
+pub bool createGuest(str label) {
+    // ...and has already drifted in this third copy
+    if (label.len &lt; 2 || label.len &gt; 24) return false;      // rule A&#x27;, drifted
+    return true;
+}</code></pre>
+<p>The first two agree; the third has already drifted to a minimum of two, and nobody remembers why. When the product owner says "usernames must now be at least four characters," a developer will find two of the three checks and ship a bug. The three copies were a bet, and it just lost.</p>
+<p class="step-label">The after</p>
+<p>One function owns the rule, and every call site asks it.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// one authoritative home for the rule
+pub const u32 MIN_USERNAME_LENGTH = 4;
+pub const u32 MAX_USERNAME_LENGTH = 24;
+
+pub bool isValidUsername(str name) {
+    return name.len &gt;= MIN_USERNAME_LENGTH &amp;&amp; name.len &lt;= MAX_USERNAME_LENGTH;
+}
+
+// every caller now asks the same function
+pub bool registerUser(str name) {
+    return isValidUsername(name);
+}
+
+pub bool renameUser(str newName) {
+    return isValidUsername(newName);
+}
+
+pub bool createGuest(str label) {
+    return isValidUsername(label);
+}</code></pre>
+<p>Now the rule is in one place. Changing the minimum is a one-line edit, and there is no place left for the rule to hide and drift. If guests genuinely need a different rule, that is a different piece of knowledge, and it earns its own named function, the point is not to force everything together, but to make sure two copies of the same knowledge never exist.</p>
+<p class="step-label">Cost and notes</p>
+<p>The naive fear is that DRY adds indirection: <code>registerUser</code> now calls <code>isValidUsername</code>, which is one hop more than an inline check. The hop is free (the compiler inlines it), and the clarity is not. The real risk is over-application: merging two functions because their bodies look alike when their reasons for existing are different. If the username rule and the guest-label rule are conceptually distinct, they should be distinct even if today they happen to compare the same numbers. A shared helper would couple them, and the next change to one would wrongly affect the other.</p>
+<p class="step-label">When the before is fine</p>
+<p>Genuinely one-off code, a check used exactly once, in exactly one place, is not duplicated and needs no extraction. DRY is about repetition, not about length.</p>
+<p class="step-label">Variation</p>
+<p>Grep a project for a constant that appears as a literal in more than one file. Every hit is a candidate for a named constant, and every one is a place where the next change might be missed.</p>
+<section><h2 id="s36-3">Single Responsibility, Cohesion, and Coupling</h2></section>
+<p class="step-label">The principle</p>
+<p>A module, a type, or a function should have one reason to change: one job, one owner of a single piece of knowledge. Cohesion is how strongly the parts of a thing belong together; coupling is how much one thing depends on another. High cohesion and low coupling is the goal.</p>
+<p class="step-label">The intuition</p>
+<p>Picture a function that reads a file, parses it, computes a statistic, formats the result, and writes it to the screen. Five reasons to change: the file format changes, the parser changes, the statistic changes, the report format changes, the output destination changes. Every one of those edits touches the same function, so every change risks breaking the other four concerns. Splitting the function into five, each with one reason to change, means a change to the report format touches the report code and nothing else. The pieces are more cohesive (each does one thing) and less coupled (none needs to know how the others work).</p>
+<p class="step-label">The before</p>
+<p>A single <code>reportSales</code> does everything.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct SalesSummary {
+    // the summary value the function computes then prints
+    f64 total;
+    f64 average;
+    u32 count;
+}
+
+pub f64 totalOf(const Vec&lt;f64&gt;* values) {
+    f64 sum = 0.0;
+    for (usize i = 0; i &lt; values-&gt;count(); i += 1) sum += values-&gt;at(i);
+    return sum;
+}
+
+// this one function carries five reasons to change
+pub void reportSales(const Vec&lt;f64&gt;* values) {
+    // load (pretend it happens here)
+    // the statistic is computed inline, not returned
+    f64 total = totalOf(values);
+    f64 average = values-&gt;count() &gt; 0 ? total / (f64)values-&gt;count() : 0.0;
+
+    // format and print, all tangled with the computation
+    println(&quot;Sales report&quot;);
+    println(&quot;  count:   {}&quot;, values-&gt;count());
+    println(&quot;  total:   {}&quot;, total);
+    println(&quot;  average: {}&quot;, average);
+}</code></pre>
+<p>The name promises a report; the function computes a summary, decides a format, and writes to stdout. Changing the output to a file, or reusing the summary in a different report, means editing this one function and hoping nothing else moves.</p>
+<p class="step-label">The after</p>
+<p>Each concern gets a name and a home.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct SalesSummary {
+    // the pure result, with no formatting attached
+    f64 total;
+    f64 average;
+    u32 count;
+}
+
+// pure computation: one reason to change (the definition of the statistic)
+pub SalesSummary summarise(const Vec&lt;f64&gt;* values) {
+    f64 total = 0.0;
+    for (usize i = 0; i &lt; values-&gt;count(); i += 1) total += values-&gt;at(i);
+    u32 n = (u32)values-&gt;count();
+    f64 average = n &gt; 0 ? total / (f64)n : 0.0;
+    return SalesSummary { .total = total, .average = average, .count = n };
+}
+
+// formatting: one reason to change (the presentation)
+pub String formatSummary(const SalesSummary* s) {
+    String out = String::new();
+    out.appendView(&quot;Sales report\n&quot;);
+    out.appendView(&quot;  count:   &quot; + formatInt((i64)s-&gt;count, 10, false) + &quot;\n&quot;);
+    out.appendView(&quot;  total:   &quot; + formatFloat(s-&gt;total, 2) + &quot;\n&quot;);
+    out.appendView(&quot;  average: &quot; + formatFloat(s-&gt;average, 2) + &quot;\n&quot;);
+    return out;
+}
+
+// delivery: one reason to change (the destination)
+pub void reportSales(const Vec&lt;f64&gt;* values) {
+    // three-line composition of the three concerns
+    SalesSummary s = summarise(values);
+    print(formatSummary(&amp;s));
+}</code></pre>
+<p>Now the statistic can be reused without printing; the format can change without touching the arithmetic; the destination can change without touching either. <code>summarise</code> is pure and easy to test, <code>formatSummary</code> depends only on the summary, and <code>reportSales</code> is a three-line composition.</p>
+<p class="step-label">Cost and notes</p>
+<p>Splitting adds types and function names, and there is a real cost to too fine a split: a function that does nothing but forward its arguments to another function has added indirection without adding clarity. The right granularity is one reason to change per piece, and the way to find it is to ask, of each piece, "what kinds of edits will this need over its life?" If two concerns will always change together, they belong together.</p>
+<p class="step-label">When the before is fine</p>
+<p>A throwaway script that runs once and is deleted needs no structure. Structure is an investment against future change; if there is no future, there is nothing to invest against.</p>
+<p class="step-label">Variation</p>
+<p>Take the <code>reportSales</code> after and add a second report format, <code>formatSummaryCSV</code>, without touching <code>summarise</code> or the arithmetic. The ease of that change is the measure of the split.</p>
+<section><h2 id="s36-4">Composition over Inheritance</h2></section>
+<p class="step-label">The principle</p>
+<p>Prefer assembling behaviour by combining small parts over arranging types in a hierarchy. Inheritance couples a subtype to its parent's implementation; composition couples it only to the interface it uses.</p>
+<p class="step-label">The intuition</p>
+<p>Coral has no inheritance at all, and this is worth pausing on, because it removes the temptation entirely. The classic mistake in a language that has it is the "employee" hierarchy: a base <code>Employee</code>, then <code>Manager extends Employee</code>, then <code>Contractor extends Manager</code> because a contractor happens to be paid like a manager, and now a change to manager pay rules silently changes contractors. The inheritance expressed a coincidence as a kind of being. Composition says instead: an employee has a role, a pay type, and a schedule, each a small independent value. Combine them, and the coincidence disappears. A type is a bag of parts, not a position in a family tree.</p>
+<p class="step-label">The before</p>
+<p>One struct carrying union-ish fields selected by a kind tag.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">enum RoleKind { Engineer, Manager, Contractor }
+
+pub struct Employee {
+    // the tag selects which of the fields below are even meaningful
+    str name;
+    RoleKind kind;
+    f64 baseSalary;      // meaningful for Engineer and Manager
+    f64 hourlyRate;      // meaningful for Contractor
+    u32 reports;         // meaningful for Manager
+    u32 hoursThisWeek;   // meaningful for Contractor
+}
+
+pub f64 pay(const Employee* e) {
+    // every new role means another branch here
+    if (e-&gt;kind == RoleKind::Contractor)
+        return e-&gt;hourlyRate * (f64)e-&gt;hoursThisWeek;
+    return e-&gt;baseSalary;
+}</code></pre>
+<p>This is the tagged-union-by-hand trap from <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>: half the fields are meaningless for any given employee, and nothing stops code from reading <code>hourlyRate</code> off an engineer. Adding a role means adding fields and editing every function that switches on <code>kind</code>.</p>
+<p class="step-label">The after</p>
+<p>Compose a role and a pay arrangement, each a small own value.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Pay {
+    // each case carries exactly the fields it needs
+    Salaried { f64 base; }
+    Hourly   { f64 rate; u32 hours; }
+}
+
+variant Role {
+    // roles are a closed set of cases
+    Engineer,
+    Manager   { u32 reports; }
+    Contractor,
+}
+
+pub struct Employee {
+    // composed parts, not a family tree
+    str name;
+    Role role;
+    Pay pay;
+}
+
+pub f64 weeklyPay(const Employee* e) {
+    // depends only on the pay arrangement
+    return switch (e-&gt;pay) {
+        Pay::Salaried { base }        =&gt; base,
+        Pay::Hourly { rate, hours }   =&gt; rate * (f64)hours,
+    };
+}
+
+pub bool managesOthers(const Employee* e) {
+    // depends only on the role
+    return switch (e-&gt;role) {
+        Role::Manager { reports } =&gt; reports &gt; 0,
+        else                      =&gt; false,
+    };
+}</code></pre>
+<p>Now the fields travel with the case that owns them: a <code>Pay::Hourly</code> has its hours, and there is no way to ask a salaried employee for an hourly rate because the value does not have one. <code>weeklyPay</code> depends only on the pay arrangement, and <code>managesOthers</code> only on the role, so they are coupled to less. Adding a role is a new case the compiler insists every switch handle; adding a pay arrangement is a new case that only the pay switch sees.</p>
+<p class="step-label">Cost and notes</p>
+<p>Composition produces more named types (<code>Pay</code>, <code>Role</code>) and forces decisions that the flat struct let you defer. That is the point: the decisions were being made implicitly by convention, and composition makes them explicit and checked. The cost is real when the parts are trivial and never vary. Wrapping a single <code>f64</code> in a one-case variant is ceremony, not composition.</p>
+<p class="step-label">When the before is fine</p>
+<p>A small closed set of records that genuinely share all their fields and will never diverge is fine as a plain struct. Reach for composition when fields are conditionally meaningful, which is the exact smell of the before.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>Role::Intern</code> case and route it through <code>weeklyPay</code> via a <code>Pay::Stipend { f64 amount; }</code>. List every place the compiler forces you to update, and notice that each one is a place that would have silently done the wrong thing in the before.</p>
+<section><h2 id="s36-5">Open/Closed with Traits</h2></section>
+<p class="step-label">The principle</p>
+<p>Code should be open for extension but closed for modification: you should be able to add new behaviour without editing existing, working code.</p>
+<p class="step-label">The intuition</p>
+<p>Consider a function that computes the area of a shape, switched over an enum of shape kinds. Every new shape means editing that function, and every edit risks the shapes that already worked. A trait inverts the dependency: instead of the area function knowing every shape, each shape knows its own area, and the function is written against the trait. Adding a shape is a new <code>extend</code> block in a new file; no existing line changes. This is the heart of the expression problem, new operations versus new cases, and the trait chooses "new cases are cheap."</p>
+<p class="step-label">The before</p>
+<p>One switch that knows every shape.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">enum ShapeKind { Circle, Rectangle, Triangle }
+
+pub struct Shape {
+    // one generic pair of numbers reused by every shape kind
+    ShapeKind kind;
+    f64 a;
+    f64 b;
+}
+
+pub f64 area(const Shape* s) {
+    // adding a shape means editing this very function
+    switch (s-&gt;kind) {
+        ShapeKind::Circle    =&gt; return 3.14159 * s-&gt;a * s-&gt;a,
+        ShapeKind::Rectangle =&gt; return s-&gt;a * s-&gt;b,
+        ShapeKind::Triangle  =&gt; return 0.5 * s-&gt;a * s-&gt;b,
+    }
+}</code></pre>
+<p>Adding a <code>Pentagon</code> means editing this function, which means recompiling and retesting everything that touches <code>area</code>. A bug introduced here affects circles.</p>
+<p class="step-label">The after</p>
+<p>A trait the shapes satisfy, and code written against the trait.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::math::math { pi, sqrt };
+
+trait Shape {
+    // the contract every shape must satisfy
+    f64 area();
+    f64 perimeter();
+}
+
+// each shape supplies its own area and perimeter
+pub struct Circle { f64 radius; }
+pub extend Circle : Shape {
+    f64 area() { return pi * self.radius * self.radius; }
+    f64 perimeter() { return 2.0 * pi * self.radius; }
+}
+
+pub struct Rectangle { f64 width; f64 height; }
+pub extend Rectangle : Shape {
+    f64 area() { return self.width * self.height; }
+    f64 perimeter() { return 2.0 * (self.width + self.height); }
+}
+
+// written against the contract, not against any concrete shape
+pub f64 totalArea&lt;T&gt;(const Vec&lt;T&gt;* shapes) {
+    f64 sum = 0.0;
+    // the compiler checks every T really satisfies Shape
+    for (usize i = 0; i &lt; shapes-&gt;count(); i += 1) sum += shapes-&gt;at(i).area();
+    return sum;
+}</code></pre>
+<p>A third shape is a new struct and a new <code>extend ... : Shape</code> block. <code>totalArea</code> is not touched, not recompiled in its logic, and not retested against the shapes it already handled. The conformance itself is checked by the compiler: a missing method or a wrong signature is an E12xx diagnostic at the extend block, not a surprise at a call.</p>
+<p class="step-label">Cost and notes</p>
+<p>The trait buys extension for new cases at the price of new operations: adding <code>volume()</code> to <code>Shape</code> means adding it to every implementor, which is exactly the trade the expression problem names. There is a second limit worth stating plainly: <code>totalArea&lt;T&gt;</code> is generic, so a single <code>Vec</code> holds one concrete shape type. A heterogeneous collection of different shapes is a different design, a <code>variant Shape</code> with an exhaustive switch, as in <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>, and choosing between the trait and the variant is choosing which direction you expect to grow.</p>
+<p class="step-label">When the before is fine</p>
+<p>A genuinely closed set that will never gain a case, and whose operation is used in exactly one place, is fine as a switch. The trait earns its keep when new cases are expected and when the operation is used from many call sites.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>Square</code> type with its own <code>extend Square : Shape</code>, and confirm that <code>totalArea</code> still works with <code>Vec&lt;Square&gt;</code> without a single change. Then add a <code>describe()</code> method to the trait and list every implementor the compiler forces you to update.</p>
+<section><h2 id="s36-6">Dependency Inversion and Interface Segregation</h2></section>
+<p class="step-label">The principle</p>
+<p>High-level code should depend on abstractions, not on concrete implementations. And an interface should be small and specific, so that a type is not forced to implement methods it does not use.</p>
+<p class="step-label">The intuition</p>
+<p>A registration function that takes a concrete database is welded to that database; you cannot test it without a real one, and you cannot swap the database without editing it. Invert the dependency: define a small trait for exactly the operations the function needs (save a user, look one up), and have the function take a generic and call the trait's methods, checked when it is instantiated. Now the production database satisfies it, and a test can satisfy it with an in-memory stand-in. Interface segregation is the same idea applied to the trait's size: a function that only saves should not demand a trait that also offers delete, migrate, and vacuum, because then every test stand-in must implement all of them. Small traits keep implementors honest and tests cheap.</p>
+<p class="step-label">The before</p>
+<p>High-level registration welded to Postgres, and a fat trait that forces useless methods.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Database {
+    // the fat interface: six methods, most of them irrelevant here
+    bool connect(str url);
+    bool save(User u);
+    Option&lt;User&gt; find(i32 id);
+    bool delete(i32 id);
+    void migrate();
+    void vacuum();
+}
+
+// the high-level function is welded to the concrete interface
+pub bool registerUser(const User* u, Database* db) {
+    return db-&gt;save(*u);        // needs only save, demands six methods
+}</code></pre>
+<p>To test <code>registerUser</code>, you must write a class implementing all six methods, five of which are irrelevant to the test. Any type that wants to be usable here must carry the whole fat interface.</p>
+<p class="step-label">The after</p>
+<p>Two small traits, and a function that depends only on the one it needs.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct User { i32 id; str name; }
+
+trait UserWriter {
+    // the one ability this consumer actually needs
+    bool save(User u);
+}
+
+trait UserReader {
+    // a separate, equally small ability
+    Option&lt;User&gt; find(i32 id);
+}
+
+// Coral has no super-trait clause (`trait A : B`); when a function truly needs
+// both abilities it takes both, or takes a single trait that names both methods.
+
+// depends only on the ability to write
+pub bool registerUser&lt;T&gt;(T* store, User u) {
+    return store-&gt;save(u);
+}
+
+// production store
+pub struct MemoryStore {
+    Vec&lt;User&gt; users;
+}
+
+pub extend MemoryStore : UserWriter {
+    bool save(User u) {
+        self.users.push(u);
+        return true;
+    }
+}
+
+// test stand-in: implements only what the test touches
+pub struct FailingStore { bool failNext; }
+pub extend FailingStore : UserWriter {
+    bool save(User u) {
+        // the contract permits returning false, so this is substitutable
+        if (self.failNext) return false;
+        return true;
+    }
+}</code></pre>
+<p><code>registerUser</code> now depends on a one-method abstraction. Production passes a <code>MemoryStore</code>; a test passes a <code>FailingStore</code> that implements exactly one method and can make <code>save</code> fail on demand. The function cannot call <code>delete</code> or <code>vacuum</code> because it never asked for the ability, which is a guarantee, not a restriction.</p>
+<p class="step-label">Cost and notes</p>
+<p>Each trait is a name and a small contract, and small traits multiply. The discipline is to define a trait for the operations a consumer needs, not for all the operations a type happens to have; the former is interface segregation, and the latter is the fat trait the before suffered from. Liskov substitutability is the companion rule: an implementor must honour the contract, not merely satisfy the signatures. A <code>FailingStore</code> that fails when <code>failNext</code> is set is substitutable because the <code>UserWriter</code> contract explicitly permits <code>save</code> to return false; a store that silently dropped writes while returning true would violate it.</p>
+<p class="step-label">When the before is fine</p>
+<p>A single concrete implementation with no prospect of a second and no need to test in isolation is fine to pass directly. The abstraction earns its keep when there is a second implementation (test or production) or when swapping is a real possibility.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>UserDeleter</code> trait and a <code>manageUser</code> function that needs both writing and deleting, constrained to <code>UserStore</code> (which composes the two). Then make <code>registerUser</code> take a <code>UserWriter</code> while <code>manageUser</code> takes the composed trait, and explain why the narrower function is the easier one to test.</p>
+<section><h2 id="s36-7">Error-Handling Discipline</h2></section>
+<p class="step-label">The principle</p>
+<p>Failure is a value. An operation that can fail says so in its return type, and the caller must deal with the failure to get at the result. A sentinel that collides with real data is a bug waiting for the day the data hits the sentinel.</p>
+<p class="step-label">The intuition</p>
+<p>The seductive shortcut is to return <code>-1</code> for "not found" or <code>null</code> for "failed." It works, it is fast, and it is a lie the type system cannot see: an <code>i64</code> that is usually an id and sometimes a failure is two things wearing one type. Callers forget to check; real data eventually equals the sentinel; and the failure travels silently until it surfaces far from its cause. <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>'s <code>Result</code> and <code>Option</code> make the failure part of the type, so the caller cannot reach the value without opening the parcel. The discipline is to choose the right one: <code>Option</code> when the only thing you can say is "nothing," <code>Result</code> when you can say why.</p>
+<p class="step-label">The before</p>
+<p>Sentinels everywhere.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub i32 parseAge(str s) {
+    // returns -1 on failure, but -1 is not a valid age, so it seems safe
+    bool ok;
+    i64 value = parseI64(s, &amp;ok);
+    if (!ok) return -1;
+    return (i32)value;
+}
+
+pub void showAge(str s) {
+    // the caller must remember to check the sentinel
+    i32 age = parseAge(s);
+    if (age == -1) {
+        println(&quot;bad age&quot;);
+        return;
+    }
+    println(&quot;age {}&quot;, age);
+}</code></pre>
+<p>The <code>-1</code> is a convention, and the convention is checked nowhere. A caller that forgets the check prints "-1 years old." A caller that passes a genuinely negative input gets "bad age" for the wrong reason. And if the program ever parses an age of <code>-1</code> in a context where negatives are legal, the sentinel fires a false alarm.</p>
+<p class="step-label">The after</p>
+<p>A <code>Result</code> with an error variant that names the cause.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { parseI64 };
+
+pub variant AgeError {
+    // each failure mode is a distinct, nameable case
+    NotANumber { str text; },
+    Negative   { i32 value; },
+    TooLarge   { i32 value; },
+}
+
+pub Result&lt;i32, AgeError&gt; parseAge(str s) {
+    bool ok;
+    i64 value = parseI64(s, &amp;ok);
+    // the failure and the reason travel in the return type
+    if (!ok) return Result&lt;i32, AgeError&gt;::Err { .error = AgeError::NotANumber { .text = s } };
+    if (value &lt; 0) return Result&lt;i32, AgeError&gt;::Err { .error = AgeError::Negative { .value = (i32)value } };
+    if (value &gt; 150) return Result&lt;i32, AgeError&gt;::Err { .error = AgeError::TooLarge { .value = (i32)value } };
+    return Result&lt;i32, AgeError&gt;::Ok { .value = (i32)value };
+}
+
+pub void showAge(str s) {
+    // the switch is exhaustive: no success path can ignore the error
+    switch (parseAge(s)) {
+        Result::Ok { value }  =&gt; println(&quot;age {}&quot;, value),
+        Result::Err { error } =&gt; switch (error) {
+            AgeError::NotANumber { text } =&gt; println(&quot;&#x27;{}&#x27; is not a number&quot;, text),
+            AgeError::Negative { value }  =&gt; println(&quot;age {} is negative&quot;, value),
+            AgeError::TooLarge { value }  =&gt; println(&quot;age {} is implausibly large&quot;, value),
+        },
+    }
+}</code></pre>
+<p>Now the type carries the failure and the reason. The compiler will not let <code>showAge</code> reach the value without handling the error, and the three failure modes are distinct cases a caller can respond to differently. There is no sentinel to collide with real data because there is no sentinel; the success case and the failure case are different shapes.</p>
+<p class="step-label">Cost and notes</p>
+<p><code>Result</code> is more verbose at every layer, and if <code>Err</code> can always be immediately unwrapped to a default, the machinery is overhead. The discipline is the honest signalling: a function that can fail declares it, and a caller that can handle a failure distinguishes it from a success. The rule of thumb from <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a> holds: if a caller can do something reasonable about the failure, return <code>Result</code>; if the only sensible response is "the program is wrong, stop," use an assertion.</p>
+<p class="step-label">When the before is fine</p>
+<p>A private helper whose sentinel is impossible in its domain and whose callers are all in one file that is read as a unit is survivable. The moment the function crosses a module boundary, the type has to carry the truth.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>parseAges</code> that parses a whole <code>Vec&lt;str&gt;</code> and returns <code>Result&lt;Vec&lt;i32&gt;, AgeError&gt;</code>, stopping at the first failure. Then change it to collect the failures into a <code>Vec&lt;AgeError&gt;</code> and return both successes and errors, and explain which signature is kinder to the caller.</p>
+<section><h2 id="s36-8">Invariants, Assertions, and Defensive Programming</h2></section>
+<p class="step-label">The principle</p>
+<p>An invariant is a condition that must always hold for a value to be meaningful. Establish it when the value is created, enforce it there, and use assertions to catch violations that indicate a bug. Defensive programming, checking every argument against every possible bad value, is different, and applying it everywhere hides bugs rather than finding them.</p>
+<p class="step-label">The intuition</p>
+<p>A range of numbers has an invariant: the low bound is not above the high bound. If you expose two public fields, nothing stops a caller from setting <code>lo</code> above <code>hi</code>, and every method you write must defend against that possibility forever. If instead the only way to make a range is a constructor that checks the invariant once, then every method can assume it, and the assumption is honest because the constructor is the only door. Assertions are how you state the assumption in code: <code>@assertOut(lo &lt;= hi, "...")</code> at the top of a method fails loudly and names the violated contract, which is exactly right for a bug. Defensive programming is for input from outside the program, where failure is expected and recoverable. Assertions are for internal invariants, where failure means the code is wrong.</p>
+<p class="step-label">The before</p>
+<p>Public fields, no constructor, defensive checks scattered everywhere.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Range {
+    // public fields: nothing enforces lo &lt;= hi
+    i32 lo;
+    i32 hi;
+}
+
+pub i32 rangeLength(const Range* r) {
+    if (r-&gt;lo &gt; r-&gt;hi) return 0;          // one of many defensive checks
+    return r-&gt;hi - r-&gt;lo;
+}
+
+pub bool rangeContains(const Range* r, i32 x) {
+    if (r-&gt;lo &gt; r-&gt;hi) return false;       // and another
+    return x &gt;= r-&gt;lo &amp;&amp; x &lt;= r-&gt;hi;
+}</code></pre>
+<p>Every operation carries its own defence against an illegal state that should never have existed. The checks are inconsistent (one returns zero, one returns false), they slow every call, and they camouflage the real bug, whatever code created the broken range, by silently swallowing it.</p>
+<p class="step-label">The after</p>
+<p>A constructor that establishes the invariant, accessors that assume it, and an assertion that names the contract.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Range {
+    // fields stay private so only make() can create a Range
+    i32 lo;
+    i32 hi;
+
+    static Option&lt;Range&gt; make(i32 lo, i32 hi) {
+        // the one door: the invariant is checked exactly here
+        if (lo &gt; hi) return Option&lt;Range&gt;::None;
+        return Option&lt;Range&gt;::Some { .value = Range { .lo = lo, .hi = hi } };
+    }
+
+    // the invariant is established by make(); these methods may assume it
+    i32 length() {
+        @assertOut(self.lo &lt;= self.hi, &quot;Range invariant violated: lo &gt; hi&quot;);
+        return self.hi - self.lo;
+    }
+
+    bool contains(i32 x) {
+        // the assertion is a bug check, not input validation
+        @assertOut(self.lo &lt;= self.hi, &quot;Range invariant violated: lo &gt; hi&quot;);
+        return x &gt;= self.lo &amp;&amp; x &lt;= self.hi;
+    }
+}</code></pre>
+<p>The illegal range cannot be constructed through the one door, so the methods need no defensive branch; the assertion is not a defence against bad input but a check that the code which built this range honoured its contract. If the assertion ever fires, it points at a bug in the program, which is what an assertion is for. Outside input is handled where it enters, <code>make</code> returns an <code>Option</code>, so a caller with a questionable pair of numbers deals with the failure at the boundary.</p>
+<p class="step-label">Cost and notes</p>
+<p>Making the constructor the only door usually means making the fields private, which is a real design decision: it buys the invariant at the cost of direct field access. The two checks are cheap (a comparison and a branch), and in a release build they may be compiled away or kept, depending on policy. The important thing is that they are assertions, not error handling. The distinction to keep sharp: <code>Result</code> for things the world can do to you, assertions for things your own code should never do. A function called with a negative array length is a bug; a file that is missing is a fact of life.</p>
+<p class="step-label">When the before is fine</p>
+<p>A throwaway struct that is constructed in one place and never escapes is fine with public fields and no constructor. The invariant earns its constructor when the value crosses module boundaries or is built in many places.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>union(const Range* a, const Range* b)</code> method that returns the smallest range containing both, and prove in a comment that it preserves the invariant, <code>min(lo) &lt;= max(hi)</code>, so no caller needs to defend against it. That proof is the payoff of having a single door.</p>
+<section><h2 id="s36-9">Testing with std::testing</h2></section>
+<p class="step-label">The principle</p>
+<p>Tests are executable specifications. A test that expresses a property of the code is worth more than a test that just exercises it, because a property catches the inputs you did not think to try.</p>
+<p class="step-label">The intuition</p>
+<p>The temptation is to "test" by printing results and squinting. That works once, at the moment you write it, and then rots: the output changes, nobody updates the expected values, and the test passes because nobody is looking. A real test states an expectation and fails loudly when it is not met, so it can be run a thousand times by a machine that never squints. Property tests go further: instead of one input, they check that a mathematical property holds across a range (commutativity, an inverse, an identity), which is a far stronger statement than a single example.</p>
+<p class="step-label">The before</p>
+<p>Verification by printing.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 gcd(u64 a, u64 b) {
+    // Euclid&#x27;s algorithm, untouched by the &quot;test&quot; below
+    while (b != 0) { u64 t = a % b; a = b; b = t; }
+    return a;
+}
+
+pub void main() {
+    // printing a result is not testing it: no expectation is checked
+    println(&quot;{}&quot;, gcd(12, 18));    // expect 6
+    println(&quot;{}&quot;, gcd(18, 12));    // expect 6
+    println(&quot;{}&quot;, gcd(17, 5));     // expect 1
+}</code></pre>
+<p>The output must be read by a human and compared to a remembered expectation. Nothing fails automatically. Change <code>gcd</code> to return <code>b</code> by mistake and these lines still print numbers, and the program still exits zero.</p>
+<p class="step-label">The after</p>
+<p>Tests with a runner, including a property that spans many inputs.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::testing::test {
+    _testBegin, _testEnd, assertEq, assertTrue, testSummary, testAllPassed
+};
+
+pub u64 gcd(u64 a, u64 b) {
+    // the unit under test, unchanged between the two versions
+    while (b != 0) { u64 t = a % b; a = b; b = t; }
+    return a;
+}
+
+#[[test]]
+void gcdKnownValues() {
+    _testBegin(&quot;gcd known values&quot;);
+    // the same examples as before, now with assertions that can fail
+    assertEq(6u, gcd(12, 18), &quot;gcd(12,18)&quot;);
+    assertEq(6u, gcd(18, 12), &quot;gcd(18,12)&quot;);
+    assertEq(1u, gcd(17, 5), &quot;gcd(17,5)&quot;);
+    assertEq(0u, gcd(0, 0), &quot;gcd(0,0)&quot;);
+    _testEnd();
+}
+
+#[[test]]
+void gcdIsCommutative() {
+    _testBegin(&quot;gcd is commutative&quot;);
+    // a property checked across a range, not a single example
+    for (u64 a = 0; a &lt; 200; a += 1)
+        for (u64 b = 0; b &lt; 200; b += 1)
+            assertTrue(gcd(a, b) == gcd(b, a), &quot;commutativity in range&quot;);
+    _testEnd();
+}
+
+#[[test]]
+void gcdDividesBoth() {
+    _testBegin(&quot;gcd divides both inputs&quot;);
+    // the defining property of a GCD, over a quarter million pairs
+    for (u64 a = 1; a &lt; 500; a += 1) {
+        for (u64 b = 1; b &lt; 500; b += 1) {
+            u64 g = gcd(a, b);
+            assertTrue(a % g == 0 &amp;&amp; b % g == 0, &quot;g divides a and b&quot;);
+        }
+    }
+    _testEnd();
+}
+
+pub i32 main() {
+    // run every test, then exit non-zero if any failed
+    gcdKnownValues();
+    gcdIsCommutative();
+    gcdDividesBoth();
+    testSummary();
+    return testAllPassed() ? 0 : 1;
+}</code></pre>
+<p>The three tests together say something much stronger than the three printed numbers. <code>gcdIsCommutative</code> covers forty thousand input pairs, and <code>gcdDividesBoth</code> states the defining property of a GCD across a quarter of a million, either of which would catch a subtly wrong implementation that the three examples miss. The <code>#[[test]]</code> attribute marks the functions for a test runner to discover, so the same functions can be run by <code>coralc test</code> without a separate registration list.</p>
+<p class="step-label">Cost and notes</p>
+<p>Property tests are slower than example tests, so they use smaller ranges than production inputs; the ranges here are chosen to be exhaustive over a small space rather than random over a large one. The harness is deliberately minimal (no fixtures, no mocking), which is the right size for unit tests and for the standard library itself. <code>assertEq</code> compares <code>usize</code>, so integer tests compare unsigned values; signed-value checks go through <code>assertTrue</code> with an explicit comparison.</p>
+<p class="step-label">When the before is fine</p>
+<p>A quick experiment while you are still figuring out what the code should do is fine to verify by printing; the tests come once the behaviour is settled. The mistake is shipping the print-and-squint version as the test.</p>
+<p class="step-label">Variation</p>
+<p>Add a test for the modular exponentiation from <a href="../32-live-examples-mathematics-and-number-theory/index.html">Chapter 32</a>.4 that verifies the defining property <code>(base^exp) mod m</code> against a slow repeated-multiplication reference for small values, and note that the property test catches off-by-one errors in the exponent's bit loop that a handful of examples would sail past.</p>
+<section><h2 id="s36-10">Refactoring a Messy Example: From Script to Module</h2></section>
+<p class="step-label">The principle</p>
+<p>Refactoring is changing the shape of code without changing what it does. The goal is to make the next change easy; the test that you have succeeded is that the behaviour is identical and the new shape has a name for each idea.</p>
+<p class="step-label">The intuition</p>
+<p>This is the capstone, and it uses every principle at once. What follows is a plausible script: it reads lines of comma-separated name-and-score pairs, computes an average, and prints a summary. It works. It is forty lines in one function with single-letter variables, magic numbers, a sentinel, and duplicated parsing. The refactor pulls out names, gives each concern its own function, replaces the sentinel with a <code>Result</code>, and leaves <code>main</code> as six lines of composition. The behaviour does not change by a single byte. The shape changes completely.</p>
+<p>The before.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void main() {
+    // parsing, validation, statistics and formatting all in one function
+    Vec&lt;f64&gt; scores = Vec&lt;f64&gt;::new();
+    u32 bad = 0;
+
+    String line = String::new();
+    while (readLine(&amp;line)) {
+        // opaque single-letter names: s, v, comma
+        str s = line.asView();
+        usize comma = s.findByte(&#x27;,&#x27;);
+        if (comma &gt;= s.len) { bad += 1; continue; }
+        str scoreText = str::fromParts(s.ptr + comma + 1, s.len - comma - 1);
+        bool ok;
+        f64 v = parseF64(scoreText, &amp;ok);
+        if (!ok) { bad += 1; continue; }
+        // the bound 100.0 is a magic number buried inline
+        if (v &lt; 0.0 || v &gt; 100.0) { bad += 1; continue; }
+        scores.push(v);
+    }
+
+    f64 total = 0.0;
+    for (usize i = 0; i &lt; scores.count(); i += 1) total += scores.at(i);
+    // -1.0 is a sentinel for &quot;no scores&quot;, indistinguishable from a real -1
+    f64 avg = scores.count() &gt; 0 ? total / (f64)scores.count() : -1.0;
+
+    // the report format is tangled with everything above
+    println(&quot;=== Report ===&quot;);
+    println(&quot;records: {}&quot;, scores.count());
+    println(&quot;bad:     {}&quot;, bad);
+    if (avg &lt; 0.0) {
+        println(&quot;average: n/a&quot;);
+    } else {
+        println(&quot;average: {}&quot;, avg);
+    }
+}</code></pre>
+<p>The problems are all here at once: <code>line</code>, <code>s</code>, <code>v</code>, <code>comma</code> are opaque; <code>-1.0</code> is a sentinel for "no scores," and a legitimate average of <code>-1</code> would be indistinguishable; the parsing, the validation, the statistics, and the formatting are one knot; the magic bound <code>100.0</code> appears inline; and there is no way to test the average without running the whole program.</p>
+<p>The after.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { readLine, parseF64, println };
+import(lib) std::text::string { String };
+import(lib) std::vec { Vec };
+
+// the bounds are named constants instead of inline magic numbers
+pub const f64 MIN_SCORE = 0.0;
+pub const f64 MAX_SCORE = 100.0;
+
+pub struct Record {
+    f64 score;      // the name is validated here; a real program would keep
+                    // an owned copy, since a str would view the reused line
+}
+
+pub variant ParseError {
+    // every rejection reason is a distinct case
+    NoComma      { str text; },
+    BadScore     { str text; },
+    OutOfRange   { f64 value; },
+}
+
+// one concern: turn a line into a record or an error
+pub Result&lt;Record, ParseError&gt; parseRecord(str line) {
+    usize comma = line.findByte(&#x27;,&#x27;);
+    if (comma &gt;= line.len)
+        return Result&lt;Record, ParseError&gt;::Err { .error = ParseError::NoComma { .text = line } };
+
+    str scoreText = str::fromParts(line.ptr + comma + 1, line.len - comma - 1);
+
+    bool ok;
+    f64 value = parseF64(scoreText, &amp;ok);
+    if (!ok)
+        return Result&lt;Record, ParseError&gt;::Err { .error = ParseError::BadScore { .text = scoreText } };
+    // range check against the named bounds
+    if (value &lt; MIN_SCORE || value &gt; MAX_SCORE)
+        return Result&lt;Record, ParseError&gt;::Err { .error = ParseError::OutOfRange { .value = value } };
+
+    return Result&lt;Record, ParseError&gt;::Ok { .value = Record { .score = value } };
+}
+
+pub struct Summary {
+    // the computed statistics, ready for display
+    u32 valid;
+    u32 rejected;
+    f64 sum;
+}
+
+// one concern: the statistics, with no I/O and no formatting
+pub Summary summarise(const Vec&lt;Record&gt;* records, u32 rejected) {
+    f64 sum = 0.0;
+    for (usize i = 0; i &lt; records-&gt;count(); i += 1) sum += records-&gt;at(i).score;
+    return Summary { .valid = (u32)records-&gt;count(), .rejected = rejected, .sum = sum };
+}
+
+// one concern: the presentation; &quot;no scores&quot; is a real case, not a sentinel
+pub void printReport(const Summary* s) {
+    println(&quot;=== Report ===&quot;);
+    println(&quot;records: {}&quot;, s-&gt;valid);
+    println(&quot;bad:     {}&quot;, s-&gt;rejected);
+    // valid == 0 is the honest test; a zero average prints as zero
+    if (s-&gt;valid == 0)
+        println(&quot;average: n/a&quot;);
+    else
+        println(&quot;average: {}&quot;, s-&gt;sum / (f64)s-&gt;valid);
+}
+
+pub void main() {
+    // main is now composition: parse, summarise, print
+    Vec&lt;Record&gt; records = Vec&lt;Record&gt;::new();
+    u32 rejected = 0;
+    String line = String::new();
+    while (readLine(&amp;line)) {
+        // the Result forces us to count the rejected lines
+        switch (parseRecord(line.asView())) {
+            Result::Ok { value }  =&gt; records.push(value),
+            Result::Err { error } =&gt; rejected += 1,
+        }
+    }
+    Summary s = summarise(&amp;records, rejected);
+    printReport(&amp;s);
+}</code></pre>
+<p>The same behaviour, restructured. <code>parseRecord</code> owns the parse-and-validate knowledge and returns a <code>Result</code> that names each failure mode, so an unknown error is impossible. <code>summarise</code> is pure arithmetic that can be tested with a hand-built vector and no input. <code>printReport</code> decides the "no scores" case explicitly, and the sentinel is gone: <code>valid == 0</code> is the honest test, and an average of zero is reported as zero. <code>main</code> is six lines of composition, each calling a function whose name says what it does. The magic bounds are named constants. Every principle from this chapter is present, and the function grew by names rather than by lines.</p>
+<p class="step-label">Cost and notes</p>
+<p>The refactor is longer than the original, and that is normal: named ideas take more text than anonymous ones. The payoff is in the changes that now cost one line instead of a careful surgical edit: a new field on <code>Record</code>, a new error variant, a different report format, a test of the average in isolation. Refactoring is an investment, and the only way to evaluate it is to ask whether the next change is easier. If the script is never touched again, the refactor was not worth it; if it is the seed of a system, it was overdue.</p>
+<p class="step-label">When the before is fine</p>
+<p>A script that runs once, on one file, and is then deleted is exactly the kind of code that should stay a script. The refactor is for code that will live, change, and be read by someone other than you.</p>
+<p class="step-label">Variation</p>
+<p>Add a second output format (a CSV summary) by adding <code>printReportCSV</code> and changing <code>main</code>'s last line. Then add the ability to filter records below a threshold, which now means filtering the <code>Vec&lt;Record&gt;</code> before <code>summarise</code>. Notice that neither change touches the parser, and say which principle that shows.</p>
+<section><h2 id="s36-11">The Law of Demeter</h2></section>
+<p class="step-label">The principle</p>
+<p>A piece of code should talk only to its immediate collaborators, and only through their interfaces, not through their collaborators' collaborators. Do not navigate a chain of fields and methods to reach a piece of data; ask the object that owns it.</p>
+<p class="step-label">The intuition</p>
+<p>A long navigation chain is a public statement of how the types are wired together. <code>a-&gt;customer.address.city</code> tells the reader, and the compiler, that this code depends on <code>Order</code> having a <code>Customer</code> field, on <code>Customer</code> having an <code>Address</code> field, and on <code>Address</code> having a <code>city</code>. Any of those can change and this line breaks, even though this code has no business knowing any of them. The rule, often stated as "don't talk to strangers," is to move the question down the chain: let <code>Address</code> compare cities, let <code>Customer</code> compare addresses, and let <code>Order</code> compare orders. Each method then reaches only one step.</p>
+<p class="step-label">The before</p>
+<p>A function that reaches through two levels to compare two orders.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Address { str city; str postalCode; }
+pub struct Customer { Address address; }
+pub struct Order { Customer customer; f64 total; }
+
+pub bool shipsToSameCity(const Order* a, const Order* b) {
+    // a train wreck: three dots deep into the object graph
+    return a-&gt;customer.address.city.equals(b-&gt;customer.address.city);
+}</code></pre>
+<p>The comparison knows the entire object graph. Introduce a <code>Region</code> between <code>Customer</code> and <code>Address</code> and this function fails to compile, as does every other function that made the same reach.</p>
+<p class="step-label">The after</p>
+<p>Each type answers a question at its own level, reaching one step at most.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Address {
+    str city;
+    str postalCode;
+
+    bool sameCity(const Address* other) {
+        // each type answers the question at its own level
+        return self.city.equals(other-&gt;city);
+    }
+}
+
+// each layer hides the one below it
+pub struct Customer {
+    Address address;
+
+    bool livesInSameCityAs(const Customer* other) {
+        return self.address.sameCity(&amp;other-&gt;address);
+    }
+}
+
+pub struct Order {
+    Customer customer;
+
+    bool shipsToSameCityAs(const Order* other) {
+        // reaches exactly one step, no further
+        return self.customer.livesInSameCityAs(&amp;other-&gt;customer);
+    }
+}</code></pre>
+<p>Now <code>Order::shipsToSameCityAs</code> knows only that it has a <code>Customer</code>, and <code>Customer</code> knows only that it has an <code>Address</code>; the call site is <code>a-&gt;shipsToSameCityAs(b)</code>. If a <code>Region</code> type is introduced later, the change is confined to <code>Address</code>, and the call sites never mention its internals.</p>
+<p class="step-label">Cost and notes</p>
+<p>The refactor adds one method per level and slightly more code, and <code>const</code> pointers keep the methods from mutating their inputs. The benefit is that the dependency graph is shallow: each method is testable with a single object and a fake collaborator, and a change to one type's internals does not ripple outward. This is the mirror image of DRY, instead of giving knowledge one home, it refuses to let knowledge leak.</p>
+<p class="step-label">When the before is fine</p>
+<p>Plain data-transfer structs, whose whole purpose is to be read field by field, are not molested by this rule; reaching into a <code>Point</code> for its <code>x</code> is not a Demeter violation, it is the point. The rule is about behaviour and about deep chains, not about a single field access.</p>
+<p class="step-label">Variation</p>
+<p>Find a "train wreck" in your own code, a line with three or more dots, and give the type a method that answers the underlying question. Then ask whether the question belongs to the first type in the chain or to one further down, and put it at the lowest level that can answer it.</p>
+<section><h2 id="s36-12">Immutability and Pure Functions</h2></section>
+<p class="step-label">The principle</p>
+<p>Prefer values that do not change after they are created, and functions that compute a result without touching anything outside themselves. A pure function, one whose answer depends only on its arguments, is easier to test, safe to call twice, safe to run in parallel, and safe to cache.</p>
+<p class="step-label">The intuition</p>
+<p>The enemy is state that drifts. The moment two pieces of information must be kept in agreement by hand, a change to one that forgets the other is a bug waiting to happen. A pure function has no such agreement to maintain: you give it inputs, it returns an output, and there is nothing left behind to be inconsistent. Immutability is the same idea applied to values. If a value never changes, then a reference to it can be shared freely, called twice, or stored without fear.</p>
+<p class="step-label">The before</p>
+<p>A cart that caches its own total and mutates in place.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+
+pub struct Cart {
+    // two pieces of state that must be kept in agreement by hand
+    Vec&lt;f64&gt; prices;
+    f64 total;      // kept in step with prices by hand
+}
+
+pub void addItem(Cart* c, f64 price) {
+    // mutating both fields together is a contract nothing enforces
+    c-&gt;prices.push(price);
+    c-&gt;total += price;
+}
+
+pub f64 applyDiscount(Cart* c, f64 percent) {
+    // mutates in place: calling twice discounts twice
+    c-&gt;total = c-&gt;total * (1.0 - percent);
+    return c-&gt;total;
+}</code></pre>
+<p>Calling <code>applyDiscount</code> twice discounts twice. Adding an item after a discount loses the discount, because <code>total</code> and <code>prices</code> have quietly fallen out of agreement. The two fields are a contract that nothing enforces.</p>
+<p class="step-label">The after</p>
+<p>A value, plus functions that read it through a <code>const</code> pointer and return a new value.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+
+// the only field; total is derived, never stored
+pub struct Cart { Vec&lt;f64&gt; prices; }
+
+pub f64 cartTotal(const Cart* c) {
+    // pure: depends only on c and never mutates it
+    f64 sum = 0.0;
+    for (usize i = 0; i &lt; c-&gt;prices.count(); i += 1) sum += c-&gt;prices.at(i);
+    return sum;
+}
+
+pub Cart withItem(const Cart* c, f64 price) {
+    // returns a new cart; the original is untouched
+    Cart next;
+    next.prices = Vec&lt;f64&gt;::new();
+    for (usize i = 0; i &lt; c-&gt;prices.count(); i += 1) next.prices.push(c-&gt;prices.at(i));
+    next.prices.push(price);
+    return next;
+}
+
+pub Cart discounted(const Cart* c, f64 percent) {
+    // discounting is a value transformation, not an in-place edit
+    Cart next;
+    next.prices = Vec&lt;f64&gt;::new();
+    for (usize i = 0; i &lt; c-&gt;prices.count(); i += 1)
+        next.prices.push(c-&gt;prices.at(i) * (1.0 - percent));
+    return next;
+}</code></pre>
+<p><code>cartTotal</code> is pure: call it once or a hundred times and the answer is the same, and it cannot change the cart. <code>discounted</code> returns a new cart and leaves the original alone, so discounting twice is an explicit choice, not an accident. The <code>const</code> on each parameter is the compiler's help: a function that promised not to mutate cannot, even by mistake.</p>
+<p class="step-label">Cost and notes</p>
+<p>Immutability copies. <code>withItem</code> and <code>discounted</code> each allocate a new vector, where the mutating version edited in place. For a cart of ten prices that is nothing, and for a hot loop over a million elements it is a real cost, which is why performance-critical code either mutates a local buffer it owns outright or uses a persistent data structure that shares the unchanged parts. The trade is deliberate: pay a copy to remove a whole class of bugs and to make the functions trivially testable.</p>
+<p class="step-label">When the before is fine</p>
+<p>A tight numeric loop mutating a buffer it created and will throw away is exactly right; the discipline is about shared, long-lived values, not about every temporary. The mistake is exposing the mutation: a mutating function on a value that callers hold and reuse is where the bugs live.</p>
+<p class="step-label">Variation</p>
+<p>Take the <code>summarise</code> function from 35.3 and note that it is already pure, then add a memoised wrapper that caches the last result for a repeated identical input and argue why caching is safe only because the function is pure.</p>
+<section><h2 id="s36-13">The Strategy Pattern with Function Pointers</h2></section>
+<p class="step-label">The principle</p>
+<p>When a piece of code has several interchangeable algorithms, give the algorithm its own name and pass it in, rather than selecting between them with a type switch buried in the middle. The code that uses the strategy stops knowing which one it has.</p>
+<p class="step-label">The intuition</p>
+<p>A switch over an operation enum welds the caller to the whole family: every new operation edits the function, and the function must know every case. Passing the operation as a value inverts that. The caller names the operation it wants, the code that consumes it calls it through the common shape, and adding an operation is adding a function, no edit to the code that uses it. In Coral the lightest such value is a function pointer, because there is no inheritance to carry the idea.</p>
+<p class="step-label">The before</p>
+<p>A calculator that switches on an operation tag.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">enum Op { Add, Sub, Mul }
+
+pub f64 compute(Op op, f64 a, f64 b) {
+    // every new operation is a new arm here
+    switch (op) {
+        Op::Add =&gt; return a + b,
+        Op::Sub =&gt; return a - b,
+        Op::Mul =&gt; return a * b,
+    }
+}</code></pre>
+<p>Every new operation is an edit to <code>compute</code> and to the enum, and every edit risks the operations that already worked.</p>
+<p class="step-label">The after</p>
+<p>The operation is a function value; the consumer knows only its shape.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+
+// each algorithm is a plain function of the same shape
+pub f64 addOp(f64 a, f64 b) { return a + b; }
+pub f64 subOp(f64 a, f64 b) { return a - b; }
+pub f64 mulOp(f64 a, f64 b) { return a * b; }
+
+pub f64 compute(f64(f64, f64) op, f64 a, f64 b) {
+    // the consumer knows only the function&#x27;s shape
+    return op(a, b);
+}
+
+pub f64 reduce(const Vec&lt;f64&gt;* xs, f64(f64, f64) op) {
+    @assertOut(xs-&gt;count() &gt; 0, &quot;reduce needs at least one element&quot;);
+    // the same strategy value drives a fold
+    f64 acc = xs-&gt;at(0);
+    for (usize i = 1; i &lt; xs-&gt;count(); i += 1) acc = op(acc, xs-&gt;at(i));
+    return acc;
+}</code></pre>
+<p><code>compute(addOp, 3.0, 4.0)</code> and <code>compute(mulOp, 3.0, 4.0)</code> choose the algorithm at the call site, and <code>compute</code> itself has one line. A fourth operation is a new function and no change to <code>compute</code>, which is the open/closed idea of 35.5 in its smallest form. <code>reduce</code> shows the same strategy reused for a fold, which is why the standard library's <code>sortBy</code> takes a comparison function of exactly this shape.</p>
+<p class="step-label">Cost and notes</p>
+<p>A call through a function pointer is an indirect call, which the compiler may not inline unless it knows the concrete target at the call site; the switch version inlines easily. The compensating benefit is that adding operations is open, and the caller decides the behaviour at runtime, which a switch over a fixed enum cannot do without editing the enum. The second cost is the loss of exhaustiveness: the compiler no longer proves that every operation is handled, because a function pointer can be anything.</p>
+<p class="step-label">When the before is fine</p>
+<p>A small, closed set of operations used in exactly one place is fine as a switch, and the compiler's exhaustiveness check is worth more than openness there. Reach for the function pointer when the set will grow or when the choice is data-driven.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>bool(f64, f64) less</code> strategy to a manual sort and observe that it is the same pattern as <code>Vec::sortBy</code>, then compare the function-pointer strategy with the trait-based strategy of 35.5 and say when each is the right tool: the pointer for stateless algorithms, the trait when the strategy carries state.</p>
+<section><h2 id="s36-14">The Null Object Pattern</h2></section>
+<p class="step-label">The principle</p>
+<p>When a collaborator may be absent, do not make every caller check for the absence. Provide an object that implements the same interface and does nothing, and callers treat presence and absence identically.</p>
+<p class="step-label">The intuition</p>
+<p>A nullable collaborator puts a check at every use, and one forgotten check is a crash. The null object removes the special case: the interface is always callable, and "do nothing" is a legitimate, explicit behaviour rather than an absence the caller must remember. It is the difference between "there is a logger, and it is the silent one" and "there may or may not be a logger, and you must ask first." The type system can then guarantee that nobody forgot, because there is nothing to forget.</p>
+<p class="step-label">The before</p>
+<p>A process that must check its logger everywhere.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct ConsoleLogger {
+    void log(str msg) { println(&quot;{}&quot;, msg); }
+}
+
+pub void process(ConsoleLogger* logger, u64 taskId) {
+    // every use must re-check for null; one miss is a crash
+    if (logger != null) logger-&gt;log(&quot;start&quot;);
+    // ... do the work ...
+    if (logger != null) logger-&gt;log(&quot;done&quot;);
+}</code></pre>
+<p>The check is repeated at every call, and a caller with no logger must pass <code>null</code> and hope every site checks. A single missed check is a null dereference far from the call that allowed it.</p>
+<p class="step-label">The after</p>
+<p>A trait, a real implementation, and a silent one.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Logger {
+    // the callable interface, always present
+    void log(str msg);
+}
+
+pub struct ConsoleLogger { str label; }
+pub extend ConsoleLogger : Logger {
+    void log(str msg) { println(&quot;[{}] {}&quot;, self.label, msg); }
+}
+
+pub struct NullLogger { str label; }
+pub extend NullLogger : Logger {
+    void log(str msg) { }          // stays silent, on purpose
+}
+
+pub void process&lt;T&gt;(T* logger, u64 taskId) {
+    // no null check anywhere: absence is a real object
+    logger-&gt;log(&quot;start&quot;);
+    // ... do the work ...
+    logger-&gt;log(&quot;done&quot;);
+}</code></pre>
+<p>Now there is no null and no check. A caller that wants logs passes a <code>ConsoleLogger</code>; a caller that wants silence passes a <code>NullLogger</code>; a test passes a recording logger and asserts on what it saw. Each new collaborator is a struct and an <code>extend</code> block, and <code>process</code> does not change.</p>
+<p class="step-label">Cost and notes</p>
+<p>The null object still requires constructing a value to pass, which is trivial, and it adds one struct and one no-op method per interface. The type system now prevents the forgotten check, because there is no check. The discipline is to use it only for genuinely benign absence: a silent logger is fine, but a silent database is not, because a dropped write that reports success is a lie. A no-op is for operations whose absence is meaningful and harmless, not for hiding failure.</p>
+<p class="step-label">When the before is fine</p>
+<p>When the collaborator's absence means something the caller must branch on, connecting to a required service, opening a file that must exist, a <code>Result</code> or an <code>Option</code> is the honest type, and a null object would swallow the problem. Use the null object for the log-and-metrics-shaped seams where "off" is a real mode.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>RecordingLogger</code> that appends every message to a <code>Vec&lt;str&gt;</code>, use it in a test, and note that this is now possible without a real console or a mock framework. Then make a <code>FanoutLogger</code> that forwards each message to two other loggers, and observe that composition, not inheritance, is what makes it easy.</p>
+<section><h2 id="s36-15">Backwards-Compatible API Design</h2></section>
+<p class="step-label">The principle</p>
+<p>When a widely used type or function must gain a capability, design the change so existing callers keep compiling and behaving as before. Extend the surface; do not reshape it.</p>
+<p class="step-label">The intuition</p>
+<p>The most common source of breakage is not a broken feature; it is a helpful one. A struct with public fields is written literally by every caller, so adding a field breaks all of them at once. A function that takes exactly the arguments a caller passes cannot grow a parameter without editing every call. The fix is to own construction: give the type a constructor that supplies defaults, keep the fields private, and add new capabilities as separate functions or as optional builder steps. Then a new field is a default inside the constructor, and no caller notices.</p>
+<p class="step-label">The before</p>
+<p>A request struct that every caller builds with a literal.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Request {
+    // public fields mean every caller writes a literal
+    str url;
+    u32 timeoutMs;
+}
+
+pub void send(const Request* r) { /* ... */ }</code></pre>
+<p>Every caller writes <code>Request { .url = "...", .timeoutMs = 1000 }</code>. The maintainer now wants a <code>u32 retries</code> field with a default of zero; adding it breaks every literal in the codebase. The feature was small and the breakage is total.</p>
+<p class="step-label">The after</p>
+<p>A constructor owns the defaults, and new options are additive.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Request {
+    str url;
+    u32 timeoutMs;
+    // new capability added without breaking existing literals
+    u32 retries;
+}
+
+pub Request request(str url) {
+    // the constructor owns the defaults; a new field is one line here
+    return Request { .url = url, .timeoutMs = 1000, .retries = 0 };
+}
+
+pub Request withTimeout(Request r, u32 ms) {
+    // additive builder step, so existing call sites never move
+    r.timeoutMs = ms;
+    return r;
+}
+
+pub Request withRetries(Request r, u32 n) {
+    r.retries = n;
+    return r;
+}
+
+pub void send(const Request* r) { /* ... */ }</code></pre>
+<p>Callers write <code>send(&amp;withRetries(request(url), 3))</code>, or <code>send(&amp;request(url))</code> for the defaults. When <code>retries</code> was added, it was one line in <code>request</code>, and no call site moved. The next field added will be the same. The fields are private, so callers cannot construct a <code>Request</code> that skips the defaults.</p>
+<p class="step-label">Cost and notes</p>
+<p>The type is no longer a transparent record; callers must use the constructor and the builder steps, which is more ceremony than a literal. The payoff is that additive change is free, which matters the moment there is more than one caller you do not control. The same rule applies to functions: rather than changing <code>send</code> to take retries, add <code>sendWithOptions</code>, or add the new field to the options struct that <code>send</code> already takes. An enum is the harder case, because adding a variant breaks every exhaustive switch; that is an argument for handling unknown cases with an <code>else</code> arm, or for a second function, when the enum crosses a module boundary.</p>
+<p class="step-label">When the before is fine</p>
+<p>An internal struct with one or two call sites in one file is cheaper to change directly; the constructor and the private fields are overhead that a small module does not need. The discipline earns its keep at the boundary between teams, where you cannot edit the callers.</p>
+<p class="step-label">Variation</p>
+<p>Take the <code>AgeError</code> variant from 35.7 and add a fourth failure case. Count how many <code>switch</code> statements must change, then add the same information as a new function instead and count again. The difference is the cost of a breaking change measured in call sites.</p>
+<section><h2 id="s36-16">Exercises</h2></section>
+<section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Naming</span>Take a function of your own whose name includes <code>data</code>, <code>info</code>, <code>handle</code>, or <code>process</code>, and rename it so the name states precisely what it transforms. Then write the one-sentence doc comment the new name makes unnecessary.</li><li><span class="ex-label">DRY</span>Find a rule in a project of yours that is written in more than one place. Extract it into a single named function or constant and list each call site you replaced. If the copies had already drifted, say which one was the bug.</li><li>Cohesion and coupling. Take a function with more than one reason to change and split it into one function per reason. For each new function, state in one line what kind of edit will make it change, and confirm the reasons are distinct.</li><li><span class="ex-label">Composition</span>Rewrite a struct that uses an enum tag and conditionally-meaningful fields as a <code>variant</code> plus composition, as in 35.4. Which fields could the compiler now prove are unavailable in the wrong case?</li><li>Open/Closed. Implement the shape trait and add two new shapes without editing the <code>totalArea</code> function. Then add a <code>volume()</code> method to the trait and list every implementor you had to edit. Explain the expression problem in your own words using these two changes as the example.</li><li><span class="ex-label">Inversion</span>Write <code>registerUser</code> a second time against a concrete store, and then against the <code>UserWriter</code> trait with a failing stand-in. Which version can you test the failure path of, and why can the concrete version not test it without a real database?</li><li><span class="ex-label">Errors</span>Convert a function that uses a sentinel into one that returns a <code>Result</code>. Name every failure case as a distinct variant, then write the exhaustive <code>switch</code> at one call site. Which cases did the sentinel make indistinguishable?</li><li><span class="ex-label">Invariants</span>Design a <code>Money</code> type with an invariant that the amount is never stored with more than two decimal places. Where is the invariant established, where is it asserted, and what does the type gain over a bare <code>f64</code>? Then write a property test that constructs a thousand random operation sequences and checks the invariant after each.</li><li><span class="ex-label">Testing</span>Take a function you recently verified by printing and rewrite its verification as tests, at least one of which is a property spanning a range of inputs. Run it, then deliberately break the function and confirm the property test fails where the example test might not.</li><li><span class="ex-label">Refactoring</span>Take the before script in 35.10 and add a feature, say, ignoring comment lines that begin with <code>#</code>, without refactoring. Count the lines you had to change and the concerns you had to touch. Then make the same change in the after version and compare. Write two sentences on which shape you would rather maintain, and when the script would still have been the right choice.</li></ol></section>
+      <nav class="chapter-nav"><a href="../../lengthy/35-live-examples-systems-and-concurrency/index.html">← Previous</a><a href="../../lengthy/37-live-examples-text-algorithms-and-compression/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

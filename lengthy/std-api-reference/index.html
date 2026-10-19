@@ -1,0 +1,2403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Standard Library API Reference from the Coral Book." />
+  <meta name="robots" content="index, follow" />
+  <title>Standard Library API Reference | The Coral Book</title>
+  <link rel="canonical" href="https://coralc-lang.github.io/coral-docs/lengthy/std-api-reference/index.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Standard Library API Reference | The Coral Book" />
+  <meta property="og:description" content="Standard Library API Reference from the Coral Book." />
+  <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/lengthy/std-api-reference/index.html" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="stylesheet" href="../../lengthy/book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../../textbook/index.html">Editions</a><a href="../../lengthy/index.html">Lengthy</a><a href="../../speed/index.html">Speed</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Reference</p>
+      <h1>Standard Library API Reference</h1>
+      
+      <p>This document catalogues every <code>pub</code> export of the Coral standard library and the core/platform support modules it builds on. It is generated from the actual source tree under <code>lib/</code> and reflects the current dialect.</p>
+<ul><li><strong>Sources of truth:</strong> <code>lib/core/**</code>, <code>lib/platform/**</code>, and the per-target <code>lib/std/x86_64/&lt;target&gt;/**</code> trees. The primary target documented here is <strong><code>x86_64/linux</code></strong>; <code>lib/std/x86_64/windows/**</code> mirrors it with platform differences (noted where relevant).</li><li><strong>Top-level manifest:</strong> <code>lib/std/lib.crl</code> re-exports the submodules; the per-target manifest is <code>lib/std/x86_64/linux/lib.crl</code>.</li><li><strong>Signature syntax:</strong> <code>RetType name(params)</code>. Tuple <em>types</em> are spelled <code>struct(T, T)</code> (never <code>(T, T)</code>). Generics are <code>&lt;T&gt;</code>, <code>&lt;T, U&gt;</code>, <code>&lt;T, usize N&gt;</code>, or <code>&lt;comptime N&gt;</code>; there are no generic bounds and no trait composition.</li><li><strong>Visibility:</strong> the dialect has no per-method <code>pub</code>; every member declared in a <code>pub struct</code>/<code>pub variant</code>/<code>pub enum</code>/<code>pub extend</code> is public. Members named with a leading <code>_</code> are internal helpers, listed here for completeness but not intended for direct use.</li><li><strong><code>@drop</code>:</strong> <code>@drop</code> is an inbuilt trait. Types that own heap memory provide an <code>extend &lt;T&gt; : @drop { void drop() }</code> block wiring their <code>dispose()</code> into the language's automatic cleanup.</li></ul>
+<hr />
+<section><h2 id="0-prelude-and-module-layout">0. Prelude and module layout</h2></section>
+<h3 id="prelude">Prelude</h3>
+<p>The following are merged into every translation unit automatically:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">std::io::ios          // print / println / eprint / eprintln / readLine / ...
+std::text::string     // String
+std::option           // Option&lt;T&gt;
+std::result           // Result&lt;T, E&gt;
+std::vec              // Vec&lt;T&gt;
+std::collections::arr // Arr&lt;T, N&gt;
+core::str             // `str` methods</code></pre>
+<h3 id="module-tree-lib-std-lib-crl">Module tree (<code>lib/std/lib.crl</code>)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">pub mod collections = import collections;
+pub mod concurrent  = import concurrent;
+pub mod crypto      = import crypto;
+pub mod data        = import data;
+pub mod fmt         = import fmt;
+pub mod io          = import io;
+pub mod math        = import math;
+pub mod memory      = import memory;
+pub mod parser      = import parser;
+pub mod text        = import text;
+
+pub mod option    = import data::option;
+pub mod result    = import data::result;
+pub mod time      = import time;
+pub mod duration  = import duration;
+pub mod vec       = import collections::vec;
+pub mod arr       = import collections::arr;
+pub mod mman      = import memory::mman;
+pub mod allocator = import memory::allocators;</code></pre>
+<h3 id="per-target-manifest-lib-std-x86-64-linux">Per-target manifest (<code>lib/std/x86_64/linux/lib.crl</code>)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">pub mod memory    = import memory;
+pub mod mman      = import memory::mman;
+pub mod allocator = import memory::allocators;
+pub mod io        = import io;
+pub mod concurrent = import concurrent;
+pub mod crypto    = import crypto;
+pub mod math      = import math;
+pub mod vec       = import collections::vec;
+pub mod option    = import data::option;
+pub mod result    = import data::result;
+pub mod time      = import time;
+pub mod duration  = import duration;
+pub mod intrinsics = import memory::intrinsics;</code></pre>
+<p>Submodule manifests: ``` collections/lib.crl : arr vec bitset cache deque hashmap iter linkedlist map</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">                  priorityqueue queue ringbuf set sort tree trie unordered_map</code></pre>
+<p>text/lib.crl        : ascii crlb regex string strutil uri utf8 data/lib.crl        : option result math/lib.crl        : complex math matrix random vector io/lib.crl          : bio cmd env fios fs ios log net path process temp term memory/lib.crl      : mman allocators intrinsics pool shared_ptr smart_ptr memory/allocators/lib.crl : allocator tlsf mimalloc concurrent/lib.crl  : async mutex rwlock semaphore signal thread threadpool crypto/lib.crl      : aes base64 bloom crc hash hex hmac sha256 parser/lib.crl      : csv ini json toml uuid xml fmt/lib.crl         : fmt misc/lib.crl        : erased cast testing/lib.crl     : test core/lib.crl        : cchar limits char_util platform/lib.crl    : libc win32 ```</p>
+<blockquote><p><strong>Known inconsistencies in the manifests (not fixed here):</strong> - <code>text/lib.crl</code> declares <code>pub mod crlb = import crlb;</code>, but no <code>text/crlb.crl</code> exists, this import is dangling. - <code>parser/crlb.crl</code> exists but is <strong>not</strong> re-exported by <code>parser/lib.crl</code>. - <code>std/lib.crl</code> does <strong>not</strong> re-export <code>misc</code> or <code>testing</code>; import those paths directly.</p></blockquote>
+<hr />
+<section><h2 id="core">core</h2></section>
+<h3 id="1-core-cchar-c-character-type">1. <code>core::cchar</code>, C character type</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct cchar = flag (arch)
+{
+    x86_64 =&gt; { i8 },
+    else   =&gt; { u8 }
+}</code></pre>
+<p>A <code>cchar</code> is a <code>char</code>-like C character whose signedness depends on the target architecture (signed <code>i8</code> on x86_64, unsigned <code>u8</code> elsewhere).</p>
+<h3 id="2-core-limits-integer-and-float-limits">2. <code>core::limits</code>, Integer and float limits</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub const INT64_MIN = -9223372036854775808;
+pub const INT64_MAX =  9223372036854775807;
+pub const INT32_MIN = -2147483648;
+pub const INT32_MAX =  2147483647;
+pub const INT16_MIN = -32768;
+pub const INT16_MAX =  32767;
+pub const INT8_MIN  = -128;
+pub const INT8_MAX  =  127;
+pub const U64_MAX = 18446744073709551615u;
+pub const U32_MAX = 4294967295u;
+pub const U16_MAX = 65535u;
+pub const U8_MAX  = 255u;
+pub const F64_MAX = 1.7976931348623157e+308;
+pub const F64_MIN = 2.2250738585072014e-308;
+pub const F32_MAX = 3.40282347e+38;
+pub const F32_MIN = 1.17549435e-38;</code></pre>
+<h3 id="3-core-char-util-byte-and-character-clas">3. <code>core::char_util</code>, Byte and character classification</h3>
+<p>All <code>u8</code>-taking predicates operate on a single byte; the <code>char*</code> variants operate on a Coral <code>char</code> (Unicode scalar value).</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// byte predicates / transforms (u8)
+pub bool isDigit(u8 c)
+pub bool isAlpha(u8 c)
+pub bool isAlnum(u8 c)
+pub bool isLower(u8 c)
+pub bool isUpper(u8 c)
+pub u8   toLower(u8 c)
+pub u8   toUpper(u8 c)
+pub bool isSpace(u8 c)
+pub bool isPrint(u8 c)
+pub bool isControl(u8 c)
+pub bool isHexDigit(u8 c)
+pub u8   digitValue(u8 c)
+pub bool isAscii(u8 c)
+pub bool isWhitespace(u8 c)   // alias of isSpace
+pub bool isNewline(u8 c)
+pub bool isPunctuation(u8 c)
+pub bool isSymbol(u8 c)
+
+// UTF-8 helpers
+pub u32  utf8Width(u32 c)
+pub u32  encodeUtf8(u32 c, u8* buf)
+pub struct(u32, u32) decodeUtf8(const u8* buf)   // returns (codepoint, length)
+pub u32  toUtf8(u32 c, u8* buf)
+pub u32  fromUtf8(const u8* buf)
+pub u32  toStr(u8 c, u8* buf)
+
+// byte comparisons
+pub u8   toAscii(u8 c)
+pub bool u8Eq(u8 a, u8 b)
+pub bool u8EqLower(u8 a, u8 b)
+pub i32  u8Cmp(u8 a, u8 b)
+
+// char (Unicode) variants
+pub bool charIsValid(char c)
+pub bool charIsAscii(char c)
+pub bool charIsDigit(char c)
+pub bool charIsAlpha(char c)
+pub bool charIsAlnum(char c)
+pub bool charIsUpper(char c)
+pub bool charIsLower(char c)
+pub bool charIsSpace(char c)
+pub bool charIsControl(char c)
+pub bool charIsPrint(char c)
+pub char charToUpper(char c)
+pub char charToLower(char c)
+pub u32  charToU32(char c)
+pub char charFromU32(u32 v)
+pub bool charTryFromU32(u32 v, char* out)
+pub u32  charEncodeUtf8(char c, u8* buf)
+pub char charDecodeUtf8(const u8* buf, usize len, usize* consumed)
+
+// constants
+pub u8 const newline        = &#x27;\n&#x27;;
+pub u8 const tab            = &#x27;\t&#x27;;
+pub u8 const space          = &#x27; &#x27;;
+pub u8 const nullu8         = &#x27;\0&#x27;;
+pub u8 const carriageReturn = &#x27;\r&#x27;;</code></pre>
+<h3 id="4-core-str-methods-on-the-builtin-str">4. <code>core::str</code>, Methods on the builtin <code>str</code></h3>
+<p><code>str</code> is a builtin view type: ``<code>coral struct str { const u8* ptr; usize len; } </code>`<code> Extended (imports </code>platform::libc<code> and </code>std::text::string`):</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend str
+{
+    static str fromCstr(const cchar::cchar* cstr)
+    static str fromParts(const u8* ptr, usize len)
+    static str empty()
+
+    String       asString()
+    const u8*    asU8()
+    u8           at(usize idx)
+    bool         isEmpty()
+    bool         equals(str other)
+    i32          compare(str other)
+    bool         startsWith(str prefix)
+    bool         endsWith(str suffix)
+    bool         containsView(str needle)
+    bool         containsByte(u8 c)
+    usize        findByte(u8 c)
+    usize        rfindByte(u8 c)
+    usize        findView(str needle)
+    str          slice(usize start, usize end)
+    str          trimStart()
+    str          trimEnd()
+    str          trim()
+    bool         isAsciiDigit()
+    bool         isAsciiAlpha()
+    bool         isAsciiAlnum()
+    bool         nextCodepoint(usize* idx, char* out)
+    usize        codepointCount()
+}</code></pre>
+<hr />
+<section><h2 id="platform">platform</h2></section>
+<h3 id="5-platform-libc-libc-pthread-posix-exter">5. <code>platform::libc</code>, Libc / pthread / POSIX externs</h3>
+<p>All declarations are <code>pub extern</code>. Grouped by area.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// stdio / errno
+i32*  __errno_location()
+i64   read(i32 fd, cchar* buf, u64 count)
+i64   write(i32 fd, const cchar* buf, u64 count)
+i32   getcchar()
+i32   putcchar(i32 c)
+i32   fflush(rawptr stream)
+i32   getchar()
+i32   printf(const cchar* fmt, ...)
+i32   snprintf(cchar* buf, u64 size, const cchar* fmt, ...)
+i32   vsnprintf(cchar* buf, u64 size, const cchar* fmt, ...)
+i32   puts(const cchar* s)
+
+// string / memory
+u64   strlen(const cchar* s)
+i32   strcmp(const cchar* a, const cchar* b)
+cchar* strcpy(cchar* dst, const cchar* src)
+i32   memcmp(const rawptr a, const rawptr b, u64 n)
+rawptr malloc(u64 size)
+void   free(rawptr ptr)
+rawptr realloc(rawptr ptr, u64 newSize)
+
+// files / dirs / fs
+rawptr mmap(rawptr addr, u64 length, i32 prot, i32 flags, i32 fd, i64 offset)
+i32   open(const cchar* path, i32 flags, i32 mode)
+i32   close(i32 fd)
+i32   stat(const cchar* path, rawptr buf)
+i32   mkdir(const cchar* path, i32 mode)
+i32   chdir(const cchar* path)
+i32   rmdir(const cchar* path)
+i32   unlink(const cchar* path)
+i32   rename(const cchar* old, const cchar* newName)
+i32   access(const cchar* path, i32 mode)
+rawptr opendir(const cchar* path)
+rawptr readdir(rawptr dir)
+i32   closedir(rawptr dir)
+i64   lseek(i32 fd, i64 offset, i32 whence)
+i32   mkstemp(cchar* templateStr)
+cchar* mkdtemp(cchar* templateStr)
+f64   strtod(const cchar* nptr, cchar** endptr)
+i64   readlink(const cchar* path, cchar* buf, u64 bufsize)
+rawptr fopen(const cchar* path, const cchar* mode)
+i32   fclose(rawptr stream)
+u64   fread(rawptr ptr, u64 size, u64 count, rawptr stream)
+u64   fwrite(const rawptr ptr, u64 size, u64 count, rawptr stream)
+i32   feof(rawptr stream)
+i32   ferror(rawptr stream)
+
+// regex
+i32   regcomp(rawptr preg, const cchar* pattern, i32 cflags)
+i32   regexec(const rawptr preg, const cchar* string, u64 nmatch, rawptr pmatch, i32 eflags)
+void  regfree(rawptr preg)
+u64   regerror(i32 errcode, const rawptr preg, cchar* errbuf, u64 errbufSize)
+
+// process / signals / time
+i32   fork()
+i32   execvp(const cchar* file, const cchar** argv)
+i32   execvpe(const cchar* file, const cchar** argv, const cchar** envp)
+i32   waitpid(i32 pid, i32* status, i32 options)
+i32   poll(rawptr fds, u64 nfds, i32 timeout)
+void  _exit(i32 code)
+i32   pipe(i32* fds)
+i32   dup2(i32 oldfd, i32 newfd)
+i32   system(const cchar* cmd)
+rawptr signal(i32 signum, rawptr handler)
+i32   kill(i32 pid, i32 sig)
+i32   raise(i32 sig)
+i32   sched_yield()
+i32   gettimeofday(rawptr tv, rawptr tz)
+u64   time(rawptr t)
+i64   clock_gettime(i32 clockId, rawptr tp)
+i32   nanosleep(const rawptr req, rawptr rem)
+
+// environment / tty
+cchar* getenv(const cchar* name)
+i32   setenv(const cchar* name, const cchar* value, i32 overwrite)
+i32   unsetenv(const cchar* name)
+cchar** environ;
+i32   isatty(i32 fd)
+
+// ucontext (used by std::concurrent::async)
+i32   getcontext(rawptr uc)
+void  makecontext(rawptr uc, void() fn, i32 argc)
+i32   swapcontext(rawptr ocp, rawptr ucp)
+
+// pthreads
+i32   pthread_create(rawptr* thread, const rawptr attr, rawptr(rawptr) start, rawptr arg)
+i32   pthread_join(rawptr thread, rawptr* retval)
+void  pthread_exit(rawptr retval)
+rawptr pthread_self()
+i32   pthread_mutex_init(rawptr mutex, const rawptr attr)
+i32   pthread_mutex_destroy(rawptr mutex)
+i32   pthread_mutex_lock(rawptr mutex)
+i32   pthread_mutex_unlock(rawptr mutex)
+i32   pthread_mutex_trylock(rawptr mutex)
+i32   pthread_mutexattr_init(rawptr attr)
+i32   pthread_mutexattr_destroy(rawptr attr)
+i32   pthread_mutexattr_settype(rawptr attr, i32 type)
+i32   pthread_cond_init(rawptr cond, const rawptr attr)
+i32   pthread_cond_destroy(rawptr cond)
+i32   pthread_cond_wait(rawptr cond, rawptr mutex)
+i32   pthread_cond_signal(rawptr cond)
+i32   pthread_cond_broadcast(rawptr cond)
+i32   pthread_cond_timedwait(rawptr cond, rawptr mutex, rawptr abstime)
+i32   pthread_rwlock_init(rawptr lock, const rawptr attr)
+i32   pthread_rwlock_destroy(rawptr lock)
+i32   pthread_rwlock_rdlock(rawptr lock)
+i32   pthread_rwlock_wrlock(rawptr lock)
+i32   pthread_rwlock_unlock(rawptr lock)
+i32   pthread_rwlock_tryrdlock(rawptr lock)
+i32   pthread_rwlock_trywrlock(rawptr lock)
+i32   sem_init(rawptr sem, i32 pshared, u32 value)
+i32   sem_destroy(rawptr sem)
+i32   sem_wait(rawptr sem)
+i32   sem_trywait(rawptr sem)
+i32   sem_post(rawptr sem)
+i32   sem_getvalue(rawptr sem, i32* sval)
+
+// sockets
+i32   socket(i32 domain, i32 type, i32 protocol)
+i32   connect(i32 fd, const rawptr addr, i32 addrlen)
+i32   bind(i32 fd, const rawptr addr, i32 addrlen)
+i32   listen(i32 fd, i32 backlog)
+i32   accept(i32 fd, rawptr addr, i32* addrlen)
+i32   setsockopt(i32 fd, i32 level, i32 optname, const u8* optval, i32 optlen)
+i64   send(i32 fd, const u8* buf, u64 len, i32 flags)
+i64   recv(i32 fd, u8* buf, u64 len, i32 flags)
+i64   sendto(i32 fd, const u8* buf, u64 len, i32 flags, const rawptr dstAddr, i32 addrLen)
+i64   recvfrom(i32 fd, u8* buf, u64 len, i32 flags, rawptr srcAddr, i32* addrLen)
+u32   htonl(u32 hostlong)
+u16   htons(u16 hostshort)</code></pre>
+<h3 id="6-platform-win32-win32-winsock-crt-exter">6. <code>platform::win32</code>, Win32 / Winsock / CRT externs</h3>
+<p>All <code>pub extern</code>. This is the Windows counterpart of <code>platform::libc</code>.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// console / handles / files
+rawptr GetStdHandle(u32 nStdHandle)
+bool   ReadFile(rawptr hFile, cchar* lpBuffer, u32 nNumberOfBytesToRead, u32* lpNumberOfBytesRead, rawptr lpOverlapped)
+bool   WriteFile(rawptr hFile, const cchar* lpBuffer, u32 nNumberOfBytesToWrite, u32* lpNumberOfBytesWritten, rawptr lpOverlapped)
+void   ExitProcess(u32 uExitCode)
+rawptr CreateFileA(const cchar* lpFileName, u32 dwDesiredAccess, u32 dwShareMode, rawptr lpSecurityAttributes, u32 dwCreationDisposition, u32 dwFlagsAndAttributes, rawptr hTemplateFile)
+bool   CloseHandle(rawptr hObject)
+bool   DeleteFileA(const cchar* lpFileName)
+bool   RemoveDirectoryA(const cchar* lpPathName)
+bool   CreateDirectoryA(const cchar* lpPathName, rawptr lpSecurityAttributes)
+bool   MoveFileA(const cchar* lpExistingFileName, const cchar* lpNewFileName)
+u32    GetFileAttributesA(const cchar* lpFileName)
+
+// virtual memory / mapping / heap
+rawptr VirtualAlloc(rawptr lpAddress, u64 dwSize, u32 flAllocationType, u32 flProtect)
+bool   VirtualFree(rawptr lpAddress, u64 dwSize, u32 dwFreeType)
+rawptr CreateFileMappingA(rawptr hFile, rawptr lpAttributes, u32 flProtect, u32 dwMaximumSizeHigh, u32 dwMaximumSizeLow, const cchar* lpName)
+rawptr MapViewOfFile(rawptr hFileMappingObject, u32 dwDesiredAccess, u32 dwFileOffsetHigh, u32 dwFileOffsetLow, u64 dwNumberOfBytesToMap)
+bool   UnmapViewOfFile(rawptr lpBaseAddress)
+rawptr GetProcessHeap()
+rawptr HeapAlloc(rawptr hHeap, u32 dwFlags, u64 dwBytes)
+bool   HeapFree(rawptr hHeap, u32 dwFlags, rawptr lpMem)
+rawptr HeapReAlloc(rawptr hHeap, u32 dwFlags, rawptr lpMem, u64 dwBytes)
+
+// threads / sync primitives
+rawptr CreateThread(rawptr lpThreadAttributes, u64 dwStackSize, u32(rawptr) lpStartAddress, rawptr lpParameter, u32 dwCreationFlags, u32* lpThreadId)
+u32    WaitForSingleObject(rawptr hHandle, u32 dwMilliseconds)
+bool   TerminateThread(rawptr hThread, u32 dwExitCode)
+bool   GetExitCodeThread(rawptr hThread, u32* lpExitCode)
+rawptr CreateMutexA(rawptr lpMutexAttributes, bool bInitialOwner, const cchar* lpName)
+bool   ReleaseMutex(rawptr hMutex)
+rawptr CreateSemaphoreA(rawptr lpSemaphoreAttributes, i32 lInitialCount, i32 lMaximumCount, const cchar* lpName)
+bool   ReleaseSemaphore(rawptr hSemaphore, i32 lReleaseCount, i32* lpPreviousCount)
+rawptr CreateEventA(rawptr lpEventAttributes, bool bManualReset, bool bInitialState, const cchar* lpName)
+bool   SetEvent(rawptr hEvent)
+bool   ResetEvent(rawptr hEvent)
+void   InitCriticalSection(rawptr lpCriticalSection)
+void   DeleteCriticalSection(rawptr lpCriticalSection)
+void   EnterCriticalSection(rawptr lpCriticalSection)
+void   LeaveCriticalSection(rawptr lpCriticalSection)
+bool   TryEnterCriticalSection(rawptr lpCriticalSection)
+void   InitializeSRWLock(rawptr srwlock)
+void   AcquireSRWLockExclusive(rawptr srwlock)
+void   ReleaseSRWLockExclusive(rawptr srwlock)
+void   AcquireSRWLockShared(rawptr srwlock)
+void   ReleaseSRWLockShared(rawptr srwlock)
+bool   TryAcquireSRWLockExclusive(rawptr srwlock)
+bool   TryAcquireSRWLockShared(rawptr srwlock)
+void   InitializeConditionVariable(rawptr cond)
+bool   SleepConditionVariableCS(rawptr cond, rawptr critsec, u32 dwMilliseconds)
+void   WakeConditionVariable(rawptr cond)
+void   WakeAllConditionVariable(rawptr cond)
+
+// processes / fibers
+rawptr OpenProcess(u32 dwDesiredAccess, bool bInheritHandle, u32 dwProcessId)
+bool   TerminateProcess(rawptr hProcess, u32 uExitCode)
+bool   GetExitCodeProcess(rawptr hProcess, u32* lpExitCode)
+rawptr GetCurrentProcess()
+u32    GetCurrentProcessId()
+u32    GetCurrentThreadId()
+void   ExitThread(u32 dwExitCode)
+u32    ResumeThread(rawptr hThread)
+u32    SuspendThread(rawptr hThread)
+bool   DuplicateHandle(rawptr hSourceProcessHandle, rawptr hSourceHandle, rawptr hTargetProcessHandle, rawptr* lpTargetHandle, u32 dwDesiredAccess, bool bInheritHandle, u32 dwOptions)
+u32    WaitForMultipleObjects(u32 nCount, const rawptr* lpHandles, bool bWaitAll, u32 dwMilliseconds)
+bool   SwitchToThread()
+bool   SetThreadPriority(rawptr hThread, i32 nPriority)
+i32    GetThreadPriority(rawptr hThread)
+rawptr CreateFiber(u64 dwStackSize, u32(rawptr) lpStartAddress, rawptr lpParameter)
+void   SwitchToFiber(rawptr lpFiber)
+void   DeleteFiber(rawptr lpFiber)
+rawptr ConvertThreadToFiber(rawptr lpParameter)
+bool   CreatePipe(rawptr* hReadPipe, rawptr* hWritePipe, rawptr lpPipeAttributes, u32 nSize)
+bool   CreateProcessA(const cchar* lpApplicationName, cchar* lpCommandLine, rawptr lpProcessAttributes, rawptr lpThreadAttributes, bool bInheritHandles, u32 dwCreationFlags, rawptr lpEnvironment, const cchar* lpCurrentDirectory, rawptr lpStartupInfo, rawptr lpProcessInformation)
+bool   SetHandleInformation(rawptr hObject, u32 dwMask, u32 dwFlags)
+bool   PeekNamedPipe(rawptr hNamedPipe, rawptr lpBuffer, u32 nBufferSize, u32* lpBytesRead, u32* lpTotalBytesAvail, u32* lpBytesLeftThisMessage)
+
+// file positioning / enumeration
+u32    SetFilePointerA(rawptr hFile, i32 lDistanceToMove, i32* lpDistanceToMoveHigh, u32 dwMoveMethod)
+bool   GetFileAttributesExA(const cchar* lpFileName, u32 fInfoLevelId, rawptr lpFileInformation)
+rawptr FindFirstFileA(const cchar* lpFileName, rawptr lpFindFileData)
+bool   FindNextFileA(rawptr hFindFile, rawptr lpFindFileData)
+bool   FindClose(rawptr hFindFile)
+u32    GetFileSize(rawptr hFile, u32* lpFileSizeHigh)
+bool   GetFileSizeEx(rawptr hFile, i64* lpFileSize)
+bool   FlushFileBuffers(rawptr hFile)
+u32    GetFileType(rawptr hFile)
+bool   GetFileInformationByHandle(rawptr hFile, rawptr lpFileInformation)
+u32    GetFullPathNameA(const cchar* lpFileName, u32 nBufferLength, cchar* lpBuffer, cchar** lpFilePart)
+u32    GetCurrentDirectoryA(u32 nBufferLength, cchar* lpBuffer)
+bool   SetCurrentDirectoryA(const cchar* lpPathName)
+bool   CopyFileA(const cchar* lpExistingFileName, const cchar* lpNewFileName, bool bFailIfExists)
+bool   LockFile(rawptr hFile, u32 dwReserved, u32 nNumberOfBytesToLockLow, u32 nNumberOfBytesToLockHigh)
+bool   UnlockFile(rawptr hFile, u32 dwReserved, u32 nNumberOfBytesToUnlockLow, u32 nNumberOfBytesToUnlockHigh)
+u32    GetTempPathA(u32 nBufferLength, cchar* lpBuffer)
+u32    GetTempFileNameA(const cchar* lpPathName, const cchar* lpPrefixString, u32 uUnique, cchar* lpTempFileName)
+
+// errors / debug
+u32    GetLastError()
+void   SetLastError(u32 dwErrCode)
+u32    FormatMessageA(u32 dwFlags, rawptr lpSource, u32 dwMessageId, u32 dwLanguageId, cchar* lpBuffer, u32 nSize, rawptr Arguments)
+void   OutputDebugStringA(const cchar* lpOutputString)
+bool   IsDebuggerPresent()
+
+// console
+bool   ReadConsoleA(rawptr hConsoleInput, rawptr lpBuffer, u32 nNumberOfCharsToRead, u32* lpNumberOfCharsRead, rawptr pReserved)
+bool   WriteConsoleA(rawptr hConsoleOutput, const cchar* lpBuffer, u32 nNumberOfCharsToWrite, u32* lpNumberOfCharsWritten, rawptr lpReserved)
+bool   SetConsoleTextAttribute(rawptr hConsoleOutput, u16 wAttributes)
+bool   GetConsoleScreenBufferInfo(rawptr hConsoleOutput, rawptr lpConsoleScreenBufferInfo)
+bool   SetConsoleTitleA(const cchar* lpConsoleTitle)
+u32    GetConsoleTitleA(cchar* lpConsoleTitle, u32 nSize)
+bool   AllocConsole()
+
+// memory protection / globals / modules
+bool   VirtualProtect(rawptr lpAddress, u64 dwSize, u32 flNewProtect, u32* lpflOldProtect)
+u64    VirtualQuery(rawptr lpAddress, rawptr lpBuffer, u64 dwLength)
+rawptr GlobalAlloc(u32 uFlags, u64 dwBytes)
+rawptr GlobalFree(rawptr hMem)
+rawptr GlobalLock(rawptr hMem)
+bool   GlobalUnlock(rawptr hMem)
+rawptr LoadLibraryA(const cchar* lpLibFileName)
+bool   FreeLibrary(rawptr hLibModule)
+rawptr GetProcAddress(rawptr hModule, const cchar* lpProcName)
+rawptr GetModuleHandleA(const cchar* lpModuleName)
+u32    GetModuleFileNameA(rawptr hModule, cchar* lpFilename, u32 nSize)
+
+// time / environment
+bool   QueryPerformanceCounter(i64* lpPerformanceCount)
+bool   QueryPerformanceFrequency(i64* lpFrequency)
+void   GetLocalTime(rawptr lpSystemTime)
+void   GetSystemTime(rawptr lpSystemTime)
+void   GetSystemTimeAsFileTime(rawptr lpSystemTimeAsFileTime)
+u32    GetTickCount()
+u64    GetTickCount64()
+void   Sleep(u32 dwMilliseconds)
+bool   FileTimeToSystemTime(const rawptr lpFileTime, rawptr lpSystemTime)
+bool   SystemTimeToFileTime(const rawptr lpSystemTime, rawptr lpFileTime)
+cchar* GetEnvironmentVariableA(const cchar* lpName, cchar* lpBuffer, u32 nSize)
+bool   SetEnvironmentVariableA(const cchar* lpName, const cchar* lpValue)
+cchar* GetEnvironmentStringsA()
+bool   FreeEnvironmentStringsA(cchar* lpEnvBlock)
+cchar* GetCommandLineA()
+bool   GetConsoleMode(rawptr hConsoleHandle, u32* lpMode)
+bool   SetConsoleMode(rawptr hConsoleHandle, u32 dwMode)
+
+// Winsock
+i32    WSAStartup(u16 wVersionRequired, rawptr lpWSAData)
+i32    WSACleanup()
+rawptr socket(i32 af, i32 type, i32 protocol)
+i32    bind(rawptr s, const rawptr name, i32 namelen)
+i32    listen(rawptr s, i32 backlog)
+rawptr accept(rawptr s, rawptr addr, i32* addrlen)
+i32    connect(rawptr s, const rawptr name, i32 namelen)
+i32    send(rawptr s, const cchar* buf, i32 len, i32 flags)
+i32    recv(rawptr s, cchar* buf, i32 len, i32 flags)
+i32    closesocket(rawptr s)
+i32    setsockopt(rawptr s, i32 level, i32 optname, const cchar* optval, i32 optlen)
+i32    getsockopt(rawptr s, i32 level, i32 optname, cchar* optval, i32* optlen)
+i64    recvfrom(rawptr s, cchar* buf, u64 len, i32 flags, rawptr srcAddr, i32* addrLen)
+i64    sendto(rawptr s, const cchar* buf, u64 len, i32 flags, const rawptr dstAddr, i32 addrLen)
+u32    htonl(u32 val)
+u16    htons(u16 hostshort)
+u32    ntohl(u32 val)
+u16    ntohs(u16 val)
+i32    shutdown(rawptr s, i32 how)
+i32    ioctlsocket(rawptr s, i32 cmd, u32* argp)
+i32    WSAGetLastError()
+void   WSASetLastError(i32 iError)
+u32    inet_addr(const cchar* cp)
+i32    BCryptGenRandom(rawptr pbBuffer, u32 cbBuffer, u32 dwFlags)
+
+// libm
+f64    sin(f64 x)  cos(f64 x)  tan(f64 x)  sqrt(f64 x)  pow(f64 x, f64 y)
+f64    floor(f64 x) ceil(f64 x) fabs(f64 x) asin(f64 x) acos(f64 x) atan(f64 x)
+f64    atan2(f64 y, f64 x) sinh(f64 x) cosh(f64 x) tanh(f64 x) cbrt(f64 x)
+f64    exp(f64 x) log(f64 x) log2(f64 x) log10(f64 x) round(f64 x)
+f64    fmod(f64 x, f64 y) hypot(f64 x, f64 y) erf(f64 x) erfc(f64 x)
+f64    tgamma(f64 x) lgamma(f64 x)</code></pre>
+<hr />
+<section><h2 id="std-collections">std::collections</h2></section>
+<p>Imported via <code>std::collections</code>. <code>Vec&lt;T&gt;</code> is also re-exported as <code>std::vec</code> and prelude-imported; <code>Arr&lt;T, N&gt;</code> as <code>std::arr</code>.</p>
+<h3 id="7-std-collections-arr-arr-t-n">7. <code>std::collections::arr</code>, <code>Arr&lt;T, N&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Arr&lt;T, N&gt;
+{
+    T data[N];
+
+    #[[inline]] T*       ptr()
+    #[[inline]] const T* constPtr()
+    #[[inline]] usize    count()          // == N
+    bool        isEmpty()
+    T           at(usize i)
+    void        set(usize i, T val)
+    T*          atPtr(usize i)
+    T           front()
+    T           back()
+    void        fill(T val)
+    void        copyTo(T* dst)
+    void        copyFrom(const T* src)
+}</code></pre>
+<h3 id="8-std-collections-vec-vec-t-aka-std-vec">8. <code>std::collections::vec</code>, <code>Vec&lt;T&gt;</code> (aka <code>std::vec</code>)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec&lt;T&gt;
+{
+    T* data;
+    usize len;
+    usize cap;
+
+    static Vec&lt;T&gt; new()
+    static Vec&lt;T&gt; withCap(usize capacity)
+    void   reserve(usize newCap)
+    void   reserveExact(usize newCap)
+    void   push(T val)
+    T      pop()
+    usize  count()
+    T*     atPtr(usize i)
+    const T* atConst(usize i)
+    T      at(usize i)
+    T*     ptr()
+    bool   isEmpty()
+    const T* constPtr()
+    void   set(usize i, T val)
+    T      front()
+    T      back()
+    void   insert(usize i, T val)
+    void   removeAt(usize i)
+    void   removeRange(usize start, usize end)
+    bool   contains(T val)
+    void   fill(T val)
+    void   shrinkToFit()
+    void   clear()
+    void   reverse()
+    bool   isSortedBy(bool(T, T) less)
+    void   sortBy(bool(T, T) less)
+    i64    binarySearchBy(T key, i32(T, T) cmp)
+    void   dispose()
+}
+// helper: void _sortByRange(usize lo, usize hi, bool(T, T) less)
+//         usize _partitionBy(usize lo, usize hi, bool(T, T) less)
+pub extend&lt;T&gt; Vec&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="9-std-collections-bitset-bitset">9. <code>std::collections::bitset</code>, <code>Bitset</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Bitset
+{
+    u64* words;
+    u64  numBits;
+    u64  numWords;
+
+    static Bitset new(u64 numBits)
+    void dispose()
+    u64  count()          // numBits
+    u64  wordCount()
+    void set(u64 bit)
+    void clear(u64 bit)
+    void toggle(u64 bit)
+    bool test(u64 bit)
+    void setAll()
+    void clearAll()
+    u64  countOnes()
+    u64  countZeros()
+    bool hasAny()
+    bool none()
+    bool all()
+    void and(Bitset* other)
+    void or(Bitset* other)
+    void xor(Bitset* other)
+    void not()
+    void _maskPadding()
+}
+pub extend Bitset : @drop { void drop(); }</code></pre>
+<h3 id="10-std-collections-cache-lru-cache-k-v">10. <code>std::collections::cache</code>, LRU <code>Cache&lt;K, V&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct CacheEntry&lt;K, V&gt;
+{
+    K key;
+    V value;
+    CacheEntry&lt;K, V&gt;* prev;
+    CacheEntry&lt;K, V&gt;* next;
+}
+
+pub struct Cache&lt;K, V&gt;
+{
+    HashMap&lt;K, CacheEntry&lt;K, V&gt;*&gt; map;
+    CacheEntry&lt;K, V&gt;* head;
+    CacheEntry&lt;K, V&gt;* tail;
+    usize maxSize;
+    usize(K) hashFn;
+    bool(K, K) eqFn;
+
+    static Cache&lt;K, V&gt; new(usize max, usize(K) hf, bool(K, K) ef)
+    void   dispose()
+    usize  count()
+    usize  maxSizeValue()
+    Result&lt;V, CollectionError&gt; insert(K key, V value)
+    Option&lt;V&gt;  get(K key)
+    Option&lt;V*&gt; getPtr(K key)
+    bool   contains(K key)
+    void   remove(K key)
+    void   clear()
+    void   each(void(K, V) fn)
+    void   resize(usize newMax)
+    // helper: void _moveToFront(CacheEntry&lt;K, V&gt;* entry); void _evict();
+}
+pub extend&lt;K, V&gt; Cache&lt;K, V&gt; : @drop { void drop(); }</code></pre>
+<h3 id="11-std-collections-deque-deque-t">11. <code>std::collections::deque</code>, <code>Deque&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Deque&lt;T&gt;
+{
+    T* data;
+    usize head;
+    usize tail;
+    usize cap;
+    usize mask;
+
+    static Deque&lt;T&gt; new()
+    void   dispose()
+    usize  count()
+    bool   isEmpty()
+    usize  capacity()
+    void   pushFront(T val)
+    void   pushBack(T val)
+    T      popFront()
+    T      popBack()
+    T      front()
+    T      back()
+    T      at(usize i)
+    void   set(usize i, T val)
+    void   clear()
+    void   _grow()
+}
+pub extend&lt;T&gt; Deque&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="12-std-collections-hashmap-hashmap-k-v">12. <code>std::collections::hashmap</code>, <code>HashMap&lt;K, V&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant CollectionError { AllocFailed { str msg; } }
+
+pub struct HashMapEntry&lt;K, V&gt;
+{
+    K key;
+    V value;
+    bool occupied;
+}
+
+pub struct HashMap&lt;K, V&gt;
+{
+    HashMapEntry&lt;K, V&gt;* entries;
+    usize cap;
+    usize len;
+    usize(K) hashFn;
+    bool(K, K) eqFn;
+
+    static HashMap&lt;K, V&gt; new(usize(K) hf, bool(K, K) ef)
+    void   dispose()
+    usize  count()
+    Result&lt;V, CollectionError&gt; insert(K key, V value)
+    Option&lt;V&gt;   get(K key)
+    bool        contains(K key)
+    Option&lt;V*&gt;  getPtr(K key)
+    void        remove(K key)
+    Option&lt;HashMapEntry&lt;K, V&gt;&gt; removeEntry(K key)   // backward-shift deletion
+    void        clear()
+    Vec&lt;K&gt;      keys()
+    Vec&lt;V&gt;      values()
+    void        each(void(K, V) fn)
+    void        eachEntry(void(HashMapEntry&lt;K, V&gt;*) fn)
+}
+pub extend&lt;K, V&gt; HashMap&lt;K, V&gt; : @drop { void drop(); }</code></pre>
+<h3 id="13-std-collections-iter-generic-iteratio">13. <code>std::collections::iter</code>, Generic iteration helpers</h3>
+<p>Free functions over <code>Vec&lt;T&gt;</code>.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Vec&lt;U&gt; map&lt;T, U&gt;(const Vec&lt;T&gt;* v, U(T) fn)
+pub Vec&lt;T&gt; filter&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub T      reduce&lt;T&gt;(const Vec&lt;T&gt;* v, T init, T(T, T) fn)
+pub void   forEach&lt;T&gt;(const Vec&lt;T&gt;* v, void(T) fn)
+pub T      find&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub isize  findIndex&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub bool   hasAny&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub bool   all&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub Vec&lt;T&gt; take&lt;T&gt;(const Vec&lt;T&gt;* v, usize n)
+pub Vec&lt;T&gt; skip&lt;T&gt;(const Vec&lt;T&gt;* v, usize n)
+pub Vec&lt;T&gt; slice&lt;T&gt;(const Vec&lt;T&gt;* v, usize start, usize end)
+pub usize  countIf&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
+pub T      minBy&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T, T) less)
+pub T      maxBy&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T, T) less)
+pub Vec&lt;T&gt; unique&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T, T) eq)
+pub Vec&lt;T&gt; flatten&lt;T&gt;(const Vec&lt;Vec&lt;T&gt;&gt;* v)
+pub Vec&lt;usize&gt; enumerate&lt;T&gt;(const Vec&lt;T&gt;* v)
+pub T      sum&lt;T&gt;(const Vec&lt;T&gt;* v)
+pub f64    average(const Vec&lt;f64&gt;* v)
+
+pub struct Pair&lt;T, U&gt; { T first; U second; }
+pub Vec&lt;Pair&lt;T, U&gt;&gt; zip&lt;T, U&gt;(const Vec&lt;T&gt;* a, const Vec&lt;U&gt;* b)</code></pre>
+<h3 id="14-std-collections-linkedlist-linkedlist">14. <code>std::collections::linkedlist</code>, <code>LinkedList&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct ListNode&lt;T&gt;
+{
+    T value;
+    ListNode&lt;T&gt;* prev;
+    ListNode&lt;T&gt;* next;
+}
+
+pub struct LinkedList&lt;T&gt;
+{
+    ListNode&lt;T&gt;* head;
+    ListNode&lt;T&gt;* tail;
+    usize len;
+
+    static LinkedList&lt;T&gt; new()
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  pushFront(T val)
+    void  pushBack(T val)
+    T     popFront()
+    T     popBack()
+    T     front()
+    T     back()
+    void  insertAfter(ListNode&lt;T&gt;* node, T val)
+    void  remove(ListNode&lt;T&gt;* node)
+    void  each(void(T) fn)
+}
+pub extend&lt;T&gt; LinkedList&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="15-std-collections-map-ordered-avl-map-k">15. <code>std::collections::map</code>, Ordered AVL <code>Map&lt;K, V&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant CollectionError { AllocFailed { str msg; } }
+
+pub struct MapEntry&lt;K, V&gt;
+{
+    K key;
+    V value;
+    i32 height;
+    MapEntry&lt;K, V&gt;* left;
+    MapEntry&lt;K, V&gt;* right;
+}
+
+pub struct Map&lt;K, V&gt;
+{
+    MapEntry&lt;K, V&gt;* root;
+    usize len;
+    i32(K, K) cmpFn;
+    bool failed;
+
+    static Map&lt;K, V&gt; new(i32(K, K) cmp)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    Result&lt;V, CollectionError&gt; insert(K key, V value)
+    Option&lt;V&gt;  get(K key)
+    Option&lt;V*&gt; getPtr(K key)
+    bool  contains(K key)
+    void  remove(K key)
+    void  clear()
+    void  each(void(K, V) fn)
+    // helpers: _max _height _balance _rotateRight _rotateLeft _insert
+    //          _findMin _remove _find _eachInOrder _disposeNode
+}
+pub extend&lt;K, V&gt; Map&lt;K, V&gt; : @drop { void drop(); }</code></pre>
+<h3 id="16-std-collections-priorityqueue-priorit">16. <code>std::collections::priorityqueue</code>, <code>PriorityQueue&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct PriorityQueue&lt;T&gt;
+{
+    T* data;
+    usize len;
+    usize cap;
+    bool(T, T) less;      // constructor takes `cmp`
+
+    static PriorityQueue&lt;T&gt; new(bool(T, T) cmp)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  push(T val)
+    T     pop()
+    T     peek()
+    void  clear()
+    // helpers: _grow _siftUp _siftDown
+}
+pub extend&lt;T&gt; PriorityQueue&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="17-std-collections-queue-fifo-queue-t">17. <code>std::collections::queue</code>, FIFO <code>Queue&lt;T&gt;</code></h3>
+<p>Wraps <code>Deque&lt;T&gt;</code>.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Queue&lt;T&gt;
+{
+    deque::Deque&lt;T&gt; inner;
+
+    static Queue&lt;T&gt; new()
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  enqueue(T val)
+    T     dequeue()
+    T     peek()
+    void  clear()
+}
+pub extend&lt;T&gt; Queue&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="18-std-collections-ringbuf-ringbuf-t">18. <code>std::collections::ringbuf</code>, <code>RingBuf&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct RingBuf&lt;T&gt;
+{
+    T* data;
+    usize cap;
+    usize head;
+    usize tail;
+    bool full;
+
+    static RingBuf&lt;T&gt; new(usize capacity)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    bool  isFull()
+    usize capacity()
+    void  push(T val)
+    T     pop()
+    T     front()
+    T     back()
+    T     at(usize i)
+    void  clear()
+}
+pub extend&lt;T&gt; RingBuf&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="19-std-collections-set-set-t">19. <code>std::collections::set</code>, <code>Set&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Set&lt;T&gt;
+{
+    HashMap&lt;T, bool&gt; inner;
+    usize(T) hashFn;
+    bool(T, T) eqFn;
+
+    static Set&lt;T&gt; new(usize(T) hf, bool(T, T) ef)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  insert(T val)
+    bool  contains(T val)
+    void  remove(T val)
+    void  clear()
+    Vec&lt;T&gt; toVec()
+    void  each(void(T) fn)
+    Set&lt;T&gt; union(const Set&lt;T&gt;* other)
+    Set&lt;T&gt; intersection(const Set&lt;T&gt;* other)
+    Set&lt;T&gt; difference(const Set&lt;T&gt;* other)
+    bool  isSubset(const Set&lt;T&gt;* other)
+    bool  isSuperset(const Set&lt;T&gt;* other)
+}
+pub extend&lt;T&gt; Set&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="20-std-collections-sort-sorting-and-sear">20. <code>std::collections::sort</code>, Sorting and searching</h3>
+<p>Free functions; <code>*Range</code>/<code>partition*</code> variants are internal helpers.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void  sortI32(Vec&lt;i32&gt;* v)
+pub void  sortusize(Vec&lt;usize&gt;* v)
+pub void  sortF64(Vec&lt;f64&gt;* v)
+pub void  sortBy&lt;T&gt;(Vec&lt;T&gt;* v, bool(T, T) less)
+pub bool  isSortedI32(const Vec&lt;i32&gt;* v)
+pub bool  isSortedusize(const Vec&lt;usize&gt;* v)
+pub bool  isSortedBy&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T, T) less)
+pub isize binarySearchI32(const Vec&lt;i32&gt;* v, i32 key)
+pub isize binarySearchusize(const Vec&lt;usize&gt;* v, usize key)
+pub isize binarySearchBy&lt;T&gt;(const Vec&lt;T&gt;* v, T key, i32(T, T) cmp)
+pub void  reverse&lt;T&gt;(Vec&lt;T&gt;* v)</code></pre>
+<h3 id="21-std-collections-tree-tree-t-n-ary">21. <code>std::collections::tree</code>, <code>Tree&lt;T&gt;</code> (n-ary)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct TreeNode&lt;T&gt;
+{
+    T value;
+    Vec&lt;TreeNode&lt;T&gt;*&gt; children;
+}
+
+pub struct Tree&lt;T&gt;
+{
+    TreeNode&lt;T&gt;* root;
+
+    static Tree&lt;T&gt; new()
+    void dispose()
+    bool isEmpty()
+    TreeNode&lt;T&gt;* setRoot(T val)
+    TreeNode&lt;T&gt;* addChild(TreeNode&lt;T&gt;* parent, T val)
+    usize childCount(TreeNode&lt;T&gt;* node)
+    Option&lt;TreeNode&lt;T&gt;*&gt; childAt(TreeNode&lt;T&gt;* node, usize idx)
+    void removeChild(TreeNode&lt;T&gt;* parent, usize idx)
+    void preOrder(void(T) fn)
+    void postOrder(void(T) fn)
+    usize depth(TreeNode&lt;T&gt;* node)
+    usize size()
+    Vec&lt;T&gt; toVec()
+    // helpers: _disposeNode _preOrder _postOrder _count _toVec
+}
+pub extend&lt;T&gt; Tree&lt;T&gt; : @drop { void drop(); }</code></pre>
+<h3 id="22-std-collections-trie-trie-byte-keyed">22. <code>std::collections::trie</code>, <code>Trie</code> (byte-keyed)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const u32 TRIE_FANOUT = 256;
+
+pub struct TrieNode
+{
+    TrieNode* children[TRIE_FANOUT];
+    bool isEnd;
+}
+
+pub struct Trie
+{
+    TrieNode* root;
+    usize count;
+
+    static Trie new()
+    void dispose()
+    usize size()
+    bool  isEmpty()
+    void  insert(str key)
+    bool  contains(str key)
+    bool  startsWith(str prefix)
+    bool  remove(str key)
+    void  each(void(str) fn)
+    // helpers: _disposeNode _remove _maxDepth _each
+}
+pub extend Trie : @drop { void drop(); }</code></pre>
+<h3 id="23-std-collections-unordered-map-unorder">23. <code>std::collections::unordered_map</code>, <code>UnorderedMap&lt;K, V&gt;</code></h3>
+<p>Thin wrapper over <code>HashMap&lt;K, V&gt;</code>.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct UnorderedMap&lt;K, V&gt;
+{
+    HashMap&lt;K, V&gt; inner;
+
+    static UnorderedMap&lt;K, V&gt; new(usize(K) hf, bool(K, K) ef)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    Result&lt;V, CollectionError&gt; insert(K key, V value)
+    Option&lt;V&gt;   get(K key)
+    Option&lt;V*&gt;  getPtr(K key)
+    bool        contains(K key)
+    void        remove(K key)
+    void        clear()
+    Vec&lt;K&gt;      keys()
+    Vec&lt;V&gt;      values()
+    void        each(void(K, V) fn)
+}
+pub extend&lt;K, V&gt; UnorderedMap&lt;K, V&gt; : @drop { void drop(); }</code></pre>
+<hr />
+<section><h2 id="std-text">std::text</h2></section>
+<p><code>String</code> is re-exported into the prelude.</p>
+<h3 id="24-std-text-ascii-ascii-utf-8-helpers">24. <code>std::text::ascii</code>, ASCII / UTF-8 helpers</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub bool isAscii(u8 b)
+pub bool isAsciiDigit(u8 b)
+pub bool isAsciiAlpha(u8 b)
+pub bool isAsciiAlnum(u8 b)
+pub bool isAsciiHex(u8 b)
+pub bool isAsciiSpace(u8 b)
+pub bool isAsciiUpper(u8 b)
+pub bool isAsciiLower(u8 b)
+pub u8   toAsciiLower(u8 b)
+pub u8   toAsciiUpper(u8 b)
+pub u8   asciiDigitVal(u8 b)
+pub u8   asciiHexVal(u8 b)
+
+pub u32  utf8ByteCount(u8 b)
+pub u32  utf8Decode(const u8* buf, u32* bytesOut)
+pub u32  utf8Encode(u32 cp, u8* buf)
+pub u32  utf16ToUtf8(u16 cp, u8* buf)
+pub usize utf8CountChars(str s)
+pub bool utf8IsValid(str s)</code></pre>
+<h3 id="25-std-text-string-string">25. <code>std::text::string</code>, <code>String</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct String
+{
+    u8* ptr;
+    usize len;
+    usize cap;
+
+    static String new()
+    static String withCap(usize cap)
+    static String from(str sv)
+    static String fromCstr(const cchar* cstr)
+    static String join(str sep, const Vec&lt;str&gt;* parts)
+
+    String clone()
+    void   free()
+    str    asView()
+    cchar* asCstr()
+    u8*    asU8()
+
+    void   pushChar(u8 c)          // one raw byte
+    void   pushCodepoint(char c)   // one UTF-8 codepoint
+    void   pushByte(u8 b)
+    void   appendView(str sv)
+    void   pushView(str sv)
+    void   pushStr(const String* other)
+    void   pushCstr(const u8* cstr)
+    void   pushRepeat(u8 c, usize n)
+
+    void   clear()
+    void   shrinkToFit()
+    void   truncate(usize newLen)
+    void   insertView(usize idx, str sv)
+    void   removeRange(usize start, usize end)
+    void   replaceAll(str needle, str replacement)
+    void   toUpper()
+    void   toLower()
+    void   reverse()
+
+    u8     at(usize idx)
+    void   atApply(usize idx, u8 c)
+    bool   isEmpty()
+    bool   equals(const String* other)
+    bool   equalsView(str sv)
+    i32    compare(const String* other)
+    usize  findChar(u8 c)
+    usize  rfindChar(u8 c)
+    usize  findView(str needle)
+    bool   startsWith(str prefix)
+    bool   endsWith(str suffix)
+    bool   containsView(str needle)
+
+    String trim()
+    String trimStart()
+    String trimEnd()
+    String substr(usize start, usize end)
+    Vec&lt;str&gt; splitByte(u8 delim)
+    String repeat(usize n)
+    String padLeft(usize totalLen, u8 padChar)
+    String padRight(usize totalLen, u8 padChar)
+    usize  countChar(u8 c)
+
+    bool   nextCodepoint(usize* idx, char* out)
+    usize  codepointCount()
+    // helper: void _ensure(usize extra)
+}
+pub extend String : @drop { void drop(); }</code></pre>
+<h3 id="26-std-text-strutil-string-view-utilitie">26. <code>std::text::strutil</code>, String-view utilities</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub usize  split(str sv, u8 delim, str* out, usize maxParts)
+pub Vec&lt;str&gt; splitVec(str sv, u8 delim)
+pub str    trim(str sv)
+pub str    trimLeft(str sv)
+pub str    trimRight(str sv)
+pub bool   startsWith(str sv, str prefix)
+pub bool   endsWith(str sv, str suffix)
+pub bool   contains(str sv, str sub)
+pub isize  indexOf(str sv, str sub)
+pub isize  indexOfChar(str sv, u8 ch)
+pub isize  lastIndexOf(str sv, str sub)
+pub String replace(str sv, str from, str to)
+pub String join(const str* parts, usize count, str sep)
+pub String joinVec(const Vec&lt;str&gt;* parts, str sep)
+pub str    substr(str sv, usize start, usize len)
+pub bool   equalsIgnoreCase(str a, str b)</code></pre>
+<h3 id="27-std-text-utf8-utf-8-codec">27. <code>std::text::utf8</code>, UTF-8 codec</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u8     encodeCodepoint(u32 cp, u8* out)
+pub u32    decodeCodepoint(const u8* s, usize len, usize* consumed)
+pub usize  codepointLen(const u8* s, usize len)
+pub usize  countCodepoints(const u8* s, usize len)
+pub bool   isValid(const u8* s, usize len)
+pub String toLower(const u8* s, usize len)
+pub String toUpper(const u8* s, usize len)
+pub Option&lt;char&gt; nextChar(const u8* s, usize len, usize* consumed)
+pub String encodeChar(char c)</code></pre>
+<h3 id="28-std-text-uri-uri">28. <code>std::text::uri</code>, <code>Uri</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Uri
+{
+    String scheme;
+    String userInfo;
+    String host;
+    u16    port;
+    String path;
+    String query;
+    String fragment;
+    bool   hasPort;
+
+    static Uri new()
+    void dispose()
+    bool parse(str input)
+}
+pub extend Uri : @drop { void drop(); }</code></pre>
+<h3 id="29-std-text-regex-regex-posix-ere-via-li">29. <code>std::text::regex</code>, <code>Regex</code> (POSIX ERE via libc)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const i32 REG_EXTENDED = 1;
+const i32 REG_ICASE    = 2;
+const i32 REG_NOSUB    = 4;
+
+pub struct Regex
+{
+    rawptr impl[8];
+    bool   compiled;
+    usize  groupCount;
+    u8*    findBuf;
+    usize  findBufCap;
+
+    bool compile(str pattern, bool caseInsensitive)
+    void free()
+    bool matches(str input)
+    bool find(str input, Vec&lt;str&gt;* groups)
+}
+pub i32 regexFlags(bool extended, bool icase, bool nosub)
+pub extend Regex : @drop { void drop(); }</code></pre>
+<hr />
+<section><h2 id="std-data">std::data</h2></section>
+<h3 id="30-std-data-option-option-t-aka-std-opti">30. <code>std::data::option</code>, <code>Option&lt;T&gt;</code> (aka <code>std::option</code>, prelude)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant Option&lt;T&gt;
+{
+    None,
+    Some { T value; }
+}
+
+pub extend&lt;T&gt; Option&lt;T&gt;
+{
+    bool isSome()
+    bool isNone()
+    T    unwrap()
+    T    unwrapOr(T default)
+    T*   ptr()
+    const T* constPtr()
+    void map(T(T) fn)
+    void andThen(Option&lt;T&gt;(T) fn)
+    void orElse(Option&lt;T&gt;() fn)
+    T    take()
+}</code></pre>
+<h3 id="31-std-data-result-result-t-e-aka-std-re">31. <code>std::data::result</code>, <code>Result&lt;T, E&gt;</code> (aka <code>std::result</code>, prelude)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant Result&lt;T, E&gt;
+{
+    Ok  { T value; },
+    Err { E error; }
+}
+
+pub extend&lt;T, E&gt; Result&lt;T, E&gt;
+{
+    bool isOk()
+    bool isErr()
+    T    unwrap()
+    T    unwrapOr(T defaultVal)
+    E    unwrapErr()
+    T*   okPtr(self)
+    E*   errPtr(self)
+    void mapOk(T(T) fn)
+    void mapErr(E(E) fn)
+    void andThen(Result&lt;T, E&gt;(T) fn)
+    void orElse(Result&lt;T, E&gt;(E) fn)
+}</code></pre>
+<hr />
+<section><h2 id="std-time">std::time</h2></section>
+<h3 id="32-std-time-wall-clock-and-monotonic-tim">32. <code>std::time</code>, Wall-clock and monotonic time</h3>
+<p>Ported from the old <code>std/core/time</code> module. Each target implements the same public surface with its own native clock: the Linux build issues raw x86_64 syscalls (<code>clock_gettime</code>, <code>gettimeofday</code>, <code>nanosleep</code>, <code>time</code>); the Windows build calls <code>QueryPerformanceCounter</code>, <code>GetSystemTimeAsFileTime</code>, and <code>Sleep</code>. There is no libc in either path.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub const CLOCK_REALTIME  : i32 = 0;
+pub const CLOCK_MONOTONIC : i32 = 1;
+
+pub struct Timespec { i64 sec; i64 nsec; }
+pub struct Timeval  { i64 sec; i64 usec; }
+
+pub Timespec nowMonotonic()                       // CLOCK_MONOTONIC
+pub Timespec nowRealtime()                        // CLOCK_REALTIME
+pub Timeval  nowTimeval()                         // gettimeofday / derived
+pub u64      unixSeconds()                        // time(2) / file-time epoch
+pub Timespec addTimespec(Timespec a, Timespec b)
+pub Timespec subTimespec(Timespec a, Timespec b)
+pub f64      timespecToF64(Timespec ts)           // sec + nsec * 1e-9
+pub f64      timevalToF64(Timeval tv)             // sec + usec * 1e-6
+pub void     sleepTimespec(Timespec ts)           // nanosleep / Sleep
+pub void     sleepMs(u64 ms)</code></pre>
+<ul><li><code>nowMonotonic()</code> never jumps backwards and is the clock to use for measuring elapsed time; <code>nowRealtime()</code> is wall-clock and can move when the system time is adjusted.</li><li><code>sleepTimespec</code> / <code>sleepMs</code> do not retry a shortened sleep; a signal can wake them early (matching the old module).</li><li><code>Timespec</code> / <code>Timeval</code> are plain value types with no <code>@drop</code>.</li></ul>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::time { Timespec, nowMonotonic, subTimespec, sleepMs, timespecToF64 };
+
+Timespec t0 = nowMonotonic();
+sleepMs(10u);
+Timespec t1 = nowMonotonic();
+println(timespecToF64(subTimespec(t1, t0)));</code></pre>
+<h3 id="33-std-duration-duration">33. <code>std::duration</code>, <code>Duration</code></h3>
+<p>Ported from the old <code>std/core/duration</code> module. A <code>Duration</code> is a signed span of time stored as <code>(i64 sec, i64 nsec)</code> and always normalized so <code>0 &lt;= nsec &lt; 1_000_000_000</code>. Arithmetic saturates at the <code>i64</code> limits instead of wrapping. The implementation is identical on Linux and Windows.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Duration
+{
+    i64 sec;
+    i64 nsec;
+
+    static Duration fromSecs(i64 s)
+    static Duration fromMillis(i64 ms)
+    static Duration fromMicros(i64 us)
+    static Duration fromNanos(i64 ns)
+    static Duration fromF64(f64 seconds)
+
+    i64 asSecs()
+    i64 asMillis()
+    i64 asMicros()
+    i64 asNanos()
+    f64 asF64()
+    bool isZero()
+
+    Duration add(Duration other)
+    Duration sub(Duration other)
+    Duration mul(i64 factor)
+    Duration div(i64 factor)        // assert(factor != 0)
+
+    i32 compare(Duration other)     // -1 / 0 / 1
+    bool eq(Duration other)
+    bool lt(Duration other)
+    bool gt(Duration other)
+    bool le(Duration other)
+    bool ge(Duration other)
+
+    Timespec toTimespec()
+    void     sleep()                // blocks for the span
+}
+
+pub Duration seconds(i64 s)
+pub Duration millis(i64 ms)
+pub Duration micros(i64 us)
+pub Duration nanos(i64 ns)</code></pre>
+<ul><li><code>fromF64</code> maps NaN and non-representable inputs to <code>Duration::fromSecs(0)</code>.</li><li><code>mul</code> / <code>div</code> and the scaled <code>as*</code> accessors return the saturated extreme on overflow rather than wrapping.</li><li><code>sleep()</code> bridges to <code>std::time::sleepTimespec</code>.</li></ul>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::duration { Duration, seconds, millis };
+
+Duration total = seconds(2).add(millis(500));
+println(total.asMillis());   // 2500</code></pre>
+<hr />
+<section><h2 id="std-math">std::math</h2></section>
+<h3 id="34-std-math-math-libm-bindings-constants">34. <code>std::math::math</code>, libm bindings, constants, scalar helpers</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern f64 sin(f64 x)  cos(f64 x)  tan(f64 x)  sqrt(f64 x)  pow(f64 x, f64 y)
+pub extern f64 floor(f64 x) ceil(f64 x) fabs(f64 x) asin(f64 x) acos(f64 x) atan(f64 x)
+pub extern f64 atan2(f64 y, f64 x) sinh(f64 x) cosh(f64 x) tanh(f64 x) cbrt(f64 x)
+pub extern f64 exp(f64 x) log(f64 x) log2(f64 x) log10(f64 x) round(f64 x)
+pub extern f64 fmod(f64 x, f64 y) hypot(f64 x, f64 y) erf(f64 x) erfc(f64 x)
+pub extern f64 tgamma(f64 x) lgamma(f64 x)
+
+pub const f64 tau  = 6.28318530717958647692;
+pub const f64 srt2 = 1.41421356237309504880;
+pub const f64 pi   = 3.14159265358979323846;
+pub const f64 e    = 2.71828182845904523536;
+
+pub f64 piF()
+pub f64 eF()
+pub f64 sqrt2F()
+pub f64 degToRad(f64 deg)
+pub f64 radToDeg(f64 rad)
+
+pub i64 clampI64(i64 v, i64 lo, i64 hi)
+pub u64 clampU64(u64 v, u64 lo, u64 hi)
+pub f64 clampF64(f64 v, f64 lo, f64 hi)
+pub f64 lerp(f64 a, f64 b, f64 t)
+pub f64 invLerp(f64 a, f64 b, f64 v)
+pub f64 mapRange(f64 v, f64 a1, f64 b1, f64 a2, f64 b2)
+
+pub i64 minI64(i64 a, i64 b)   maxI64(i64 a, i64 b)
+pub u64 minU64(u64 a, u64 b)   maxU64(u64 a, u64 b)
+pub f64 minF64(f64 a, f64 b)   maxF64(f64 a, f64 b)
+
+pub u64 absI64(i64 x)
+pub f64 absF64(f64 x)
+pub i64 signI64(i64 x)
+pub f64 signF64(f64 x)
+pub bool isFinite(f64 x)
+pub bool isNan(f64 x)
+
+pub f64 add(f64 x, f64 y)
+pub f64 sub(f64 x, f64 y)
+pub f64 mul(f64 x, f64 y)
+pub f64 div(f64 x, f64 y)
+pub i64 truncF(f64 f)</code></pre>
+<h3 id="35-std-math-complex-complex">35. <code>std::math::complex</code>, <code>Complex</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Complex
+{
+    f64 re;
+    f64 im;
+
+    static Complex new(f64 real, f64 imag)
+    static Complex fromRe(f64 real)
+    static Complex fromIm(f64 imag)
+
+    Complex add(Complex other)
+    Complex sub(Complex other)
+    Complex mul(Complex other)
+    Complex div(Complex other)
+    Complex conj()
+    Complex neg()
+    Complex scale(f64 s)
+    Complex exp()
+    Complex log()
+    Complex pow(Complex other)
+    Complex sin()
+    Complex cos()
+    Complex sqrt()
+    f64 abs()
+    f64 arg()
+    f64 absSq()
+}</code></pre>
+<h3 id="36-std-math-matrix-mat2-mat3-mat4">36. <code>std::math::matrix</code>, <code>Mat2</code>, <code>Mat3</code>, <code>Mat4</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Mat2
+{
+    f64 m[4];
+    static Mat2 identity()
+    static Mat2 fromRows(Vec2 r0, Vec2 r1)
+    f64  at(usize row, usize col)
+    void set(usize row, usize col, f64 val)
+    Mat2 mul(Mat2 other)
+    Vec2 mulVec(Vec2 v)
+    Mat2 transpose()
+    f64  det()
+    Mat2 inverse()
+}
+
+pub struct Mat3
+{
+    f64 m[9];
+    static Mat3 identity()
+    static Mat3 fromRows(Vec3 r0, Vec3 r1, Vec3 r2)
+    f64  at(usize row, usize col)
+    void set(usize row, usize col, f64 val)
+    Mat3 mul(Mat3 other)
+    Vec3 mulVec(Vec3 v)
+    Mat3 transpose()
+    f64  det()
+}
+
+pub struct Mat4
+{
+    f64 m[16];
+    static Mat4 identity()
+    static Mat4 fromRows(Vec4 r0, Vec4 r1, Vec4 r2, Vec4 r3)
+    static Mat4 translation(f64 tx, f64 ty, f64 tz)
+    static Mat4 rotationX(f64 angle)
+    static Mat4 rotationY(f64 angle)
+    static Mat4 rotationZ(f64 angle)
+    static Mat4 scale(f64 sx, f64 sy, f64 sz)
+    static Mat4 perspective(f64 fov, f64 aspect, f64 near, f64 far)
+    static Mat4 lookAt(Vec3 eye, Vec3 center, Vec3 up)
+    f64  at(usize row, usize col)
+    void set(usize row, usize col, f64 val)
+    Mat4 mul(Mat4 other)
+    Vec4 mulVec(Vec4 v)
+    Mat4 transpose()
+}</code></pre>
+<h3 id="37-std-math-vector-vec2-vec3-vec4">37. <code>std::math::vector</code>, <code>Vec2</code>, <code>Vec3</code>, <code>Vec4</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec2
+{
+    f64 x; f64 y;
+    static Vec2 new(f64 x, f64 y)
+    Vec2 add(Vec2 other)  sub(Vec2 other)  scale(f64 s)  normalize()  lerp(Vec2 other, f64 t)
+    f64  dot(Vec2 other)  lengthSq()  length()
+}
+
+pub struct Vec3
+{
+    f64 x; f64 y; f64 z;
+    static Vec3 new(f64 x, f64 y, f64 z)
+    Vec3 add(Vec3 other)  sub(Vec3 other)  scale(f64 s)  cross(Vec3 other)  normalize()  lerp(Vec3 other, f64 t)
+    f64  dot(Vec3 other)  lengthSq()  length()
+}
+
+pub struct Vec4
+{
+    f64 x; f64 y; f64 z; f64 w;
+    static Vec4 new(f64 x, f64 y, f64 z, f64 w)
+    Vec4 add(Vec4 other)  sub(Vec4 other)  scale(f64 s)  normalize()  lerp(Vec4 other, f64 t)
+    f64  dot(Vec4 other)  lengthSq()  length()
+}</code></pre>
+<h3 id="38-std-math-random-rngs">38. <code>std::math::random</code>, RNGs</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 nextU64()
+pub u32 nextU32()
+pub u64 nextRange(u64 lo, u64 hi)
+pub f64 nextF64()          // seeded from /dev/urandom
+
+pub struct XorShift32
+{
+    u32 state;
+    XorShift32 seed(u32 s)
+    u32 next()
+    u64 nextU64()
+    u64 nextRange(u64 lo, u64 hi)
+}
+
+pub struct Pcg32
+{
+    u64 state;
+    u64 inc;
+    Pcg32 seed(u64 initState, u64 initSeq)
+    u32 next()
+    u64 nextU64()
+    u64 nextRange(u64 lo, u64 hi)
+}</code></pre>
+<hr />
+<section><h2 id="std-fmt">std::fmt</h2></section>
+<h3 id="39-std-fmt-fmt-string-formatting">39. <code>std::fmt::fmt</code>, String formatting</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub String format(str f, ...)                 // NOTE: stub, see below
+pub String formatInt(i64 val, u64 radix, bool upper)
+pub String formatUint(u64 val, u64 radix, bool upper)
+pub String formatFloat(f64 val, u64 precision)
+pub String formatHex(u64 val, bool prefix)
+pub String formatHexUpper(u64 val, bool prefix)
+pub String formatBin(u64 val, bool prefix)
+pub String formatChar(char c)
+pub String padLeft(str sv, usize width, u8 pad)
+pub String padRight(str sv, usize width, u8 pad)
+pub String repeat(str sv, usize count)
+pub String join(const str* parts, usize count, str sep)
+pub String joinVec(const Vec&lt;String&gt;* parts, str sep)
+// helper: u64 _clampRadix(u64 radix)</code></pre>
+<blockquote><p><strong>Note:</strong> <code>fmt::format</code> currently strips <code>{}</code> placeholders without substituting arguments; use <code>io::ios</code>' <code>print</code>/<code>println</code> (whose format handling is implemented in the compiler) for real formatting.</p></blockquote>
+<hr />
+<section><h2 id="std-io">std::io</h2></section>
+<h3 id="40-std-io-ios-console-i-o-and-parsing-pr">40. <code>std::io::ios</code>, Console I/O and parsing (prelude)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// formatting / output
+pub void print&lt;comptime T&gt;(T fmt, ...)
+pub void println&lt;comptime T&gt;(T fmt, ...)
+pub void eprint&lt;comptime T&gt;(T fmt, ...)
+pub void eprintln&lt;comptime T&gt;(T fmt, ...)
+pub void vaprint(... args)
+pub void flush()
+
+// formatting helpers passed as arguments
+pub struct Spaces { u64 count; }
+pub struct Repeat { u8 ch; u64 count; }
+pub struct Hex    { u64 value; }
+pub struct Bin    { u64 value; }
+pub struct Fixed  { f64 value; u64 precision; }
+pub Spaces spaces(u64 count)
+pub Repeat repeat(u8 ch, u64 count)
+pub Hex    hex(u64 value)
+pub Bin    bin(u64 value)
+pub Fixed  fixed(f64 value, u64 precision)
+
+// parsing
+pub i64 parseI64(str sv, bool* ok)
+pub u64 parseU64(str sv, bool* ok)
+pub f64 parseF64(str sv, bool* ok)
+
+// input
+pub u8   readChar()
+pub bool readLine(String* out)
+pub void read&lt;comptime T&gt;(T* out)
+pub T    readVal&lt;T&gt;()</code></pre>
+<h3 id="41-std-io-fs-filesystem">41. <code>std::io::fs</code>, Filesystem</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant IoError
+{
+    Os       { i32 code; str op; },   // errno / GetLastError
+    Eof      { str op; },             // stream ended early
+    BadUsage { str msg; }             // caller-side problem
+}
+pub extend IoError
+{
+    static IoError os(str op)
+}
+
+pub const i32 O_RDONLY = 0;   O_WRONLY = 1;  O_RDWR = 2;
+pub const i32 O_CREAT  = 64;  O_TRUNC  = 512; O_APPEND = 1024;
+pub const i32 S_IRWXU  = 448; S_IRUSR  = 256; S_IWUSR = 128; S_IXUSR = 64;
+pub const i32 SEEK_SET = 0;   SEEK_CUR = 1;   SEEK_END = 2;
+pub const i32 F_OK = 0; R_OK = 4; W_OK = 2; X_OK = 1;
+
+pub distinct File = i32;
+pub distinct Dir  = rawptr;
+
+pub struct Stat
+{
+    u64 st_dev; u64 st_ino; u64 st_nlink;
+    u32 st_mode; u32 st_uid; u32 st_gid; u32 pad0;
+    u64 st_rdev; i64 st_size; i64 st_blksize; i64 st_blocks;
+    i64 st_atime; i64 st_atimeNsec;
+    i64 st_mtime; i64 st_mtimeNsec;
+    i64 st_ctime; i64 st_ctimeNsec;
+    i64 reserved[3];
+}
+
+pub enum FileType { Unknown, Regular, Directory, CharDevice, BlockDevice, Fifo, Symlink, Socket }
+
+pub Result&lt;File, IoError&gt; fileOpen(str path, str mode)
+pub void   fileClose(File f)
+pub Result&lt;isize, IoError&gt; fileRead(File f, u8* buf, usize count)
+pub Result&lt;isize, IoError&gt; fileWrite(File f, const u8* buf, usize count)
+pub Result&lt;isize, IoError&gt; fileSeek(File f, isize offset, i32 whence)
+pub bool   fileExists(str path)
+pub Option&lt;bool&gt; statPath(str path, Stat* out)
+pub FileType getFileType(const Stat* s)
+pub Result&lt;bool, IoError&gt; createDir(str path, i32 mode)
+pub Result&lt;bool, IoError&gt; createDirRecursive(str path, i32 mode)
+pub Result&lt;bool, IoError&gt; removeDir(str path)
+pub Result&lt;bool, IoError&gt; deleteFile(str path)
+pub Result&lt;bool, IoError&gt; renameFile(str oldPath, str newPath)
+pub bool   canAccess(str path, i32 mode)
+pub Result&lt;Dir, IoError&gt; openDir(str path)
+pub rawptr readDir(Dir dir)
+pub void   closeDir(Dir dir)
+pub Result&lt;String, IoError&gt; readFileToString(str path)
+pub Result&lt;bool, IoError&gt;   writeFileFromString(str path, const String* data)
+
+pub struct Dirent
+{
+    u64 d_ino; i64 d_off; u16 d_reclen; u8 d_type; u8 d_name[256];
+}
+pub bool readDirEntry(Dir dir, Dirent* out)</code></pre>
+<h3 id="42-std-io-bio-binary-readers-writers">42. <code>std::io::bio</code>, Binary readers/writers</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const i32 SEEK_SET = 0;
+const i32 SEEK_CUR = 1;
+
+pub struct FileReader
+{
+    i32 fd;
+    static FileReader fromFd(File fd)
+    Result&lt;bool, IoError&gt; readBytes(u8* dst, u64 n)   // exactly n bytes
+    u8   readU8()
+    i8   readI8()
+    u16  readU16Le()  readU16Be()
+    i16  readI16Le()  readI16Be()
+    u32  readU32Le()  readU32Be()
+    i32  readI32Le()  readI32Be()
+    u64  readU64Le()  readU64Be()
+    i64  readI64Le()  readI64Be()
+    f32  readF32Le()  readF32Be()
+    f64  readF64Le()  readF64Be()
+    void skip(u64 n)
+}
+
+pub struct FileWriter
+{
+    i32 fd;
+    static FileWriter fromFd(File fd)
+    void writeU8(u8 v)
+    void writeI8(i8 v)
+    void writeU16Le(u16 v)  writeU16Be(u16 v)
+    void writeI16Le(i16 v)  writeI16Be(i16 v)
+    void writeU32Le(u32 v)  writeU32Be(u32 v)
+    void writeI32Le(i32 v)  writeI32Be(i32 v)
+    void writeU64Le(u64 v)  writeU64Be(u64 v)
+    void writeI64Le(i64 v)  writeI64Be(i64 v)
+    void writeF32Le(f32 v)  writeF32Be(f32 v)
+    void writeF64Le(f64 v)  writeF64Be(f64 v)
+    Result&lt;bool, IoError&gt; writeBytes(const u8* src, u64 n)   // exactly n bytes
+}
+
+pub u16 bswapU16(u16 v)
+pub u32 bswapU32(u32 v)
+pub u64 bswapU64(u64 v)</code></pre>
+<h3 id="43-std-io-fios-file-based-i-o">43. <code>std::io::fios</code>, <code>FILE*</code>-based I/O</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct FileHandle = rawptr;
+
+pub Result&lt;FileHandle, IoError&gt; fileOpen(str path, str mode)
+pub void   fileClose(FileHandle fh)
+pub Result&lt;usize, IoError&gt; fileWrite(FileHandle fh, str data)
+pub Result&lt;usize, IoError&gt; fileRead(FileHandle fh, u8* buf, usize maxLen)
+pub bool   fileEof(FileHandle fh)
+pub bool   fileError(FileHandle fh)
+pub void   fileFlush(FileHandle fh)
+pub Result&lt;usize, IoError&gt; fileWriteString(FileHandle fh, const String* s)
+pub Result&lt;bool, IoError&gt;  fileReadAll(str path, String* out)</code></pre>
+<h3 id="44-std-io-log-logger">44. <code>std::io::log</code>, <code>Logger</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant LogLevel { Debug, Info, Warn, Error, Fatal }
+
+pub struct Logger
+{
+    LogLevel minLevel;
+    String name;
+
+    static Logger new(str name, LogLevel minLevel)
+    void dispose()
+    void setLevel(LogLevel level)
+    bool enabled(LogLevel level)
+    void debug(str msg)
+    void info(str msg)
+    void warn(str msg)
+    void error(str msg)
+    void fatal(str msg)
+    // helper: void _log(LogLevel level, str msg)
+}</code></pre>
+<h3 id="45-std-io-net-tcp-udp-sockets">45. <code>std::io::net</code>, TCP/UDP sockets</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const i32 AF_INET = 2;  SOCK_STREAM = 1;  SOCK_DGRAM = 2;
+const i32 IPPROTO_TCP = 6; IPPROTO_UDP = 17;
+const i32 SOL_SOCKET = 1; SO_REUSEADDR = 2;
+
+pub struct sockaddr_in
+{
+    u16 sinFamily; u16 sinPort; u32 sinAddr; u8 sinZero[8];
+}
+
+pub distinct TcpSocket = i32;
+pub Result&lt;TcpSocket, IoError&gt; tcpConnect(str ip, u16 port)
+pub Result&lt;TcpSocket, IoError&gt; tcpListen(u16 port)
+pub Result&lt;TcpSocket, IoError&gt; tcpAccept(TcpSocket server)
+pub Result&lt;isize, IoError&gt;     tcpSend(TcpSocket sock, const u8* buf, usize len)
+pub Result&lt;isize, IoError&gt;     tcpRecv(TcpSocket sock, u8* buf, usize len)
+pub void tcpClose(TcpSocket sock)
+
+pub struct UdpSocket { i32 fd; }
+pub Result&lt;UdpSocket, IoError&gt; udpSocket()
+pub Result&lt;bool, IoError&gt;      udpBind(UdpSocket* s, u16 port)
+pub Result&lt;isize, IoError&gt;     udpSendTo(UdpSocket* s, const u8* buf, usize len, str ip, u16 port)
+pub Result&lt;isize, IoError&gt;     udpRecvFrom(UdpSocket* s, u8* buf, usize len)
+pub void udpClose(UdpSocket* s)</code></pre>
+<h3 id="46-std-io-path-path-manipulation">46. <code>std::io::path</code>, Path manipulation</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const u8 SEP = &#x27;/&#x27;;
+const u8 ALT_SEP = &#x27;\\&#x27;;
+
+pub usize  findLastSep(str p)
+pub bool   isAbsolute(str p)
+pub bool   hasExtension(str p)
+pub str    extension(str p)
+pub str    stem(str p)
+pub str    parent(str p)
+pub str    filename(str p)
+pub String join(str a, str b)
+pub String normalize(str p)
+pub String absolute(str base, str rel)
+pub String changeExtension(str p, str newExt)</code></pre>
+<h3 id="47-std-io-process-subprocesses">47. <code>std::io::process</code>, Subprocesses</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Process
+{
+    i32 pid;
+    i32 stdinFd;
+    i32 stdoutFd;
+    i32 stderrFd;
+}
+
+pub struct ProcessResult
+{
+    i32  exitCode;
+    bool signaled;
+    i32  termSignal;
+}
+
+pub struct pollfd { i32 fd; i16 events; i16 revents; }
+
+pub Result&lt;Process, IoError&gt;       spawn(str cmd, Vec&lt;str&gt;* args)
+pub Result&lt;ProcessResult, IoError&gt; waitFor(Process* p)
+pub Result&lt;isize, IoError&gt;         writeStdin(Process* p, const cchar* data, usize len)
+pub Result&lt;isize, IoError&gt;         readStdout(Process* p, u8* buf, usize maxLen)
+pub Result&lt;isize, IoError&gt;         readStderr(Process* p, u8* buf, usize maxLen)
+pub Result&lt;i32, IoError&gt;           run(str cmd, Vec&lt;str&gt;* args)
+pub void                           exit(i32 code)</code></pre>
+<h3 id="48-std-io-temp-temporary-files-dirs">48. <code>std::io::temp</code>, Temporary files/dirs</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct TempFile
+{
+    i32 fd;
+    String path;
+    bool autoDelete;
+    static Result&lt;TempFile, IoError&gt; create(str prefix, str suffix)
+    void dispose()
+    File fd()
+    str  pathStr()
+    void setAutoDelete(bool ad)
+}
+
+pub struct TempDir
+{
+    String path;
+    bool autoDelete;
+    static Result&lt;TempDir, IoError&gt; create(str prefix)
+    void dispose()
+    str  pathStr()
+    void setAutoDelete(bool ad)
+    bool isValid()
+}
+
+pub extend TempFile : @drop { void drop(); }
+pub extend TempDir  : @drop { void drop(); }</code></pre>
+<h3 id="49-std-io-term-ansi-terminal-control">49. <code>std::io::term</code>, ANSI terminal control</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void reset()
+pub void bold()   dim()   italic()   underline()   blink()   reverse()
+pub void hidden() strikethrough()
+
+pub void black()  red()  green()  yellow()  blue()  magenta()  cyan()  white()
+pub void bgBlack() bgRed() bgGreen() bgYellow() bgBlue() bgMagenta() bgCyan() bgWhite()
+pub void brightBlack() brightRed() brightGreen() brightYellow()
+pub void brightBlue() brightMagenta() brightCyan() brightWhite()
+
+pub void cursorUp(u64 n)
+pub void cursorDown(u64 n)
+pub void cursorRight(u64 n)
+pub void cursorLeft(u64 n)
+pub void cursorPos(u64 row, u64 col)
+
+pub void clearScreen()
+pub void clearLine()
+pub void clearToEnd()
+pub void clearLineEnd()
+pub void saveCursor()
+pub void restoreCursor()
+pub void hideCursor()
+pub void showCursor()
+// helpers: bool _isTty(); void _writeCSI(str code); void _writeStr(str s);
+//           u64 _clampN(u64 n)</code></pre>
+<h3 id="50-std-io-cmd-argparser">50. <code>std::io::cmd</code>, <code>ArgParser</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct ArgParser
+{
+    Vec&lt;String&gt; positional;
+    bool   error;
+    String errMsg;
+    usize  pos;
+
+    static ArgParser new()
+    void dispose()
+    void parse(i32 argc, cchar** argv)
+    bool hasFlag(i32 argc, cchar** argv, str shortFlag, str longFlag)
+    bool getOption(i32 argc, cchar** argv, str shortFlag, str longFlag, String* out)
+    usize count()
+    str   get(usize idx)
+    // helper: bool _afterDoubleDash(i32 argc, cchar** argv, i32 idx)
+}
+pub Option&lt;str&gt; commandLine()</code></pre>
+<h3 id="51-std-io-env-environment-variables">51. <code>std::io::env</code>, Environment variables</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Option&lt;String&gt; get(str name)
+pub bool getInto(str name, String* out)
+pub Result&lt;bool, IoError&gt; set(str name, str value)
+pub Result&lt;bool, IoError&gt; unset(str name)
+pub usize all(Vec&lt;String&gt;* out)</code></pre>
+<hr />
+<section><h2 id="std-memory">std::memory</h2></section>
+<h3 id="52-std-memory-mman-allocators-and-alloca">52. <code>std::memory::mman</code>, Allocators and allocation (aka <code>std::mman</code>)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant AllocError { AllocFailed { str msg; } }
+
+pub Allocator* defaultAllocator;          // global default allocator
+pub void initDefaultAllocator()
+pub void ensureDefaultAllocator()
+pub void deinitDefaultAllocator()
+
+pub Allocator libcAllocator;              // malloc/free-backed
+pub Allocator miAllocator;                // mimalloc-backed
+pub Allocator cAllocator;                 // libc-backed wrapper
+pub Allocator pageAllocator;              // page-granular
+pub const usize pageSize = 4096u;
+
+pub struct FixedBufferAllocator
+{
+    u8* buffer; usize cap; usize used;
+    void init(u8* buffer, usize size)
+    Allocator allocator()
+    void reset()
+    usize remaining(const self*)
+}
+
+pub struct StackFallbackAllocator
+{
+    FixedBufferAllocator fba;
+    Allocator* fallback;
+    u8 stackBuf[1024];
+    void init(Allocator* fallback)
+    Allocator allocator()
+}
+
+pub struct ArenaAllocator
+{
+    Allocator* backing;
+    u8* base; usize cap; usize used;
+    void init(Allocator* backing, usize initialCap)
+    void deinit()
+    Allocator allocator()
+    rawptr push(usize size)
+    T*     pushType&lt;T&gt;(usize count)
+    void   reset()
+    usize  remaining()
+}
+
+pub struct PoolAllocator
+{
+    rawptr freeList; usize blockSize; usize blockCount;
+    u8* backing; Allocator* source;
+    void init(Allocator* source, usize blockSize, usize blockCount)
+    void deinit()
+    Allocator allocator()
+    rawptr allocBlock()
+    void   freeBlock(rawptr block)
+}
+
+pub struct ScopeAlloc
+{
+    Allocator* backing;
+    rawptr* ptrs; usize* sizes;
+    usize len; usize cap;
+    void init(Allocator* backing, usize cap)
+    rawptr alloc(usize size)
+    T*     allocType&lt;T&gt;(usize count)
+    void   freeAll()
+    void   deinit()
+    usize  bytesUsed(const self*)
+    // helper: void _grow()
+}
+
+pub struct LoggingAllocator
+{
+    Allocator* parent;
+    usize totalAlloced; usize totalFreed; usize currentUsed;
+    usize allocCount; usize freeCount;
+    rawptr* trackPtrs; usize* trackSizes;
+    usize trackLen; usize trackCap;
+    void init(Allocator* parent)
+    Allocator allocator()
+    void printStats()
+    // helpers: _trackGrow _track _untrack
+}
+
+// convenience wrappers over the default allocator
+pub T*   alloc&lt;T&gt;(usize count)
+pub void dealloc&lt;T&gt;(T* ptr)
+pub T*   realloc&lt;T&gt;(T* ptr, usize newCount)
+pub void copy&lt;T&gt;(T* dst, T* src, usize count)
+pub void move&lt;T&gt;(T* dst, T* src, usize count)
+pub void zero&lt;T&gt;(T* ptr, usize count)
+pub bool equal&lt;T&gt;(const T* a, const T* b, usize count)</code></pre>
+<h3 id="53-std-memory-intrinsics-memory-raw-memo">53. <code>std::memory::intrinsics::memory</code>, Raw memory primitives</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void memmove(rawptr dst, const rawptr src, usize n)
+pub void memcpy(rawptr dst, const rawptr src, usize n)
+pub rawptr mmap(rawptr addr, usize length, i32 prot, i32 flags, i32 fd, i64 offset)
+pub void munmap(rawptr addr, usize length)
+pub void memset(rawptr dst, u8 val, usize n)
+pub i32  memcmp(const rawptr a, const rawptr b, usize n)</code></pre>
+<h3 id="54-std-memory-allocators-allocator-alloc">54. <code>std::memory::allocators::allocator</code>, <code>Allocator</code> (vtable)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Allocator
+{
+    rawptr ctx;
+    rawptr(rawptr, usize)          alloc;
+    void(rawptr, rawptr)           free;
+    rawptr(rawptr, rawptr, usize)  realloc;
+}</code></pre>
+<h3 id="55-std-memory-allocators-tlsf-tlsf-two-l">55. <code>std::memory::allocators::tlsf</code>, <code>Tlsf</code> (Two-Level Segregated Fit)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Tlsf
+{
+    rawptr heapStart; rawptr heapEnd; usize heapSize;
+    FreeBlock* freeLists[32][32];
+    u32 fliBitmap;
+    u32 sliBitmap[32];
+
+    void init(rawptr heap, usize size)
+    rawptr alloc(usize size)
+    void   free(rawptr ptr)
+    rawptr realloc(rawptr ptr, usize newSize)
+    usize  getHeapSize(const self*)
+    usize  getFreeSize(const self*)
+    Allocator allocator()
+    // helpers: _fls _lsbIndex _getIndex _blockSize _blockFromPtr _memcpy
+    //          _ptrFromBlock _nextBlock _writeFooter _prevBlock
+    //          _removeFree _insertFree _findSuitableBlock
+}</code></pre>
+<p>Constants: <code>FLI_COUNT = 32</code>, <code>SLI_COUNT = 32</code>, <code>MIN_BLOCK_SIZE = 32u</code>, <code>BLOCK_ALIGN = 8u</code>, <code>BLOCK_USED = 1u</code>, <code>BLOCK_PREV_USED = 2u</code>.</p>
+<h3 id="56-std-memory-allocators-mimalloc-miallo">56. <code>std::memory::allocators::mimalloc</code>, <code>MiAlloc</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct MiAlloc
+{
+    MiHeap heap;
+
+    void init(usize reserveSize)
+    rawptr alloc(usize size)
+    void   free(rawptr ptr)
+    rawptr realloc(rawptr ptr, usize newSize)
+    rawptr calloc(usize count, usize size)
+    usize  getAllocated()
+    usize  getFreed()
+    usize  getUsed()
+    usize  getMapped()
+    Allocator allocator()
+}
+pub void miStatsPrint(MiAlloc* alloc)</code></pre>
+<p>Constants include <code>MI_ARENA_SIZE = 64 MiB</code>, <code>MI_SEGMENT_SIZE = 4 MiB</code>, <code>MI_PAGE_SIZE = 64 KiB</code>, <code>MI_SLICE_SIZE = 64 KiB</code>, <code>MI_ALIGN = 16</code>, <code>MI_MAX_BLOCK_SIZE = 512 KiB</code>, <code>MI_HUGE_THRESHOLD = 128 KiB</code>, <code>MI_SIZE_CLASS_COUNT = 44</code>, <code>MI_SEGMENT_MAP_SIZE = 64</code>.</p>
+<h3 id="57-std-memory-pool-pool-t-fixed-size-obj">57. <code>std::memory::pool</code>, <code>Pool&lt;T&gt;</code> (fixed-size object pool)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Pool&lt;T&gt;
+{
+    rawptr freeList;
+    u8* blocks;
+    usize blockSize;
+    usize blockCount;
+    usize totalBlocks;
+    usize usedBlocks;
+
+    static Pool&lt;T&gt; new()
+    void dispose()
+    T*   acquire()
+    void release(T* obj)
+    usize available()
+    usize used()
+    usize capacity()
+    bool _grow()
+}</code></pre>
+<h3 id="58-std-memory-shared-ptr-sharedptr-t-ref">58. <code>std::memory::shared_ptr</code>, <code>SharedPtr&lt;T&gt;</code> (refcounted)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct SharedPtr&lt;T&gt;
+{
+    T* ptr;
+    RefCount* rc;       // contains usize count
+
+    bool init(T value)
+    void dispose()
+    T    get(const self*)
+    T*   data()
+    const T* constData(const self*)
+    usize refCount(const self*)
+    bool isValid(const self*)
+}
+void drop()</code></pre>
+<h3 id="59-std-memory-smart-ptr-smartptr-t-uniqu">59. <code>std::memory::smart_ptr</code>, <code>SmartPtr&lt;T&gt;</code> (unique)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct SmartPtr&lt;T&gt;
+{
+    T* ptr;
+
+    bool init(T value)
+    void dispose()
+    T    get(const self*)
+    T*   data()
+    const T* constData(const self*)
+    void set(T value)
+    bool isValid(const self*)
+    T    take()
+}
+void drop()</code></pre>
+<hr />
+<section><h2 id="std-concurrent">std::concurrent</h2></section>
+<h3 id="60-std-concurrent-mutex-mutex">60. <code>std::concurrent::mutex</code>, <code>Mutex</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Mutex
+{
+    rawptr impl[6];
+    void init()
+    void initRecursive()
+    void destroy()
+    void lock()
+    void unlock()
+    bool tryLock()
+}</code></pre>
+<h3 id="61-std-concurrent-rwlock-rwlock">61. <code>std::concurrent::rwlock</code>, <code>RwLock</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct RwLock
+{
+    rawptr impl[8];
+    void init()
+    void destroy()
+    void readLock()
+    void writeLock()
+    bool tryReadLock()
+    bool tryWriteLock()
+    void unlock()
+}</code></pre>
+<h3 id="62-std-concurrent-semaphore-semaphore">62. <code>std::concurrent::semaphore</code>, <code>Semaphore</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Semaphore
+{
+    rawptr impl[8];
+    bool init(u32 value)
+    void destroy()
+    void wait()
+    bool tryWait()
+    void post()
+    i32  value()
+}</code></pre>
+<h3 id="63-std-concurrent-signal-posix-signals">63. <code>std::concurrent::signal</code>, POSIX signals</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub const i32 SIGABRT = 6;  SIGALRM = 14; SIGBUS = 7;  SIGCHLD = 17;
+pub const i32 SIGCONT = 18; SIGFPE = 8;   SIGHUP = 1;  SIGILL = 4;
+pub const i32 SIGINT = 2;   SIGKILL = 9;  SIGPIPE = 13; SIGQUIT = 3;
+pub const i32 SIGSEGV = 11; SIGSTOP = 19; SIGTERM = 15; SIGTSTP = 20;
+pub const i32 SIGTTIN = 21; SIGTTOU = 22; SIGUSR1 = 10; SIGUSR2 = 12;
+pub const i32 SIGSYS = 31;  SIGTRAP = 5;  SIGURG = 23; SIGXCPU = 24; SIGXFSZ = 25;
+pub const u8 SIG_DFL = 0;
+pub const usize SIG_IGN = 1;
+
+pub rawptr handle(i32 sig, rawptr handler)
+pub void   ignore(i32 sig)
+pub void   defaultHandler(i32 sig)
+pub i32    sendSig(i32 pid, i32 sig)
+pub i32    raiseSig(i32 sig)</code></pre>
+<h3 id="64-std-concurrent-thread-threads-conditi">64. <code>std::concurrent::thread</code>, Threads, conditions, atomics</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct Thread = rawptr;
+
+pub struct ConditionVar
+{
+    rawptr impl[6];
+    void init()
+    void destroy()
+    void wait(Mutex* mutex)
+    void signal()
+    void broadcast()
+}
+
+pub variant ThreadError { CreateFailed { str msg; } }
+
+pub Result&lt;Thread, ThreadError&gt; threadCreate(rawptr(rawptr) fn, rawptr arg)
+pub bool   threadJoin(Thread t, rawptr* retval)
+pub void   threadExit(rawptr retval)
+pub Thread threadCurrent()
+
+pub struct AtomicU64
+{
+    u64 value;
+    u64  load()
+    void store(u64 val)
+    u64  fetchAdd(u64 delta)
+    u64  fetchSub(u64 delta)
+    bool compareExchange(u64 expected, u64 desired)
+}
+
+pub struct AtomicU32
+{
+    u32 value;
+    u32  load()
+    void store(u32 val)
+    u32  fetchAdd(u32 delta)
+    u32  fetchSub(u32 delta)
+    bool compareExchange(u32 expected, u32 desired)
+}</code></pre>
+<h3 id="65-std-concurrent-threadpool-threadpool">65. <code>std::concurrent::threadpool</code>, <code>ThreadPool</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct ThreadPool
+{
+    Mutex mutex;
+    ConditionVar cond;
+    Thread* threads;
+    Task* queueHead;
+    Task* queueTail;
+    u32 threadCount;
+    bool stop;
+
+    bool init(u32 numThreads)
+    void deinit()
+    bool enqueue(void(rawptr) func, rawptr arg)
+    u32  threadCount()
+    // helper: void _worker()
+}
+pub extend ThreadPool : @drop { void drop(); }
+// helper: void _workerEntry(rawptr arg)</code></pre>
+<h3 id="66-std-concurrent-async-stackful-fiber-a">66. <code>std::concurrent::async</code>, Stackful-fiber async runtime</h3>
+<p>Built on glibc <code>ucontext</code>. <code>spawn</code> creates a fiber, <code>await</code> parks the current fiber until a future resolves, and <code>run</code>/<code>runOnce</code> drive the scheduler.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant AsyncError
+{
+    OutsideFiber { str msg; },
+    NullFuture   { str msg; },
+    SpawnFailed  { str msg; }
+}
+
+pub struct Future
+{
+    u8     state;         // FUTURE_PENDING / FUTURE_READY
+    rawptr result;
+    Fiber* waiters;
+    Future* chanNext;
+    bool   counted;
+}
+
+pub usize defaultFiberStackSize = 131072;   // 128 KiB
+
+pub bool init()
+pub Result&lt;Future*, AsyncError&gt; spawn(void(rawptr) fn, rawptr arg)
+pub Result&lt;rawptr, AsyncError&gt;  await(Future* f)
+pub Future* sleep(u64 ms)
+pub bool    run()
+pub void    runOnce()
+pub Future* poolRun(ThreadPool* pool, void(rawptr) fn, rawptr arg)
+
+pub struct AsyncChannel
+{
+    rawptr* buf;
+    usize cap;
+    usize count;
+    usize head;
+    Future* recvHead;
+    Future* recvTail;
+
+    bool    init(usize capacity)
+    void    deinit()
+    bool    send(rawptr value)
+    Future* recv()
+}
+pub extend AsyncChannel : @drop { void drop(); }</code></pre>
+<p>State/step constants (<code>FUTURE_*</code>, <code>FIBER_*</code>, <code>STEP_*</code>) and the scheduler internals (<code>Fiber</code>, <code>Scheduler</code>, <code>TimerEntry</code>, <code>_nowMs</code>, <code>_initScheduler</code>, …) are non-<code>pub</code> and not part of the public surface.</p>
+<hr />
+<section><h2 id="std-crypto">std::crypto</h2></section>
+<h3 id="67-std-crypto-aes-aes-256-aes-128">67. <code>std::crypto::aes</code>, AES-256 / AES-128</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Aes256
+{
+    u8  roundKeys[240];
+    u32 nRounds;
+    void init(const u8* key)
+    void encryptBlock(u8* block)
+    void decryptBlock(u8* block)
+    bool encryptCbc(const u8* iv, u8* data, usize len)
+    bool decryptCbc(const u8* iv, u8* data, usize len)
+}
+
+pub struct Aes128
+{
+    u8  roundKeys[176];
+    u32 nRounds;
+    void init(const u8* key)
+    void encryptBlock(u8* block)
+    void decryptBlock(u8* block)
+    bool encryptCbc(const u8* iv, u8* data, usize len)
+    bool decryptCbc(const u8* iv, u8* data, usize len)
+}</code></pre>
+<p>Round constants/tables (<code>SBOX</code>, <code>RSBOX</code>, <code>RCON</code>) and the block-step helpers are module-private.</p>
+<h3 id="68-std-crypto-base64-base64-alphabet">68. <code>std::crypto::base64</code>, Base64 (<code>+/</code> alphabet)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub usize  encodeB64(const u8* src, usize srcLen, u8* dst, usize dstCap)
+pub String encodeToString(const u8* src, usize srcLen)
+pub usize  decode(str src, u8* dst, usize dstCap)</code></pre>
+<h3 id="69-std-crypto-bloom-bloom-filter">69. <code>std::crypto::bloom</code>, Bloom filter</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Bloom
+{
+    Vec&lt;u64&gt; bits;
+    usize numBits;
+    usize numHashes;
+
+    static Bloom new(usize numBits, usize numHashes)
+    void dispose()
+    void insert(str data, usize len)
+    bool contains(str data)
+    void clear()
+    usize bitsCount()
+    // helper: u64 _hash(str data, u64 seed)
+}</code></pre>
+<h3 id="70-std-crypto-crc-crc-32-crc-64">70. <code>std::crypto::crc</code>, CRC-32 / CRC-64</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u32 crc32(str data)
+pub u64 crc64(str data)</code></pre>
+<h3 id="71-std-crypto-hash-generic-hash-function">71. <code>std::crypto::hash</code>, Generic hash functions</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 fnv1a(const u8* data, usize len)
+pub u64 fnv1aStr(str s)
+pub u32 murmur3(const u8* data, usize len, u32 seed)
+pub u64 wyhash(const u8* data, usize len, u64 seed)
+pub u64 wyhashStr(str s)
+pub u64 hashCombine(u64 seed, u64 value)</code></pre>
+<h3 id="72-std-crypto-hex-hex-encoding">72. <code>std::crypto::hex</code>, Hex encoding</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub usize  encodeHx(str src, String dst)
+pub String encodeToString(str src)
+pub usize  decode(str src, String dst)
+pub bool   isValid(str src)</code></pre>
+<h3 id="73-std-crypto-hmac-hmac-sha256">73. <code>std::crypto::hmac</code>, HMAC-SHA256</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const u64 BLOCK_SIZE = 64;
+const u64 HASH_SIZE  = 32;
+
+pub struct HmacSha256
+{
+    u8   keyBlock[BLOCK_SIZE];
+    bool initialized;
+
+    void init(const u8* key, usize keyLen)
+    void compute(const u8* msg, usize msgLen, u8* outDigest)
+    void computeWithKey(const u8* key, usize keyLen, const u8* msg, usize msgLen, u8* outDigest)
+    bool verify(const u8* msg, usize msgLen, const u8* expectedDigest)
+}
+pub void hmacSha256(const u8* key, usize keyLen, const u8* msg, usize msgLen, u8* outDigest)</code></pre>
+<h3 id="74-std-crypto-sha256-sha-256">74. <code>std::crypto::sha256</code>, SHA-256</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Sha256
+{
+    u32 state[8];
+    u8  buf[64];
+    u64 count;
+    u64 bitLen;
+
+    void init()
+    void update(const u8* data, usize len)
+    void final(u8* digest)
+    // helper: void _transform()
+}
+pub void hash(const u8* data, usize len, u8* digest)</code></pre>
+<hr />
+<section><h2 id="std-parser">std::parser</h2></section>
+<h3 id="75-std-parser-csv-csvreader">75. <code>std::parser::csv</code>, <code>CsvReader</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+
+pub struct CsvReader
+{
+    const u8* data;
+    usize len;
+    usize pos;
+    usize line;
+    bool  error;
+    str   errMsg;
+    u8    delim;
+
+    static CsvReader new(str input)
+    bool eof()
+    Result&lt;bool, ParseError&gt; readRow(Vec&lt;String&gt;* fields)
+    // helpers: void fail(str msg); ParseError err(); bool _readField(String* out)
+}</code></pre>
+<h3 id="76-std-parser-ini-inifile-inisection">76. <code>std::parser::ini</code>, <code>IniFile</code> / <code>IniSection</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct IniSection
+{
+    HashMap&lt;String, String&gt; entries;
+
+    static IniSection new()
+    void dispose()
+    Option&lt;String&gt; get(str key)
+    void set(str key, str value)
+}
+
+pub struct IniFile
+{
+    Vec&lt;IniSection&gt; sections;
+    Vec&lt;String&gt;     names;
+
+    static IniFile new()
+    void dispose()
+    void parse(str input)                  // lenient; cannot fail
+    Option&lt;IniSection*&gt; section(str name)
+    Option&lt;String&gt; get(str section, str key)
+}
+
+pub extend IniSection : @drop { void drop(); }
+pub extend IniFile    : @drop { void drop(); }</code></pre>
+<h3 id="77-std-parser-json-jsonvalue">77. <code>std::parser::json</code>, <code>JsonValue</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum JsonType { Null, Bool, I64, F64, String, Array, Object }
+
+pub struct JsonValue
+{
+    JsonType type;
+    bool  boolVal;
+    i64   i64Val;
+    f64   f64Val;
+    String strVal;
+    Vec&lt;JsonValue&gt; arrVal;
+    Vec&lt;JsonPair&gt;  objVal;
+
+    static JsonValue nullVal()
+    static JsonValue boolVal(bool b)
+    static JsonValue i64Val(i64 n)
+    static JsonValue f64Val(f64 n)
+    static JsonValue stringVal(String s)
+    static JsonValue arrayVal()
+    static JsonValue objectVal()
+    void dispose()
+}
+
+pub struct JsonPair { String key; JsonValue value; }
+
+pub Result&lt;JsonValue, ParseError&gt; parseJson(str input)
+pub String serialize(JsonValue* v)
+pub extend JsonValue : @drop { void drop(); }</code></pre>
+<h3 id="78-std-parser-toml-tomldoc">78. <code>std::parser::toml</code>, <code>TomlDoc</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum TomlValueType { String, Integer, Float, Bool, Array, Table }
+
+pub struct TomlValue
+{
+    TomlValueType type;
+    String strVal;
+    i64    intVal;
+    f64    floatVal;
+    bool   boolVal;
+    Vec&lt;TomlValue&gt; arrVal;
+    Vec&lt;TomlPair&gt;  tableVal;
+
+    static TomlValue stringVal(str s)
+    static TomlValue intVal(i64 n)
+    static TomlValue floatVal(f64 n)
+    static TomlValue boolVal(bool b)
+    static TomlValue arrayVal()
+    static TomlValue tableVal()
+    void dispose()
+}
+
+pub struct TomlPair { String key; TomlValue value; }
+
+pub struct TomlDoc
+{
+    Vec&lt;TomlPair&gt; root;
+    static TomlDoc new()
+    void dispose()
+    Option&lt;TomlValue*&gt; get(str key)
+    Option&lt;TomlValue*&gt; getIn(str table, str key)
+}
+
+pub Result&lt;TomlDoc, ParseError&gt; parseToml(str input)
+pub extend TomlValue : @drop { void drop(); }
+pub extend TomlDoc   : @drop { void drop(); }</code></pre>
+<h3 id="79-std-parser-uuid-uuid">79. <code>std::parser::uuid</code>, <code>Uuid</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+
+pub struct Uuid
+{
+    u8 bytes[16];
+    static Uuid zero()
+    static Uuid v4()
+    static Result&lt;Uuid, ParseError&gt; fromString(str s)
+    String toString()
+    String toHex()
+    bool eq(Uuid other)
+    bool isNil()
+}
+pub String uuidV4()
+pub Result&lt;Uuid, ParseError&gt; parseUuid(str s)</code></pre>
+<h3 id="80-std-parser-xml-xmlnode">80. <code>std::parser::xml</code>, <code>XmlNode</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum XmlNodeType { Element, Text, Comment, CData }
+
+pub struct XmlAttribute
+{
+    String name;
+    String value;
+    void dispose()
+}
+
+pub struct XmlNode
+{
+    XmlNodeType type;
+    String tag;
+    String text;
+    Vec&lt;XmlAttribute&gt; attrs;
+    Vec&lt;XmlNode&gt;      children;
+
+    static XmlNode element(str tag)
+    static XmlNode text(str content)
+    void dispose()
+    bool hasAttr(str name)
+    Option&lt;str&gt; getAttr(str name)
+    Option&lt;XmlNode*&gt; firstChild(str tagName)
+}
+
+pub Result&lt;XmlNode, ParseError&gt; parseXml(str input)
+pub String serializeXml(XmlNode* node)
+pub extend XmlNode : @drop { void drop(); }</code></pre>
+<h3 id="81-std-parser-crlb-coral-build-manifest-">81. <code>std::parser::crlb</code>, Coral build-manifest parser</h3>
+<blockquote><p>Exists at <code>parser/crlb.crl</code> but is <strong>not</strong> re-exported by <code>parser/lib.crl</code>; import it directly.</p></blockquote>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum CrbKind { Int, Bool, Str, List }
+
+pub struct CrbValue
+{
+    CrbKind kind;
+    i64    intVal;
+    bool   boolVal;
+    String strVal;
+    Vec&lt;CrbValue&gt; listVal;
+
+    static CrbValue intVal(i64 n)
+    static CrbValue boolVal(bool b)
+    static CrbValue stringVal(str s)
+    static CrbValue listVal()
+    void dispose()
+}
+
+pub struct CrbEntry { String key; CrbValue value; }
+
+pub struct CrbBuild
+{
+    String name;
+    String extends;          // empty if no extends clause
+    Vec&lt;CrbEntry&gt; entries;
+    Option&lt;CrbValue*&gt; get(str key)
+    void dispose()
+}
+
+pub struct CrbManifest
+{
+    Vec&lt;CrbEntry&gt; top;       // schema / strict / other top-level keys
+    Vec&lt;CrbBuild&gt; builds;
+
+    static CrbManifest new()
+    Option&lt;CrbValue*&gt; get(str key)
+    Option&lt;CrbBuild*&gt; findBuild(str name)
+    void dispose()
+}
+
+pub Result&lt;CrbManifest, ParseError&gt; parseCrlb(str input)
+pub extend CrbValue    : @drop
+pub extend CrbBuild    : @drop
+pub extend CrbManifest : @drop</code></pre>
+<hr />
+<section><h2 id="misc-testing">misc / testing</h2></section>
+<h3 id="82-std-misc-erased-erased-type-erasure">82. <code>std::misc::erased</code>, <code>Erased</code> (type erasure)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Erased
+{
+    rawptr p;
+    rawptr ptr()
+    bool isNull()
+    T* asPtr&lt;T&gt;()
+}
+pub Erased wrap(rawptr value)</code></pre>
+<h3 id="83-std-misc-cast-cast-t">83. <code>std::misc::cast</code>, <code>cast&lt;T&gt;</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub T cast&lt;T&gt;(Erased val)     // reinterprets the wrapped pointer as T</code></pre>
+<h3 id="84-std-testing-test-test-harness-helpers">84. <code>std::testing::test</code>, Test harness helpers</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct TestResult { str name; bool passed; str message; }
+
+pub void _testBegin(str name)
+pub void _testEnd()
+pub void _testFail(str msg)
+pub void assertEq(usize expected, usize actual, str msg)
+pub void assertEqStr(str expected, str actual, str msg)
+pub void assertTrue(bool cond, str msg)
+pub void assertFalse(bool cond, str msg)
+pub void assertNull(rawptr ptr, str msg)
+pub void assertNotNull(rawptr ptr, str msg)
+pub void testSummary()
+pub bool testAllPassed()</code></pre>
+      <nav class="chapter-nav"><a href="../../lengthy/appendix-k-misc-and-testing/index.html">← Previous</a><span></span></nav>
+    </article>
+  </main>
+</body>
+</html>

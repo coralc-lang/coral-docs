@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Learning From Data, Without the Framework" />
+  <meta name="robots" content="index, follow" />
+  <title>Chapter 34 · Live Examples: Tiny Machine Learning | The Coral Book</title>
+  <link rel="canonical" href="https://coralc-lang.github.io/coral-docs/lengthy/34-live-examples-tiny-machine-learning/index.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Chapter 34 · Live Examples: Tiny Machine Learning | The Coral Book" />
+  <meta property="og:description" content="Learning From Data, Without the Framework" />
+  <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/lengthy/34-live-examples-tiny-machine-learning/index.html" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="stylesheet" href="../../lengthy/book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../../textbook/index.html">Editions</a><a href="../../lengthy/index.html">Lengthy</a><a href="../../speed/index.html">Speed</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Chapter 34</p>
+      <h1>Live Examples: Tiny Machine Learning</h1>
+      <p class="lead">Learning From Data, Without the Framework</p>
+      <p>There is a kind of magic attributed to "AI" that dissolves the moment you write it down. A model that predicts a price, classifies an email, or clusters customers is, underneath, three ordinary things: a guess function with a handful of tunable numbers, a way to measure how wrong the guess is, and a rule for nudging the numbers to make the measurement smaller. That is the entire engine. The famous libraries are conveniences built on top of it: fast array operations, automatic differentiation, and a great deal of engineering so that the same idea runs on a hundred GPUs. None of that is the idea. The idea fits in a few dozen lines, and writing those lines once changes how you read every headline about a new model.</p>
+<p>This chapter builds thirteen small pieces of that engine, in Coral, with <code>Vec&lt;f64&gt;</code> as the only data structure and <code>std::math</code> as the only numerical help. We start by fitting a line to points, deriving the gradient by hand. Then we normalise features, because otherwise the fit crawls. Then the same machinery becomes logistic regression for yes-or-no answers, then two classic non-parametric methods, k-nearest-neighbours and k-means, then a complete one-hidden-layer neural network with the backward pass derived by hand, then the metrics that tell you whether any of it works, and then a way to check that your hard-won gradient is even correct. After those, a second handful of classic models shows how little the machinery changes: a perceptron, naive Bayes, one-hot and hashed features, a decision stump, and principal components by power iteration.</p>
+<p>Everything here is deliberately tiny. The datasets are tens of points, not millions. The point is not to build the fastest learner. It is to see each moving part, name it, and understand why it is there. Once you have trained a two-parameter line by hand, <code>w = w - lr * grad</code> stops being a line of framework incantation and becomes exactly what it says: move the weight a little in the direction that decreases the error.</p>
+<p>A note on what a number is doing here, before the first line of code. Unless stated otherwise, every value in this chapter is an <code>f64</code>, and every operation is floating point. That means the arithmetic is the approximate arithmetic of <a href="../32-live-examples-mathematics-and-number-theory/index.html">Chapter 32</a>.9, not the exact arithmetic of the rationals. Training loops run for many iterations, and small errors accumulate, which is why learning curves sometimes go sideways and why a loss that should decrease can wobble. It is also why gradient checking exists. It cannot make floating point exact, but it can catch a sign error in a derivative before you spend an afternoon blaming the data.</p>
+<section><h2 id="s34-1">Linear Regression by Gradient Descent</h2></section>
+<p class="step-label">The problem</p>
+<p>Given pairs of numbers, hours studied and exam score, temperature and ice-cream sales, ad spend and revenue, find the straight line that comes closest to all of them, and use it to predict a new point.</p>
+<p class="step-label">The intuition</p>
+<p>A line has two knobs: its slope and its height. Start with a terrible guess (slope zero, height zero) and measure how wrong it is. "Wrong" is the average squared vertical distance from each point to the line, called the mean squared error. Squared, rather than absolute, because squares are smooth and a smooth error has a slope you can follow. Now ask: if I nudge the slope up a hair, does the error go up or down? The derivative, the gradient, answers that. Move each knob a small step opposite the gradient, and the error falls. Repeat. After enough repeats you are sitting near the bottom of the error bowl, and the line is the fit.</p>
+<p class="step-label">The approach</p>
+<p>Write the guess function, the loss, and the two partial derivatives, then loop. The partial derivative of the mean squared error with respect to the slope is the average of <code>2 * (prediction - actual) * x</code>; with respect to the intercept it is the average of <code>2 * (prediction - actual)</code>. That is the whole derivation, and it is worth doing on paper once before reading the code.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+
+pub struct LinReg {
+    // the two knobs: slope w and intercept b
+    f64 w;
+    f64 b;
+
+    static LinReg new() {
+        // start from the worst guess, a flat line through the origin
+        return LinReg { .w = 0.0, .b = 0.0 };
+    }
+
+    f64 predict(f64 x) {
+        // the line itself: score = slope * x + intercept
+        return self.w * x + self.b;
+    }
+
+    f64 loss(const Vec&lt;f64&gt;* xs, const Vec&lt;f64&gt;* ys) {
+        usize n = xs-&gt;count();
+        f64 total = 0.0;
+        // mean squared error: average of the squared vertical misses
+        for (usize i = 0; i &lt; n; i += 1) {
+            f64 err = self.predict(xs-&gt;at(i)) - ys-&gt;at(i);
+            total += err * err;
+        }
+        return total / (f64)n;
+    }
+
+    void fit(const Vec&lt;f64&gt;* xs, const Vec&lt;f64&gt;* ys, f64 lr, u64 epochs) {
+        usize n = xs-&gt;count();
+        // invariants: at least one example, and the two vectors aligned
+        @assertOut(n &gt; 0, &quot;fit() needs at least one example&quot;);
+        @assertOut(ys-&gt;count() == n, &quot;xs and ys must have the same length&quot;);
+
+        for (u64 epoch = 0; epoch &lt; epochs; epoch += 1) {
+            f64 gradW = 0.0;
+            f64 gradB = 0.0;
+            // accumulate the two partial derivatives over the batch
+            for (usize i = 0; i &lt; n; i += 1) {
+                f64 err = self.predict(xs-&gt;at(i)) - ys-&gt;at(i);
+                gradW += err * xs-&gt;at(i);
+                gradB += err;
+            }
+            // gradient step: move each knob opposite its gradient
+            f64 scale = 2.0 / (f64)n;
+            self.w -= lr * scale * gradW;
+            self.b -= lr * scale * gradB;
+        }
+    }
+}</code></pre>
+<p>The loop body is the gradient step, and it is exactly the text of the derivation: accumulate <code>err * x</code> and <code>err</code>, scale by two over the number of points, and subtract a learning-rate multiple of each. The learning rate <code>lr</code> is how big a step to take. Too small and training is glacial; too large and it overshoots and diverges. Finding a workable rate is a matter of experiment, which is why every framework exposes it as the first knob.</p>
+<p class="step-label">Cost and notes</p>
+<p>Each epoch is O(n): one pass to compute the gradients, O(1) to apply them. The whole fit is O(epochs * n). For the small data in this chapter that is nothing, but the shape matters. Linear regression is convex, so there is exactly one bottom to the bowl, and gradient descent cannot get stuck in a local minimum. That guarantee is special, and it is lost the moment we add the nonlinearity of logistic regression or a neural network.</p>
+<p class="step-label">Edge cases</p>
+<p>An empty dataset divides by zero; the assertion refuses it. Mismatched input lengths are a bug, not a data condition, so an assertion is the right response. If the <code>x</code> values are large, say in the millions, the gradients are enormous and the fixed learning rate diverges; this is the motivation for the next example. And if <code>x</code> has a huge constant offset, the intercept can drift while the slope wobbles, again a scale problem.</p>
+<p class="step-label">Variation</p>
+<p>Add a second feature: extend the model to <code>y = w1*x1 + w2*x2 + b</code>, with three gradients instead of two, and verify that fitting <code>y = 3*x1 - 2*x2 + 1</code> recovers the coefficients. The change is mechanical, and it is the whole difference between one-variable and multi-variable regression.</p>
+<section><h2 id="s34-2">Feature Normalisation</h2></section>
+<p class="step-label">The problem</p>
+<p>The previous fit works in theory for any scale of input, and in practice it crawls or diverges when the input spans a wide range. Standardising the features fixes it, and the fix is a two-line transformation.</p>
+<p class="step-label">The intuition</p>
+<p>Picture the error bowl for two features measured on wildly different scales, one in metres and one in kilometres. The bowl is a long, thin, tilted valley, not a round basin. Gradient descent does not know the shape; it steps in the steepest local direction, and in a thin valley that direction points across the valley rather than along it, so the path zigzags and takes forever. If you rescale each feature so it has mean zero and standard deviation one, the valley becomes round, the steepest direction points roughly at the bottom, and the steps go where you want. The transformation: for each value, subtract the mean and divide by the standard deviation.</p>
+<p class="step-label">The approach</p>
+<p>Compute the mean and then the standard deviation, then rewrite the vector in place. The standard deviation is the square root of the average squared distance from the mean, and the library's <code>sqrt</code> supplies the root.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::math::math { sqrt };
+
+pub struct Stats {
+    // the two summary numbers used to rescale a feature
+    f64 mean;
+    f64 std;
+}
+
+pub Stats computeStats(const Vec&lt;f64&gt;* xs) {
+    usize n = xs-&gt;count();
+    @assertOut(n &gt; 0, &quot;computeStats() on an empty vector&quot;);
+
+    // first pass: the mean
+    f64 sum = 0.0;
+    for (usize i = 0; i &lt; n; i += 1) sum += xs-&gt;at(i);
+    f64 mean = sum / (f64)n;
+
+    // second pass: average squared distance from the mean, then its root
+    f64 sq = 0.0;
+    for (usize i = 0; i &lt; n; i += 1) {
+        f64 d = xs-&gt;at(i) - mean;
+        sq += d * d;
+    }
+    return Stats { .mean = mean, .std = sqrt(sq / (f64)n) };
+}
+
+pub void standardise(Vec&lt;f64&gt;* xs) {
+    // summarise first, then rewrite each value in place
+    Stats s = computeStats(xs);
+    // a constant feature has no spread; map it to zero and avoid dividing by zero
+    if (s.std == 0.0) {
+        for (usize i = 0; i &lt; xs-&gt;count(); i += 1) xs-&gt;set(i, 0.0);
+        return;
+    }
+    // rewrite each value as its z-score: (x - mean) / std
+    for (usize i = 0; i &lt; xs-&gt;count(); i += 1)
+        xs-&gt;set(i, (xs-&gt;at(i) - s.mean) / s.std);
+}</code></pre>
+<p class="step-label">Cost and notes</p>
+<p>Two passes, O(n) time, O(1) extra space. The transformed data has mean zero and standard deviation one, so each feature now moves on the same scale and a single learning rate works for all of them. This is such a reliable improvement that normalising the features is the first thing to try whenever a model refuses to learn.</p>
+<p class="step-label">Edge cases</p>
+<p>A feature that is constant has standard deviation zero and the division would produce a NaN; the routine detects that and maps every value to zero (the feature carries no information, so a constant of any value is equally useless). The two-pass calculation is mathematically the standard definition but numerically loses precision when the mean is very large compared to the spread. The numerically careful form accumulates the sum and the sum of squares together and subtracts at the end, though for textbook-sized data the straightforward version is fine. And standardisation is not the same as min-max scaling to <code>[0, 1]</code>. Both are "normalisation," and the standardised version is the one gradient descent usually prefers.</p>
+<p class="step-label">Variation</p>
+<p>Write <code>minMaxScale(Vec&lt;f64&gt;* xs)</code> that maps the data into <code>[0, 1]</code> using the minimum and maximum, and compare the two on a dataset with an outlier. Standardisation keeps the outlier meaningful; min-max squashes everything else into a thin band. Explain which is right for which model.</p>
+<section><h2 id="s34-3">Logistic Regression</h2></section>
+<p class="step-label">The problem</p>
+<p>Predict a yes-or-no answer, is this email spam, will this customer churn, from one or more numeric features, and produce a probability, not just a label.</p>
+<p class="step-label">The intuition</p>
+<p>Linear regression predicts any real number, but a probability must lie between zero and one, and a straight line does not. The fix is to leave the line alone and squash its output through the logistic function, <code>sigmoid(z) = 1 / (1 + exp(-z))</code>, which maps every real number into <code>(0, 1)</code>: hugely negative becomes near zero, hugely positive becomes near one, zero becomes a half. Then interpret the result as a probability. Training has the same shape as linear regression, measure the error, step against the gradient, but the error is not squared distance; it is the negative log-likelihood, and the gradient falls out surprisingly cleanly. For the logistic model with the log-loss, the gradient of the loss with respect to the line's output is simply <code>(prediction - actual)</code>, the same <code>err</code> as before, multiplied by the feature. The sigmoid's derivative cancels against the log-loss's derivative, and that cancellation is the reason logistic regression is so pleasant.</p>
+<p class="step-label">The approach</p>
+<p>One weight and one bias (the multi-feature version is a direct extension), a sigmoid, and the training loop from 33.1 with the new error.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::math::math { exp };
+
+pub f64 sigmoid(f64 z) {
+    // squash any real number into (0, 1) so it reads as a probability
+    return 1.0 / (1.0 + exp(-z));
+}
+
+pub struct LogReg {
+    // one weight and one bias, as in linear regression
+    f64 w;
+    f64 b;
+
+    static LogReg new() {
+        return LogReg { .w = 0.0, .b = 0.0 };
+    }
+
+    f64 probability(f64 x) {
+        // the score run through the sigmoid
+        return sigmoid(self.w * x + self.b);
+    }
+
+    i32 classify(f64 x) {
+        // the decision boundary is where the raw score crosses zero
+        return (self.w * x + self.b) &gt;= 0.0 ? 1 : 0;
+    }
+
+    void fit(const Vec&lt;f64&gt;* xs, const Vec&lt;i32&gt;* ys, f64 lr, u64 epochs) {
+        usize n = xs-&gt;count();
+        @assertOut(ys-&gt;count() == n, &quot;xs and ys must have the same length&quot;);
+
+        for (u64 epoch = 0; epoch &lt; epochs; epoch += 1) {
+            f64 gradW = 0.0;
+            f64 gradB = 0.0;
+            // for log-loss the gradient is just (probability - label) * feature
+            for (usize i = 0; i &lt; n; i += 1) {
+                f64 p = self.probability(xs-&gt;at(i));
+                f64 err = p - (f64)ys-&gt;at(i);
+                gradW += err * xs-&gt;at(i);
+                gradB += err;
+            }
+            // step against the average gradient
+            self.w -= lr * gradW / (f64)n;
+            self.b -= lr * gradB / (f64)n;
+        }
+    }
+}</code></pre>
+<p>Notice that <code>classify</code> does not call <code>sigmoid</code> at all. The decision boundary is where <code>w*x + b</code> is zero, because that is where the probability is one half. Comparing the raw score to zero avoids the exponential entirely and is exactly equivalent.</p>
+<p class="step-label">Cost and notes</p>
+<p>Same O(epochs * n) as linear regression, plus one <code>exp</code> per example per epoch. The loss is no longer convex in the same way linear regression's is. The logistic log-loss is convex, so a single global minimum still exists, which is why logistic regression trains as reliably as it does. The probabilities it produces are not automatically well calibrated; a model can rank correctly and still report "0.9" for things that happen half the time. Calibration is a separate problem.</p>
+<p class="step-label">Edge cases</p>
+<p>Labels must be zero or one for the log-loss as written; other encodings need a different loss. The sigmoid saturates: for strongly negative inputs <code>exp(-z)</code> overflows to infinity, but <code>1 / (1 + inf)</code> is zero, which is the right answer, so the overflow is benign here (unlike in other formulas where it must be guarded). A learning rate that never converges because the classes are not linearly separable will walk the weights off to infinity. That is why logistic regression often carries a regularisation term in practice.</p>
+<p class="step-label">Variation</p>
+<p>Generalise to two features and plot, on paper, the line <code>w1*x1 + w2*x2 + b = 0</code>. It is the decision boundary, and it is always a straight line for logistic regression, which is exactly the model's limitation and the reason for the next methods.</p>
+<section><h2 id="s34-4">k-Nearest Neighbours</h2></section>
+<p class="step-label">The problem</p>
+<p>Classify a new point by looking at the labelled points closest to it and taking a vote. No training, no weights, no gradient.</p>
+<p class="step-label">The intuition</p>
+<p>It is the "you are like your neighbours" rule, and it needs no learning phase at all. To classify a query, measure the distance from the query to every stored example, pick the <code>k</code> closest, and let them vote on the label. Two points in a two-dimensional feature space are close if the straight-line distance between them is small. It is lazy: all the work happens at query time, which makes it either elegant or a performance disaster, depending on your situation.</p>
+<p class="step-label">The approach</p>
+<p>Store the training points. For a query, compute the squared distance to each, select the <code>k</code> smallest without sorting the whole list, and take a majority vote. We use the squared distance because it preserves the ordering and skips the square root; the neighbours are the same.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+
+pub struct Example {
+    // one stored training point and its known label
+    f64 x;
+    f64 y;
+    i32 label;
+}
+
+f64 squaredDistance(const Example* a, f64 qx, f64 qy) {
+    // squared distance preserves ordering and skips the square root
+    f64 dx = a-&gt;x - qx;
+    f64 dy = a-&gt;y - qy;
+    return dx * dx + dy * dy;
+}
+
+pub i32 knnPredict(const Vec&lt;Example&gt;* train, f64 qx, f64 qy, u32 k) {
+    usize n = train-&gt;count();
+    @assertOut(k &gt; 0 &amp;&amp; (usize)k &lt;= n, &quot;k must be between 1 and the number of examples&quot;);
+
+    // indices of the neighbours chosen so far
+    Vec&lt;usize&gt; chosen = Vec&lt;usize&gt;::withCap((usize)k);
+    // find the k nearest by repeated selection; no full sort needed
+    for (u32 round = 0; round &lt; k; round += 1) {
+        usize best = 0;
+        f64 bestDist = 0.0;
+        bool found = false;
+        // one pass picks the nearest point not already chosen
+        for (usize i = 0; i &lt; n; i += 1) {
+            bool used = chosen.contains(i);
+            if (used) continue;
+            f64 d = squaredDistance(train-&gt;atPtr(i), qx, qy);
+            if (!found || d &lt; bestDist) {
+                best = i;
+                bestDist = d;
+                found = true;
+            }
+        }
+        chosen.push(best);
+    }
+
+    // vote: labels are 0/1, so count votes for label 1
+    u32 votesForOne = 0;
+    for (usize j = 0; j &lt; chosen.count(); j += 1)
+        if (train-&gt;at(chosen.at(j)).label == 1) votesForOne += 1;
+    // majority wins; exactly half resolves toward label zero
+    if (votesForOne &gt; k / 2) return 1;
+    return 0;
+}</code></pre>
+<p>The selection is <code>k</code> passes over the data, each pass finding the nearest not-yet-chosen point. It is O(nk) and needs no sort, which is a good trade when <code>k</code> is small. The vote is a count because the labels are binary; for more classes you would count per class and take the argmax.</p>
+<p class="step-label">Cost and notes</p>
+<p>Classification is O(nk) per query, and there is no training cost at all. That is the inversion that defines a lazy learner: you pay at prediction time, every time. For a few thousand examples it is instant; for a billion it is unusable, and the fixes (spatial trees, approximate near-neighbour indexes) are a large field of their own.</p>
+<p class="step-label">Edge cases</p>
+<p>A tie in the vote needs a policy. The code above resolves toward label zero when exactly half vote for one, which is arbitrary and should be stated rather than hidden. <code>k</code> must not exceed the number of examples. Points at exactly equal distance are broken by whichever the loop reaches first, again arbitrary. And because the method uses raw distances, features on different scales dominate the distance. Normalise first (33.2) whenever the features are not already comparable.</p>
+<p class="step-label">Variation</p>
+<p>Change the vote to a distance-weighted vote, where each neighbour's vote counts one over its distance. Near neighbours then matter more than the ones at the edge of the <code>k</code>, which smooths the boundary and makes the method less jumpy. Compare the two on a dataset where the classes interleave.</p>
+<section><h2 id="s34-5">k-Means Clustering</h2></section>
+<p class="step-label">The problem</p>
+<p>Nobody gave you labels. Divide a set of points into <code>k</code> groups such that points in a group are close to each other, and report the group centres.</p>
+<p class="step-label">The intuition</p>
+<p>Guessing the group centres and the group memberships at the same time is a chicken-and-egg problem; k-means breaks the loop by alternating. Guess <code>k</code> centres. Assign every point to the nearest centre. Now that you have groups, recompute each centre as the average of its members, which is the best possible centre for that group. Reassign, recompute, repeat. Each step can only reduce the total distance from points to their centres, so the process settles, though not necessarily at the best possible grouping.</p>
+<p class="step-label">The approach</p>
+<p>Represent a 2-D point, initialise the centres to the first <code>k</code> data points (a poor but simple choice), and alternate the two steps for a fixed number of iterations.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+
+pub struct Pt {
+    // a 2-D data point
+    f64 x;
+    f64 y;
+}
+
+f64 pointDistance(const Pt* a, const Pt* b) {
+    // squared Euclidean distance, ordering preserved
+    f64 dx = a-&gt;x - b-&gt;x;
+    f64 dy = a-&gt;y - b-&gt;y;
+    return dx * dx + dy * dy;
+}
+
+pub Vec&lt;Pt&gt; kmeans(const Vec&lt;Pt&gt;* data, u32 k, u64 iterations) {
+    usize n = data-&gt;count();
+    @assertOut(k &gt; 0 &amp;&amp; (usize)k &lt;= n, &quot;k must be between 1 and the number of points&quot;);
+
+    // a poor but simple initialiser: the first k points become the centres
+    Vec&lt;Pt&gt; centres = Vec&lt;Pt&gt;::withCap((usize)k);
+    for (u32 i = 0; i &lt; k; i += 1) centres.push(data-&gt;at((usize)i));
+
+    Vec&lt;u32&gt; assignment = Vec&lt;u32&gt;::withCap(n);
+    for (usize i = 0; i &lt; n; i += 1) assignment.push(0);
+
+    for (u64 step = 0; step &lt; iterations; step += 1) {
+        // assign each point to its nearest centre
+        for (usize i = 0; i &lt; n; i += 1) {
+            // scan every centre for the closest one
+            u32 best = 0;
+            f64 bestDist = pointDistance(data-&gt;atPtr(i), centres.atPtr(0));
+            for (u32 c = 1; c &lt; k; c += 1) {
+                f64 d = pointDistance(data-&gt;atPtr(i), centres.atPtr(c));
+                if (d &lt; bestDist) { bestDist = d; best = c; }
+            }
+            assignment.set(i, best);
+        }
+
+        // recompute each centre as the mean of its members
+        for (u32 c = 0; c &lt; k; c += 1) {
+            f64 sx = 0.0;
+            f64 sy = 0.0;
+            usize count = 0;
+            for (usize i = 0; i &lt; n; i += 1) {
+                if (assignment.at(i) != c) continue;
+                sx += data-&gt;at(i).x;
+                sy += data-&gt;at(i).y;
+                count += 1;
+            }
+            // an empty cluster keeps its old centre rather than dividing by zero
+            if (count &gt; 0)
+                centres.set((usize)c, Pt { .x = sx / (f64)count, .y = sy / (f64)count });
+        }
+    }
+    return centres;
+}</code></pre>
+<p class="step-label">Cost and notes</p>
+<p>Each iteration is O(nk): one nearest-centre search per point, one mean per cluster. The whole run is O(iterations * nk). It converges because each of the two steps cannot increase the total within-cluster squared distance, and there are finitely many assignments, so it must stop. It stops at a local optimum, and which one depends on the initial centres: a different seed can give a different clustering of exactly the same data.</p>
+<p class="step-label">Edge cases</p>
+<p>A cluster can lose all its members, and dividing by zero would poison the centre with NaN, so the code leaves such a centre where it was, which is a common and acceptable policy. Choosing the centres as the first <code>k</code> points is naive and can land two centres on nearly the same spot; a proper initialiser spreads them out (k-means++). The value of <code>k</code> is not learned at all. It is a choice you make, and deciding it (the elbow method, silhouette scores) is a separate discussion. And because distances are Euclidean, scale dominates exactly as it did for k-nearest-neighbours.</p>
+<p class="step-label">Variation</p>
+<p>Initialise the centres by picking <code>k</code> points that are far apart from each other (the first at random, each next the point farthest from all chosen so far), and compare the final within-cluster distance to the first-<code>k</code> initialisation on a dataset with three obvious blobs. Better initialisation is most of the battle.</p>
+<section><h2 id="s34-6">A One-Hidden-Layer Neural Network</h2></section>
+<p class="step-label">The problem</p>
+<p>Fit a relationship that is not a straight line. A single linear model cannot represent XOR, or a circle, or almost anything interesting; a network with one hidden layer can, in principle, represent any continuous function.</p>
+<p class="step-label">The intuition</p>
+<p>The trick is to stack two linear models with a bend between them. The first layer produces several intermediate values, each a weighted sum of the inputs, and then squashes each through the sigmoid, which is the bend. The second layer combines those bent values into the output. The hidden layer is a set of learned features: the network discovers the shapes it needs, rather than being told. Training uses the same gradient descent as before, but the gradient has to travel backward from the output through the second layer, through the bend, and into the first layer. That backward trip is backpropagation, and it is just the chain rule applied one layer at a time.</p>
+<p class="step-label">The approach</p>
+<p>Two inputs, three hidden units, one output. Keep every parameter in a <code>Vec&lt;f64&gt;</code> so the loops are uniform, and derive the gradient by hand. The forward pass computes the hidden activations, then the output. The backward pass computes the output error, uses it to update the second layer, propagates it through the sigmoid's derivative into the hidden units, and uses that to update the first layer. The sigmoid's derivative is the beautiful part: <code>sigmoid'(z) = h * (1 - h)</code> when <code>h</code> is the already-computed activation, so the backward pass needs no new exponentials.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::math::math { exp };
+
+f64 sigmoidF(f64 z) {
+    // the bend between the two linear layers
+    return 1.0 / (1.0 + exp(-z));
+}
+
+pub struct TinyNet {
+    usize inputs;
+    usize hidden;
+    Vec&lt;f64&gt; w1;    // hidden * inputs, row-major
+    Vec&lt;f64&gt; b1;    // hidden
+    Vec&lt;f64&gt; w2;    // hidden
+    f64 b2;
+
+    static TinyNet new(usize inputs, usize hidden) {
+        // sizes plus flat parameter vectors
+        TinyNet net;
+        net.inputs = inputs;
+        net.hidden = hidden;
+        net.w1 = Vec&lt;f64&gt;::new();
+        net.b1 = Vec&lt;f64&gt;::new();
+        net.w2 = Vec&lt;f64&gt;::new();
+        // a small deterministic starting point; real code would randomise
+        for (usize i = 0; i &lt; inputs * hidden; i += 1) net.w1.push(0.1);
+        for (usize i = 0; i &lt; hidden; i += 1) net.b1.push(0.0);
+        for (usize i = 0; i &lt; hidden; i += 1) net.w2.push(0.1);
+        net.b2 = 0.0;
+        return net;
+    }
+
+    // forward pass: fills hidden[j] and returns the output probability
+    f64 forward(const Vec&lt;f64&gt;* x, Vec&lt;f64&gt;* hidden) {
+        hidden.clear();
+        // first layer: one weighted sum of the inputs per hidden unit
+        for (usize j = 0; j &lt; self.hidden; j += 1) {
+            f64 z = self.b1.at(j);
+            for (usize i = 0; i &lt; self.inputs; i += 1)
+                z += self.w1.at(j * self.inputs + i) * x-&gt;at(i);
+            hidden.push(sigmoidF(z));
+        }
+        // second layer: combine the bent hidden values into one score
+        f64 out = self.b2;
+        for (usize j = 0; j &lt; self.hidden; j += 1)
+            out += self.w2.at(j) * hidden-&gt;at(j);
+        return sigmoidF(out);
+    }
+
+    // one example, one gradient step, output is a probability, label is 0/1
+    void trainOne(const Vec&lt;f64&gt;* x, f64 label, f64 lr) {
+        Vec&lt;f64&gt; hidden = Vec&lt;f64&gt;::new();
+        f64 out = self.forward(x, &amp;hidden);
+
+        // d(loss)/d(output pre-activation) for log-loss + sigmoid
+        f64 deltaOut = out - label;
+
+        // second layer gradients
+        for (usize j = 0; j &lt; self.hidden; j += 1)
+            self.w2.set(j, self.w2.at(j) - lr * deltaOut * hidden.at(j));
+        self.b2 -= lr * deltaOut;
+
+        // first layer gradients, via the chain rule through the sigmoid
+        for (usize j = 0; j &lt; self.hidden; j += 1) {
+            f64 h = hidden.at(j);
+            // scale the output error by the weight and the sigmoid&#x27;s derivative
+            f64 deltaHidden = deltaOut * self.w2.at(j) * h * (1.0 - h);
+            self.b1.set(j, self.b1.at(j) - lr * deltaHidden);
+            // each first-layer weight&#x27;s gradient is that hidden error times its input
+            for (usize i = 0; i &lt; self.inputs; i += 1) {
+                usize idx = j * self.inputs + i;
+                f64 grad = deltaHidden * x-&gt;at(i);
+                self.w1.set(idx, self.w1.at(idx) - lr * grad);
+            }
+        }
+    }
+
+    void train(const Vec&lt;Vec&lt;f64&gt;&gt;* xs, const Vec&lt;f64&gt;* ys, f64 lr, u64 epochs) {
+        // plain epoch-by-epoch, example-by-example stochastic descent
+        for (u64 epoch = 0; epoch &lt; epochs; epoch += 1)
+            for (usize i = 0; i &lt; xs-&gt;count(); i += 1)
+                self.trainOne(xs-&gt;atPtr(i), ys-&gt;at(i), lr);
+    }
+}</code></pre>
+<p>Read the backward pass as the chain rule written out. The output error is <code>out - label</code>; it updates the second-layer weights by multiplying with the hidden activation that fed them, exactly as in logistic regression. To reach the first layer, the error is scaled by the weight it passed through (<code>w2[j]</code>) and by the derivative of the sigmoid at that hidden unit (<code>h * (1 - h)</code>). Then the first-layer weight gradient is that hidden error times the input that fed it. There is no magic and no library call; every factor is a term from the chain rule.</p>
+<p class="step-label">Cost and notes</p>
+<p>A forward pass is O(inputs <em> hidden) multiply-adds. The backward pass is the same count again, plus the updates, so a training step is O(inputs </em> hidden). Training the whole dataset for an epoch is O(n <em> inputs </em> hidden). The network is tiny on purpose. A real one has many layers, batches of examples, and matrix operations, but the structure of the backward pass is identical, just longer.</p>
+<p class="step-label">Edge cases</p>
+<p>Initialising all weights to the same value, as this example does for determinism, makes all hidden units learn the same thing, which is a real flaw of the naive initialisation; production code initialises randomly to break the symmetry. The sigmoid's derivative is always positive and at most a quarter, so each layer of backprop multiplies the gradient by at most <code>1/4</code>, and gradients shrink as you add layers. That is the vanishing-gradient problem, and the reason deeper networks use other activations. Labels must be zero or one. And a learning rate large enough to diverge will produce NaN within a few epochs, because the loss grows and the updates grow with it.</p>
+<p class="step-label">Variation</p>
+<p>Change the hidden activation to the rectified linear unit, <code>relu(z) = max(z, 0)</code>, whose derivative is one for positive inputs and zero otherwise. The forward pass is cheaper and the vanishing-gradient problem eases for positive inputs, and the only change to the backward pass is the <code>h * (1 - h)</code> factor becoming a zero-or-one indicator. Train both on XOR and compare.</p>
+<section><h2 id="s34-7">The Confusion Matrix and the Metrics That Read It</h2></section>
+<p class="step-label">The problem</p>
+<p>A model that always answers "no" can be 99% accurate on a dataset that is 99% negative, and be useless. Accuracy alone hides the truth. You need the four numbers that describe what a classifier actually did.</p>
+<p class="step-label">The intuition</p>
+<p>Every prediction falls into one of four boxes: it was positive and the model said positive (true positive); it was negative and the model said positive (false positive); it was negative and the model said negative (true negative); it was positive and the model said negative (false negative). Those four counts are the confusion matrix, and every useful metric is a ratio of them. Accuracy is <code>(tp + tn) / all</code>. Precision asks "when the model said yes, how often was it right?" (<code>tp / (tp + fp)</code>). Recall asks "of the things that were yes, how many did the model catch?" (<code>tp / (tp + fn)</code>). The F1 score is their harmonic mean, a single number that punishes a model that is good at one and terrible at the other.</p>
+<p class="step-label">The approach</p>
+<p>A small struct that accumulates the four counts and computes the metrics on demand. The division-by-zero cases are real and must be handled explicitly.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Confusion {
+    // the four boxes every prediction falls into
+    u64 truePositive;
+    u64 falsePositive;
+    u64 trueNegative;
+    u64 falseNegative;
+
+    static Confusion new() {
+        return Confusion {
+            .truePositive = 0, .falsePositive = 0,
+            .trueNegative = 0, .falseNegative = 0
+        };
+    }
+
+    // sort one (predicted, actual) pair into its box
+    void observe(i32 predicted, i32 actual) {
+        if (predicted == 1 &amp;&amp; actual == 1) self.truePositive += 1;
+        else if (predicted == 1 &amp;&amp; actual == 0) self.falsePositive += 1;
+        else if (predicted == 0 &amp;&amp; actual == 0) self.trueNegative += 1;
+        else self.falseNegative += 1;
+    }
+
+    u64 total() {
+        return self.truePositive + self.falsePositive +
+               self.trueNegative + self.falseNegative;
+    }
+
+    f64 accuracy() {
+        // denominator guarded so an empty matrix reports zero, not NaN
+        if (self.total() == 0) return 0.0;
+        return (f64)(self.truePositive + self.trueNegative) / (f64)self.total();
+    }
+
+    f64 precision() {
+        // of the positives we claimed, how many were right
+        u64 denom = self.truePositive + self.falsePositive;
+        if (denom == 0) return 0.0;
+        return (f64)self.truePositive / (f64)denom;
+    }
+
+    f64 recall() {
+        // of the real positives, how many we caught
+        u64 denom = self.truePositive + self.falseNegative;
+        if (denom == 0) return 0.0;
+        return (f64)self.truePositive / (f64)denom;
+    }
+
+    f64 f1() {
+        // harmonic mean punishes a model strong at one and weak at the other
+        f64 p = self.precision();
+        f64 r = self.recall();
+        if (p + r == 0.0) return 0.0;
+        return 2.0 * p * r / (p + r);
+    }
+}</code></pre>
+<p class="step-label">Cost and notes</p>
+<p>Every metric is O(1); observing a prediction is a few comparisons. Counting the matrix is O(n) for <code>n</code> predictions. There is no reason not to report all four numbers instead of accuracy alone. The reason to prefer precision and recall is that they separate the two ways to be wrong: a spam filter would rather let one spam through than delete a real message, which is a preference for high recall and lower precision. A medical screen for a rare fatal disease has the opposite preference.</p>
+<p class="step-label">Edge cases</p>
+<p>Each ratio can have a zero denominator, and the code returns zero rather than dividing by zero into NaN. That choice is a policy. A model that never predicts positive has undefined precision, and reporting zero is conservative. The labels are assumed to be exactly zero or one; other encodings need a mapping. And accuracy on a highly imbalanced dataset is genuinely misleading, not merely incomplete, worth demonstrating by computing all four metrics on a dataset where a constant predictor scores 99% accuracy and zero F1.</p>
+<p class="step-label">Variation</p>
+<p>Add a <code>threshold</code> parameter so the caller can vary where the probability becomes a positive label, and plot the precision-recall trade-off as the threshold moves from zero to one. The curve is the honest picture of a classifier, and it is the reason a threshold is a decision, not a default.</p>
+<section><h2 id="s34-8">Checking Your Gradient</h2></section>
+<p class="step-label">The problem</p>
+<p>Every method in this chapter except the first two depends on a derivative someone derived by hand, and a single wrong sign in that derivative produces a model that trains in the wrong direction and never converges. How do you know the derivative is right before you have spent an afternoon tuning a broken model?</p>
+<p class="step-label">The intuition</p>
+<p>The derivative of a function at a point is the slope of the tangent line, and a slope can be estimated with a finite difference: step a tiny amount to the right and to the left, see how much the function changed over the distance, and you have an approximation. This is the definition of the derivative, made numerical. It is not exact, since floating point and the choice of step size introduce error, but it is derived from the function itself, with no calculus by hand, so it is an independent check on your hand-derived formula. If the analytic gradient and the numerical one agree to several decimal places at a handful of random points, your calculus is almost certainly right.</p>
+<p class="step-label">The approach</p>
+<p>A central-difference estimate, which is more accurate than a one-sided one, then a comparison against the analytic gradient. For a scalar function of one variable, the check is direct; for a function of many weights, check one weight at a time by nudging it and recomputing.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::math::math { fabs };
+
+// scalar case: f is some function of one variable
+pub f64 numericalGradient(f64(f64) f, f64 x, f64 eps) {
+    // central difference: slope of the chord through x-eps and x+eps
+    return (f(x + eps) - f(x - eps)) / (2.0 * eps);
+}
+
+pub f64 analyticGradient(f64 x) {
+    return 2.0 * x;              // example: f(x) = x^2
+}
+
+pub f64 f(f64 x) {
+    // the function being differentiated
+    return x * x;
+}
+
+pub bool gradientChecks(f64 x) {
+    // the hand-derived slope and the numeric estimate must agree closely
+    f64 numeric = numericalGradient(f, x, 1e-5);
+    f64 analytic = analyticGradient(x);
+    return fabs(numeric - analytic) &lt; 1e-4;
+}</code></pre>
+<p>For a model with many parameters, the pattern generalises: pick a parameter, remember its value, add <code>eps</code>, compute the loss, subtract <code>eps</code> twice to get to the low side, compute the loss again, restore the parameter, and divide by <code>2 * eps</code>. That number is the numerical gradient for that one parameter, and it is compared to whatever the backward pass computed.</p>
+<p class="step-label">Cost and notes</p>
+<p>Each numerical gradient costs two extra loss evaluations, so checking every parameter of a model with <code>P</code> parameters costs <code>2P</code> forward passes. That is absurd for training but entirely reasonable for a one-time test on a deliberately tiny model, which is exactly when you run it. The finite-difference error decreases as the step size shrinks, then increases again when the step becomes so small that catastrophic cancellation takes over. That is why <code>1e-5</code> is a common choice rather than something much smaller.</p>
+<p class="step-label">Edge cases</p>
+<p>The step must be neither too large (the estimate measures the average slope over a wide interval, not the slope at the point) nor too small (the subtraction of nearly equal numbers destroys the precision). The check is a test, not a training method. It belongs in the test suite, run once on a small model with a known function. And it checks the gradient, not the update rule: a correct gradient with a bugged learning rate or a missing minus sign still fails to train, and only a training-loss curve catches that.</p>
+<p class="step-label">Variation</p>
+<p>Add a gradient check to the <code>TinyNet</code> from 33.6: for each weight and bias, compare the backward pass's value against the numerical estimate, and assert they agree on a small network with a couple of examples. Running it once and watching every parameter pass is the most convincing evidence that the backpropagation is correct, and it is the first thing to do whenever a network refuses to learn.</p>
+<section><h2 id="s34-9">The Perceptron</h2></section>
+<p class="step-label">The problem</p>
+<p>Learn a straight-line decision boundary directly from labelled examples, with the smallest update rule that works. Logistic regression gives you a probability; the perceptron gives you only the hard answer, and it is worth seeing how much can be dropped while still learning.</p>
+<p class="step-label">The intuition</p>
+<p>A perceptron classifies by the sign of <code>w*x + b</code>: positive score means class one, otherwise class zero. It learns by reacting to mistakes and nothing else. When it sees a positive example it called negative, it nudges the weights toward that example; when it sees a negative example it called positive, it nudges away; when it is already right, it does nothing at all. There is no loss to minimise, no sigmoid, no gradient. Frank Rosenblatt's theorem is that if the data can be separated by a line at all, this simple nudging is guaranteed to find one in a finite number of steps.</p>
+<p class="step-label">The approach</p>
+<p>The same shape as logistic regression minus the sigmoid: predict a hard label, turn the prediction error into a small push on the weights, and repeat over the data.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+
+pub struct Perceptron {
+    // the same two knobs, but a hard decision instead of a probability
+    f64 w;
+    f64 b;
+
+    static Perceptron new() {
+        return Perceptron { .w = 0.0, .b = 0.0 };
+    }
+
+    i32 predict(f64 x) {
+        // classify by the sign of the raw score
+        return (self.w * x + self.b) &gt; 0.0 ? 1 : 0;
+    }
+
+    void fit(const Vec&lt;f64&gt;* xs, const Vec&lt;i32&gt;* ys, f64 lr, u64 epochs) {
+        usize n = xs-&gt;count();
+        @assertOut(ys-&gt;count() == n, &quot;xs and ys must have the same length&quot;);
+
+        for (u64 epoch = 0; epoch &lt; epochs; epoch += 1) {
+            for (usize i = 0; i &lt; n; i += 1) {
+                f64 target = (f64)ys-&gt;at(i);          // 0 or 1
+                // error is one of -1, 0, +1: a plain nudge, not a gradient
+                f64 error = target - (f64)self.predict(xs-&gt;at(i));
+                self.w += lr * error * xs-&gt;at(i);     // only moves on a mistake
+                self.b += lr * error;
+            }
+        }
+    }
+}</code></pre>
+<p>The <code>error</code> is one of <code>-1</code>, <code>0</code>, or <code>1</code>, so the update is a plain nudge in the right direction rather than a scaled gradient. Compare that with the logistic update from 33.3, which multiplies the same error by a probability and by a learning rate and divides by the batch size. The perceptron is the coarse ancestor, and it is often all you need.</p>
+<p class="step-label">Cost and notes</p>
+<p>O(epochs * n), the same as linear and logistic regression; each step is a handful of arithmetic with no exponential. The convergence guarantee is real but conditional: it holds only when the classes are linearly separable, and the number of mistakes is bounded by a quantity that grows with the margin between the classes. For data that cannot be separated by a line, the weights cycle forever and never settle, which is the perceptron's honest limitation and the reason logistic regression with a smooth loss is usually preferred.</p>
+<p class="step-label">Edge cases</p>
+<p>Labels must be zero or one; any other encoding silently produces the wrong push. A constant feature scale matters for exactly the reason it did in 33.1 and 33.2, so standardise first when the inputs are large. The prediction is the sign of the score, and the score is never negative zero in a way that matters because the comparison is <code>&gt; 0.0</code>, a boundary the two classes share. And because the update only fires on a mistake, a perfectly classified pass through the data changes nothing, which is a clean stopping test if you would rather halt early than run a fixed number of epochs.</p>
+<p class="step-label">Variation</p>
+<p>Generalise to two features and return the boundary line, then train on XOR and watch the weights fail to settle: no line separates XOR, so the perceptron cannot learn it, and that failure is exactly what motivates the hidden layer in 33.6.</p>
+<section><h2 id="s34-10">Naive Bayes</h2></section>
+<p class="step-label">The problem</p>
+<p>Classify with a tiny probabilistic model that is built from counts rather than gradients. It is the workhorse behind decades of spam filters and document classifiers, and it trains in a single pass.</p>
+<p class="step-label">The intuition</p>
+<p>Bayes' rule says the odds of a class given the features are proportional to the prior odds of the class times the likelihood of the features under the class. The feature likelihood is hard in general, but the "naive" assumption is that the features are independent once you know the class, which turns that likelihood into a product of per-feature terms. For binary features "this word is present," each term is just a count: how often was the feature on in examples of this class? Two practical corrections make it work. Smooth the counts by pretending you saw each outcome once more than you did, so an unseen feature does not multiply everything by zero. And add the logarithms instead of multiplying probabilities, so a document with hundreds of words does not underflow to zero.</p>
+<p class="step-label">The approach</p>
+<p>Two classes, binary features. Train by counting feature-on occurrences per class; predict by summing log-probabilities and choosing the larger.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::math::math { log };
+
+pub struct NaiveBayes {
+    // learned per-feature probabilities plus the class prior
+    Vec&lt;f64&gt; pOnGiven0;
+    Vec&lt;f64&gt; pOnGiven1;
+    f64 prior1;
+    usize features;
+
+    static NaiveBayes new(usize numFeatures) {
+        NaiveBayes nb;
+        nb.features = numFeatures;
+        nb.prior1 = 0.5;
+        nb.pOnGiven0 = Vec&lt;f64&gt;::new();
+        nb.pOnGiven1 = Vec&lt;f64&gt;::new();
+        // uninformed starting probabilities, one slot per feature
+        for (usize j = 0; j &lt; numFeatures; j += 1) {
+            nb.pOnGiven0.push(0.5);
+            nb.pOnGiven1.push(0.5);
+        }
+        return nb;
+    }
+
+    void fit(const Vec&lt;Vec&lt;u8&gt;&gt;* rows, const Vec&lt;i32&gt;* labels, u64 smoothing) {
+        usize n = rows-&gt;count();
+        @assertOut(labels-&gt;count() == n, &quot;rows and labels must align&quot;);
+
+        // one occurrence counter per class per feature
+        Vec&lt;u64&gt; count0 = Vec&lt;u64&gt;::new();
+        Vec&lt;u64&gt; count1 = Vec&lt;u64&gt;::new();
+        for (usize j = 0; j &lt; self.features; j += 1) { count0.push(0); count1.push(0); }
+
+        u64 n0 = 0;
+        u64 n1 = 0;
+        // single pass: tally class sizes and per-feature on-counts
+        for (usize i = 0; i &lt; n; i += 1) {
+            i32 c = labels-&gt;at(i);
+            if (c == 1) n1 += 1; else n0 += 1;
+            for (usize j = 0; j &lt; self.features; j += 1) {
+                if (rows-&gt;at(i).at(j) != 0) {
+                    if (c == 1) count1.set(j, count1.at(j) + 1);
+                    else count0.set(j, count0.at(j) + 1);
+                }
+            }
+        }
+
+        // class prior estimated from the observed label counts
+        if (n &gt; 0) self.prior1 = (f64)n1 / (f64)n;
+
+        f64 s = (f64)smoothing;
+        for (usize j = 0; j &lt; self.features; j += 1) {
+            self.pOnGiven0.set(j, ((f64)count0.at(j) + s) / ((f64)n0 + 2.0 * s));
+            self.pOnGiven1.set(j, ((f64)count1.at(j) + s) / ((f64)n1 + 2.0 * s));
+        }
+    }
+
+    i32 predict(const Vec&lt;u8&gt;* row) {
+        // work in log space so a long row does not underflow to zero
+        f64 log0 = log(1.0 - self.prior1);
+        f64 log1 = log(self.prior1);
+        // the &quot;naive&quot; step: multiply per-feature likelihoods independently
+        for (usize j = 0; j &lt; self.features; j += 1) {
+            bool on = row-&gt;at(j) != 0;
+            f64 p0 = on ? self.pOnGiven0.at(j) : 1.0 - self.pOnGiven0.at(j);
+            f64 p1 = on ? self.pOnGiven1.at(j) : 1.0 - self.pOnGiven1.at(j);
+            log0 += log(p0);
+            log1 += log(p1);
+        }
+        // the larger log-posterior wins
+        return log1 &gt; log0 ? 1 : 0;
+    }
+}</code></pre>
+<p>The smoothing constant appears in both the numerator and the denominator, adding one imagined observation of each outcome; with <code>smoothing</code> of one, the estimate of a feature never used once is a half, not zero, so a single missing word cannot veto a prediction. The training is counting, nothing more, and the whole fit is one pass.</p>
+<p class="step-label">Cost and notes</p>
+<p>Training is O(n * features) and prediction is O(features), both cheaper than the gradient methods and with no learning rate to tune. The price is the independence assumption, which is usually false and often still works: correlated features are effectively counted more than once, which distorts the probabilities but leaves the ranking of the classes intact. That is why naive Bayes is praised for classification and distrusted for calibration.</p>
+<p class="step-label">Edge cases</p>
+<p>A class with no examples gives a zero count, and the smoothing keeps the division finite; <code>smoothing</code> must be greater than zero, or an unseen feature produces a <code>log(0)</code> of negative infinity. The features must be binary as written; multi-valued or continuous features need a different likelihood, such as a count-per-value or a Gaussian. <code>log(0.0)</code> is the sharp edge if the prior is exactly zero, which cannot happen here because the prior is a ratio of counts and <code>n &gt; 0</code> is checked. And the model has no notion of a feature that was never seen in training but appears at prediction time, because the feature space is fixed at construction; real text classifiers add new words to a defaultly smoothed count.</p>
+<p class="step-label">Variation</p>
+<p>Turn the binary presence features into word counts and use the multinomial form: the likelihood of a class becomes a product of powers of the per-word probabilities, and the training counts how often each word appears rather than whether it appears. It is the version every introductory text classifier actually uses, and it is a small change to the counting loops.</p>
+<section><h2 id="s34-11">One-Hot Encoding and Feature Hashing</h2></section>
+<p class="step-label">The problem</p>
+<p>A model consumes numbers, but a raw feature is often a label: a colour name, an operating system, a word. Turn categories into numeric vectors, and when the set of categories is unbounded, compress them into a fixed-size vector without losing too much.</p>
+<p class="step-label">The intuition</p>
+<p>One-hot encoding is the honest map for a small fixed vocabulary: give every category its own dimension and set that coordinate to one, everything else to zero. The vectors are far apart and the model can treat the categories independently. The trouble starts when the vocabulary is the words of a language, where a one-hot vector would need a dimension per word. Feature hashing, also called the hashing trick, trades exactness for a bound: hash the category to an index in a fixed-size vector and count the hit there. Two categories can collide, but collisions are rare in a large table and the model usually shrugs them off. The memory is now fixed and promised, which is the whole point.</p>
+<p class="step-label">The approach</p>
+<p>A one-hot function over a known vocabulary, and a hashing function that maps any token sequence into a fixed number of buckets using the standard library's FNV-1a hash.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::crypto::hash { fnv1aStr };
+
+pub Vec&lt;f64&gt; oneHot(str category, const Vec&lt;str&gt;* vocab) {
+    // one dimension per known category, all zero until the match
+    Vec&lt;f64&gt; v = Vec&lt;f64&gt;::withCap(vocab-&gt;count());
+    for (usize j = 0; j &lt; vocab-&gt;count(); j += 1) v.push(0.0);
+    // linear scan for the category&#x27;s slot
+    for (usize j = 0; j &lt; vocab-&gt;count(); j += 1) {
+        if (vocab-&gt;at(j).equals(category)) {
+            v.set(j, 1.0);
+            break;
+        }
+    }
+    return v;                          // unknown category: all zeros
+}
+
+pub Vec&lt;f64&gt; hashFeatures(const Vec&lt;str&gt;* tokens, usize buckets) {
+    @assertOut(buckets &gt; 0, &quot;need at least one bucket&quot;);
+
+    // fixed-size vector no matter how large the vocabulary grows
+    Vec&lt;f64&gt; v = Vec&lt;f64&gt;::withCap(buckets);
+    for (usize j = 0; j &lt; buckets; j += 1) v.push(0.0);
+
+    for (usize i = 0; i &lt; tokens-&gt;count(); i += 1) {
+        // deterministic hash so train and predict agree on the bucket
+        u64 h = fnv1aStr(tokens-&gt;at(i));
+        usize idx = (usize)(h % (u64)buckets);
+        v.set(idx, v.at(idx) + 1.0);   // count occurrences in the bucket
+    }
+    return v;
+}</code></pre>
+<p>The one-hot vector has a one where the category lives and zeros elsewhere, so its dot product with a weight vector picks out exactly that category's weight. The hashed vector is denser and shorter; its coordinates count how many tokens fell into each bucket, and a linear model learns a weight per bucket. An unknown category in <code>oneHot</code> yields all zeros, which contributes nothing, and that is a deliberate signal that the model has never seen it.</p>
+<p class="step-label">Cost and notes</p>
+<p><code>oneHot</code> is O(vocab) to build and to search, because the vocabulary is scanned linearly; a hash map from category to index would make it O(1), and that is the natural improvement when the vocabulary is large. <code>hashFeatures</code> is O(tokens) with an FNV hash per token, and its memory is exactly <code>buckets</code> doubles no matter how many tokens arrive. The hashing trick is what makes online learning on text possible with a fixed memory budget, at the cost of a small, predictable amount of collision noise.</p>
+<p class="step-label">Edge cases</p>
+<p>A vocabulary with a duplicate category makes <code>oneHot</code> set the first match and ignore the rest; the duplicates should be removed when the vocabulary is built. An unknown category produces a zero vector that is indistinguishable from "category absent," so a caller that needs to tell them apart should reserve an index for "unknown." The hashing trick is lossy in principle and cannot be inverted, and two different tokens landing in one bucket share a weight; the error this introduces falls as the bucket count rises. And <code>fnv1aStr</code> is deterministic, which is required: the training and prediction runs must hash a token to the same bucket, so a randomised hash would break the model.</p>
+<p class="step-label">Variation</p>
+<p>Add a sign to the hashing trick by hashing each token a second way and using the low bit as <code>+1</code> or <code>-1</code>. Collisions then tend to cancel instead of always adding, which reduces the bias the plain version introduces, and the change is one more hash and a multiply.</p>
+<section><h2 id="s34-12">A Decision Stump</h2></section>
+<p class="step-label">The problem</p>
+<p>Build the simplest possible decision tree: one feature, one threshold, two constant predictions. A stump is a legible model on its own and the weak learner that boosting stacks into a strong one.</p>
+<p class="step-label">The intuition</p>
+<p>A stump asks a single yes-or-no question. "Is this value above or below a threshold?" It splits the data into two groups and predicts the majority label in each. Because there are only a few sensible thresholds, the values between adjacent data points, you can afford to try them all and keep the split that classifies the most examples correctly. The beauty is transparency: you can read the rule aloud. The limitation is that one split can only cut the space in two, which is exactly why a single stump cannot solve XOR and why the remedy is to combine many.</p>
+<p class="step-label">The approach</p>
+<p>Try every data value as a threshold, and for each threshold try both labellings of the two sides, keeping the combination with the lowest error. This is deliberately quadratic to keep the code short.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+
+pub struct Stump {
+    // one threshold and two constant predictions: the whole model
+    f64 threshold;
+    i32 leftLabel;       // prediction when x &lt;= threshold
+    i32 rightLabel;      // prediction when x &gt; threshold
+    f64 error;
+
+    static Stump new() {
+        // error 1.0 is the worst possible, so the first split improves on it
+        return Stump { .threshold = 0.0, .leftLabel = 0, .rightLabel = 0, .error = 1.0 };
+    }
+
+    i32 predict(f64 x) {
+        // the stump is entirely the threshold and the two answers
+        return x &lt;= self.threshold ? self.leftLabel : self.rightLabel;
+    }
+}
+
+u64 mistakesAt(const Vec&lt;f64&gt;* xs, const Vec&lt;i32&gt;* ys, f64 t, i32 left, i32 right) {
+    // count how many points this candidate split gets wrong
+    u64 wrong = 0;
+    for (usize i = 0; i &lt; xs-&gt;count(); i += 1) {
+        i32 pred = xs-&gt;at(i) &lt;= t ? left : right;
+        if (pred != ys-&gt;at(i)) wrong += 1;
+    }
+    return wrong;
+}
+
+pub Stump fitStump(const Vec&lt;f64&gt;* xs, const Vec&lt;i32&gt;* ys) {
+    usize n = xs-&gt;count();
+    @assertOut(n &gt; 0 &amp;&amp; ys-&gt;count() == n, &quot;need aligned, non-empty data&quot;);
+
+    Stump best = Stump::new();
+    // brute force: try every data value as a threshold
+    for (usize i = 0; i &lt; n; i += 1) {
+        f64 t = xs-&gt;at(i);
+        // and every labelling of the two sides
+        for (i32 left = 0; left &lt;= 1; left += 1) {
+            for (i32 right = 0; right &lt;= 1; right += 1) {
+                u64 wrong = mistakesAt(xs, ys, t, left, right);
+                f64 err = (f64)wrong / (f64)n;
+                // keep the split with the lowest error
+                if (err &lt; best.error) {
+                    best.threshold = t;
+                    best.leftLabel = left;
+                    best.rightLabel = right;
+                    best.error = err;
+                }
+            }
+        }
+    }
+    return best;
+}</code></pre>
+<p>For each candidate threshold the code tries all four labellings of the two sides, which is more than strictly necessary but keeps the search obviously complete. The best error starts at <code>1.0</code>, the worst possible, so the first real split improves on it. At the end, <code>threshold</code>, the two labels, and <code>error</code> fully describe the rule.</p>
+<p class="step-label">Cost and notes</p>
+<p>The search is O(n^2) because each of <code>n</code> thresholds costs a full pass and four labellings: for the tens of points in this chapter that is nothing, but it does not scale. The standard efficient version sorts the feature once and sweeps left to right, maintaining running label counts, which is O(n log n) for the sort and O(n) for the sweep. The stump itself is O(1) to evaluate.</p>
+<p class="step-label">Edge cases</p>
+<p>A threshold set exactly at a data value means the point on the boundary is assigned to the left side, <code>x &lt;= t</code>; using <code>&lt;</code> instead would flip that point's group, and the choice matters when values repeat. If the labels are perfectly separable by one split, the error reaches zero and every further tie is ignored because the comparison is strict, so the first perfect split wins. For data that is not linearly separable in one dimension, XOR again, the best error stays above zero, and reporting that error honestly is better than pretending a stump fit. And the label search is written for two classes, which is the only case a function pointer stump needs.</p>
+<p class="step-label">Variation</p>
+<p>Generalise to choose the threshold as the midpoint between adjacent sorted values rather than a data point, so unseen examples fall cleanly to one side, and add a <code>predict</code> that returns the error-weighted vote for boosting. Then train two stumps on XOR and add their votes to see how a small ensemble beats a single split.</p>
+<section><h2 id="s34-13">Principal Component Analysis by Power Iteration</h2></section>
+<p class="step-label">The problem</p>
+<p>Take data with many correlated features and find the single direction along which it varies most, so you can compress it to one number, visualise it, or reduce noise. That direction is the first principal component.</p>
+<p class="step-label">The intuition</p>
+<p>If the data is spread out in a cloud, the direction of greatest spread is an eigenvector of the covariance matrix, and the largest eigenvalue measures how much spread. Forming that matrix explicitly is wasteful and error-prone. Instead, recall what an eigenvector means: applying the matrix to it returns the same direction, only longer. Power iteration exploits this by starting with any vector, applying the matrix over and over, and renormalising each time. The component of the vector along the dominant direction is stretched more than the others on every round, so the direction converges to the top eigenvector and the rest fades away. For a data matrix you never build the covariance matrix: each "multiply" is one pass to project the data onto the current vector and one pass to accumulate back.</p>
+<p class="step-label">The approach</p>
+<p>Standardise each dimension first (33.2), start from a unit vector, and iterate <code>v ← normalise(Xᵀ(Xv))</code> a fixed number of times.</p>
+<p>The implementation.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+import(lib) std::math::math { sqrt };
+
+f64 dotProduct(const Vec&lt;f64&gt;* a, const Vec&lt;f64&gt;* b) {
+    // one projection: sum of elementwise products
+    f64 s = 0.0;
+    for (usize i = 0; i &lt; a-&gt;count(); i += 1) s += a-&gt;at(i) * b-&gt;at(i);
+    return s;
+}
+
+f64 norm(const Vec&lt;f64&gt;* v) {
+    // Euclidean length, used to renormalise after each power step
+    f64 s = 0.0;
+    for (usize i = 0; i &lt; v-&gt;count(); i += 1) s += v-&gt;at(i) * v-&gt;at(i);
+    return sqrt(s);
+}
+
+// rows: n examples, each a d-dimensional point, already standardised
+pub Vec&lt;f64&gt; firstPrincipalComponent(const Vec&lt;Vec&lt;f64&gt;&gt;* rows, usize d, u64 iters) {
+    usize n = rows-&gt;count();
+    Vec&lt;f64&gt; v = Vec&lt;f64&gt;::withCap(d);
+    // any unit vector will do to start the iteration
+    for (usize j = 0; j &lt; d; j += 1) v.push(1.0 / sqrt((f64)d));   // unit start
+
+    for (u64 step = 0; step &lt; iters; step += 1) {
+        Vec&lt;f64&gt; next = Vec&lt;f64&gt;::withCap(d);
+        for (usize j = 0; j &lt; d; j += 1) next.push(0.0);
+
+        // apply the data matrix twice without ever building the covariance
+        for (usize i = 0; i &lt; n; i += 1) {
+            f64 proj = dotProduct(rows-&gt;atPtr(i), &amp;v);             // X v
+            for (usize j = 0; j &lt; d; j += 1)
+                next.set(j, next.at(j) + proj * rows-&gt;at(i).at(j)); // Xᵀ (X v)
+        }
+
+        // renormalise so the vector does not grow without bound
+        f64 len = norm(&amp;next);
+        if (len == 0.0) break;                                     // no variance to find
+        for (usize j = 0; j &lt; d; j += 1) v.set(j, next.at(j) / len);
+    }
+    return v;
+}</code></pre>
+<p>The two nested loops are the multiplication by the data matrix and its transpose, written out so the covariance matrix never exists as an object. The fixed number of iterations is a simplification: in practice you stop when the direction stops changing, but a dozen iterations is plenty for a small, well-separated problem, and it keeps the code loop-bounded.</p>
+<p class="step-label">Cost and notes</p>
+<p>Each iteration is O(n <em> d): one projection and one accumulation per example. The whole routine is O(iters </em> n * d), which is the same order as reading the data a few times. Convergence is geometric, at a rate set by the ratio of the first two eigenvalues; when those are close, the direction is ill-defined and the iteration is slow to settle, which is a property of the data, not the code.</p>
+<p class="step-label">Edge cases</p>
+<p>Standardising first is not optional: without it, a feature measured in millions dominates a feature measured in units, and the "principal" direction is just the loudest column. The sign of the returned vector is arbitrary, because <code>v</code> and <code>-v</code> are the same direction; do not compare components for equality across runs. If the data is all zeros or constant, <code>norm</code> returns zero and the routine stops, leaving the starting vector as a defensible answer. And with two nearly equal top eigenvalues there is no single best direction, so any answer is unstable; this is the case to detect by also computing the eigenvalues rather than trusting the vector.</p>
+<p class="step-label">Variation</p>
+<p>Deflate and repeat to get the second component: subtract each row's projection onto the first component before running the iteration again, and check that the second direction is orthogonal to the first. Then compute the variance along each component and report the fraction of the total variance it captures, which is the number you use to decide how many components to keep.</p>
+<section><h2 id="s34-14">Exercises</h2></section>
+<section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>Derive, on paper, the partial derivatives of the mean squared error <code>(1/n) * sum (w*x + b - y)^2</code> with respect to <code>w</code> and <code>b</code>. Compare them to the code in 33.1 and explain each factor.</li><li><span class="ex-label">Normalisation</span>Construct a dataset with one feature in the range <code>[0, 1]</code> and another in <code>[0, 1000000]</code>. Train the two-feature linear model from the variation in 33.1 with and without standardisation, and explain the difference in convergence in terms of the shape of the error bowl.</li><li><span class="ex-label">Logistic</span>Implement the multi-feature logistic regression and train it on a dataset that is not linearly separable. Describe what happens to the weights and why, and add an L2 regularisation term to stop it.</li><li>k-NN. Implement distance-weighted voting from 4 and compare it to plain voting on a dataset where the classes interleave. On which points do the two disagree, and which answer is more defensible?</li><li><span class="ex-label">Clustering</span>Run k-means from three different random initialisations on the same three-blob dataset and report the final within-cluster distance each time. How much does the result vary, and what does that say about the optimisation landscape?</li><li>Neural network. Train the TinyNet on XOR, four points, two classes, and verify that it can separate them where a single linear model cannot. Then train a network with only one hidden unit and explain why it cannot.</li><li><span class="ex-label">Metrics</span>Build a dataset that is ninety-nine percent negative and a predictor that always answers negative. Compute accuracy, precision, recall, and F1. Then describe a real application where this predictor's high accuracy would be dangerously misleading, and which metric you would report instead.</li><li>Gradient check. Deliberately introduce a sign error into the backward pass of 33.6, negate the hidden delta, say, and run the gradient check. Does it catch the error? Then fix the sign and explain why the numerical method is an independent check rather than a restatement of the code.</li></ol></section>
+      <nav class="chapter-nav"><a href="../../lengthy/33-live-examples-bits-bytes-and-bit-manipulation/index.html">← Previous</a><a href="../../lengthy/35-live-examples-systems-and-concurrency/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

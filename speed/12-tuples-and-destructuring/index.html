@@ -12,7 +12,7 @@
   <meta property="og:description" content="Two Answers for the Price of One Call" />
   <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/speed/12-tuples-and-destructuring/index.html" />
   <meta name="twitter:card" content="summary" />
-  <link rel="stylesheet" href="../../textbook/book.css" />
+  <link rel="stylesheet" href="../../lengthy/book.css" />
   <script src="../../assets/js/script.js" defer></script>
 </head>
 <body>
@@ -21,7 +21,7 @@
       <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">speed edition</span></span>
     </a>
     <nav class="topnav" aria-label="Main navigation">
-      <a href="../../speed/index.html">Speed contents</a><a href="../../textbook/index.html">Lengthy edition</a><a href="../../coral-docs/index.html">Coral Docs</a>
+      <a href="../../speed/index.html">Speed contents</a><a href="../../lengthy/index.html">Lengthy edition</a><a href="../../coral-docs/index.html">Coral Docs</a>
     </nav>
   </header>
   <main class="content">
@@ -29,109 +29,109 @@
       <p class="chapter-kicker">Speed Edition · Chapter 12</p>
       <h1>Tuples and Destructuring</h1>
       <p class="lead">Two Answers for the Price of One Call</p>
-      <p>Think about the last time a function needed to hand you back more than one thing. A division wants to give you the quotient and the remainder. A weather reading wants to give you the temperature and the humidity. A collision check wants to give you whether it hit, and where. A parser wants to give you the parsed value and the position it stopped at. A search wants to give you the index and whether it found anything at all. You have wanted this hundreds of times, and every language has its own awkward answer for it.</p>
-<p>C's answer is the out-parameter. You call <code>divmod(10, 3, &amp;quotient, &amp;remainder)</code> and the function writes into storage you had to declare first. It works, but it reads backwards: the answer is in the arguments, the call looks like it is passing data in, and nothing in the call site tells you which arguments are inputs and which are outputs. C++ and Java's answer is to invent a tiny class, <code>Pair</code>, <code>DivResult</code>, <code>Bounds</code>, name it, give it a home, and hope nobody confuses it with the other four <code>Pair</code> classes floating around the project. Python and Rust's answer is the tuple: a few values travelling together in one value, with no name and no ceremony. Coral has that answer too.</p>
-<p>Here is the whole idea in one picture. Imagine you are carrying two coins in one fist. You did not name the coins. You did not write a form declaring that the first coin is a quarter and the second is a dime. You just picked both up at once, and when you open your hand you can say "the first one" and "the second one" and be understood. That is a tuple: several values travelling together as a single value, identified by position and nothing else.</p>
-<p>This chapter is about the tuple: what it is, how to make one, how to take one apart, and, just as important, when a tuple is the wrong tool and you should reach for a struct instead. It is a small feature, but it sits underneath things you will use constantly. The standard library's map lookups, the iterator adaptors, and most of the examples in later chapters lean on it. So it is worth getting the mental picture exactly right rather than memorising the syntax and moving on.</p>
+      <p>Functions often need to return more than one thing: a quotient and remainder, a value and its status, a hit flag and a position. Every language answers this differently.</p>
+<p>C uses out-parameters: the answer lives in arguments you had to declare first, and the call site does not distinguish inputs from outputs. C++ and Java invent a named class. Python and Rust use the tuple, and so does Coral.</p>
+<p>A tuple is several values travelling together as one value, identified by position and nothing else.</p>
+<p>This chapter covers what a tuple is, how to make and take one apart, and when a struct is better. Map lookups, iterator adaptors, and later examples rely on it.</p>
 <section><h2 id="s12-1">What a Tuple Actually Is</h2></section>
-<p>A tuple is the smallest aggregate a language can offer. An aggregate is just "a value made of several values," and the tuple is the version of that with no field names, no methods, and no identity beyond its shape. A pair is two values. A triple is three. That is the whole idea.</p>
-<p>Here is the trouble with inventing a struct every time you want a pair, and it is worth naming precisely, because it is not the typing that hurts. It is the naming. Every throwaway struct needs a name. The name needs a place to live, a file, an import, a spot in the public API. And once a name exists, it acquires gravity: a later reader sees <code>Point2</code> in the public headers and assumes it means something, assumes it is part of the domain model, assumes deleting it will break things. A tuple refuses all of that. It says: these two values travel together for the next three lines, and then they stop being a thing.</p>
-<p>So a tuple is for ephemeral, positional, local structure. "Positional" is the key word. In a struct, order does not matter, because you reach fields by name: <code>p.x</code> and <code>p.y</code> do not care which was declared first. In a tuple, order is the only thing that identifies a piece. The first element is the first element, and that is what <code>.0</code> means.</p>
-<p>Let me make the difference concrete with a story. Suppose you are writing a checkout for a shop and you want the total price and the number of items, together, to hand to a printer. If you invent a struct called <code>Receipt</code>, you have just claimed that a receipt is a concept in your program, a thing with a name, a thing other code might want to take a parameter of, a thing someone might extend with a timestamp next week. If all you meant was "two numbers, right now, on their way to the printer," then a tuple is honest and the struct is a small lie. The tuple says the truth: this is two values in transit, not a new kind of thing.</p>
-<p>Here is the one-line version, and everything else in this chapter is a detail hanging off it:</p>
+<p>A tuple is the smallest aggregate: a value made of several values, with no field names, no methods, and no identity beyond its shape. A pair is two values; a triple is three.</p>
+<p>The trouble with a struct for every pair is naming, not typing. Every throwaway struct needs a name, a file, an import, and a spot in the public API, and once named, readers assume it is part of the domain model. A tuple refuses that: these values travel together briefly and stop being a thing.</p>
+<p>Tuples are for ephemeral, positional, local structure. In a struct, order does not matter because fields are reached by name. In a tuple, position is the only identifier, and that is what <code>.0</code> means.</p>
+<p>A <code>Receipt</code> struct for two numbers on their way to a printer claims a concept exists. If you meant only "two numbers, right now," a tuple is honest and the struct is a small lie.</p>
+<p>The one-line version:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var point = (3.0, 4.0);      // a pair: two values in one</code></pre>
-<p>That is a tuple. <code>.0</code> is <code>3.0</code>, <code>.1</code> is <code>4.0</code>. It has no name, it was not declared anywhere, and it will not survive past the function that made it unless you hand it to someone. That lightness is the entire point.</p>
-<p>One more piece of vocabulary, because it comes up constantly. A tuple with two elements is a pair. Three is a triple. The general term is "n-tuple," and nobody says it out loud. When this chapter says "pair," it means a two-element tuple, and no more.</p>
+<p>That is a tuple. <code>.0</code> is <code>3.0</code>, <code>.1</code> is <code>4.0</code>. It has no name, was not declared, and will not survive past the function that made it unless handed on.</p>
+<p>A two-element tuple is a pair; three is a triple. The general term is "n-tuple," and nobody says it aloud.</p>
 <section><h2 id="s12-2">Writing a Tuple Type</h2></section>
-<p>A tuple type is written with the <code>struct</code> keyword and a comma-separated list of element types in parentheses:</p>
+<p>A tuple type is the <code>struct</code> keyword followed by a comma-separated list of element types in parentheses:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(i32, f64)                 // a pair: an integer and a float
 struct(u8, u8, u8)               // three bytes, perhaps a colour
 struct(String, usize)            // an owned string and a length
 struct(i32, struct(i32, i32))    // a pair whose second element is itself a pair
 struct(f64, f64, f64, f64)       // four floats</code></pre>
-<p>This is the only way to write a tuple type. No second spelling drops the outer <code>struct</code>, and that is deliberate rather than an oversight. A bare parenthesised type already means something else in the language, grouping, and a statement that begins with <code>(</code> is read as a cast, so a parenthesised type cannot do the aggregating job without ambiguity. The <code>struct</code> keyword is what makes a tuple type unmistakable in every position: declarations, parameters, return types, and generic arguments alike. When you see <code>struct(</code> you are looking at a tuple, everywhere, always.</p>
-<p>In plain words, the <code>struct</code> keyword in front is a signpost. It tells the compiler, and you, "the parentheses that follow are a bundle of types, not a grouped type or a cast." Without the signpost the compiler could not tell the tuple <code>struct(i32, f64)</code> from a grouped <code>i32</code>.</p>
-<p>Each of those is a distinct type. <code>struct(i32, f64)</code> is not the same type as <code>struct(f64, i32)</code>, even though the two contain the same components, order is part of the identity, because position is the only name a tuple element has. Two tuples are the same type only when they have the same number of elements and each position has the same type. This is stricter than it might first appear, and it is a feature: the compiler will not let you feed a <code>struct(f64, i32)</code> where a <code>struct(i32, f64)</code> is expected, so a "swap the arguments" mistake becomes a compile error instead of a silent corruption.</p>
-<p>A common mistake is to build a tuple in the wrong order and expect it to fit a variable declared the other way. <code>struct(i32, f64)</code> and <code>struct(f64, i32)</code> hold the same two kinds of value, but the compiler treats them as unrelated types, so <code>struct(f64, i32) swapped = (1, 2.5);</code> fails. The position is the name, and a name in the wrong place is the wrong name.</p>
-<p>A single-element tuple is written the same way:</p>
+<p>This is the only spelling. A bare parenthesised type means grouping, and a statement beginning with <code>(</code> is read as a cast, so <code>struct</code> makes a tuple type unmistakable in every position. Whenever you see <code>struct(</code>, it is a tuple.</p>
+<p>The keyword is a signpost: these parentheses bundle types rather than group one or start a cast.</p>
+<p>Each is a distinct type. <code>struct(i32, f64)</code> is not <code>struct(f64, i32)</code>: order is part of the identity because position is the only name an element has. Tuples match only when the element count and each position's type match, turning a swapped-argument mistake into a compile error.</p>
+<p>A common mistake is building in the wrong order: <code>struct(f64, i32) swapped = (1, 2.5);</code> fails.</p>
+<p>A single-element tuple uses the same syntax:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(i32)                // a one-element tuple containing an i32</code></pre>
-<p>No trailing-comma rule to memorise here, and no ambiguity with grouping: the <code>struct</code> keyword already said "this is an aggregate." The one-element tuple is rare but not useless. It shows up when a generic function must return "a T, wrapped as a tuple" to fit a shape, and it shows up when you want a tuple type to be structurally distinct from the bare type. Mostly you will not write one. But you will read one, and you should not be surprised that it takes exactly one type between the parentheses.</p>
-<p>The empty tuple has a value and a type, and they are spelled the same way:</p>
+<p>There is no trailing-comma rule and no ambiguity: <code>struct</code> already says "aggregate." One-element tuples are rare, useful when a generic must return "a T, wrapped as a tuple" or when a type must be structurally distinct. Mostly you will read them, not write them.</p>
+<p>The empty tuple has a value and a type, spelled the same way:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct()                   // the unit type</code></pre>
-<p>A <code>struct()</code> has exactly one value, written <code>()</code>, and it means "no information." A function that returns nothing is, under the hood, returning the unit type. Coral lets you write <code>void</code> for that role in most places, and usually you should, because <code>void</code> reads as "this returns nothing." But <code>struct()</code> has a job that <code>void</code> cannot do: it is a real, usable type when a generic construct needs "a type whose values carry no data." A <code>Map&lt;str, struct()&gt;</code> is a set of strings. A channel of <code>struct()</code> is a signal. A state-machine transition that yields nothing can yield <code>struct()</code>. Unit is not nothing; it is a type whose only value takes zero bytes.</p>
-<p>There is one more idea here, and it explains a lot of the rest. Underneath, a tuple is a struct whose fields happen to be numbered. <code>struct(i32, f64)</code> is a struct with a field named <code>0</code> of type <code>i32</code> and a field named <code>1</code> of type <code>f64</code>. That is why access is <code>.0</code> and <code>.1</code>: they are field accesses, the same syntax you use for a named field, with numbers for names because the tuple never gave them names. It is also why the tuple's layout is exactly a struct's layout: declaration order, each element aligned to its natural boundary. No hidden header, no heap, no bookkeeping. If you remember only one sentence from this section, remember this one: a tuple is a struct that forgot to name its fields.</p>
-<p>Simply put, a tuple and a struct are the same bytes; the only difference is whether the fields were given names. A struct says "the first field is called <code>x</code>"; a tuple says "the first field is just first." That is why a tuple costs nothing extra and why <code>t.0</code> feels so much like <code>p.x</code>, it is the very same field access, with a number standing in for a name.</p>
+<p>A <code>struct()</code> has exactly one value, <code>()</code>, meaning "no information." A function returning nothing returns unit under the hood; write <code>void</code> when it reads better. But <code>struct()</code> is a real usable type when a generic construct needs "a type whose values carry no data": <code>Map&lt;str, struct()&gt;</code> is a set of strings, a channel of <code>struct()</code> is a signal. Unit is not nothing; its only value takes zero bytes.</p>
+<p>Underneath, a tuple is a struct whose fields are numbered. <code>struct(i32, f64)</code> has a field <code>0</code> of type <code>i32</code> and a field <code>1</code> of type <code>f64</code>. That is why access is <code>.0</code> and <code>.1</code>: field accesses with numbers for names. Layout is a struct's: declaration order with natural alignment, no header, no heap. A tuple is a struct that forgot to name its fields.</p>
+<p>A tuple and a struct have the same bytes; only the field names differ. That is why a tuple costs nothing extra and <code>t.0</code> feels like <code>p.x</code>: the same field access with a number for a name.</p>
 <section><h2 id="s12-3">Writing a Tuple Value</h2></section>
-<p>A tuple literal is a comma-separated list of values in parentheses. Its type is inferred from the elements, element by element:</p>
+<p>A tuple literal is a comma-separated list of values in parentheses. Its type is inferred element by element:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var pair = (1, 2.5);              // inferred struct(i32, f64)
 var rgb = (255u8, 128u8, 0u8);    // struct(u8, u8, u8)
 var origin = (0.0, 0.0);          // struct(f64, f64)
 var nested = (1, (2, 3));         // struct(i32, struct(i32, i32))
 var swapped = (origin.1, origin.0);  // struct(f64, f64)</code></pre>
-<p>Read <code>var pair = (1, 2.5);</code> the way the compiler reads it. It sees an integer literal <code>1</code>, so the first element is <code>i32</code>. It sees a floating literal <code>2.5</code>, so the second element is <code>f64</code>. The type of <code>pair</code> is therefore <code>struct(i32, f64)</code>. There is no hidden promotion from <code>1</code> to <code>1.0</code>; the tuple simply takes each element at its own type. This is worth pausing on, because it is the seed of a common mistake.</p>
-<p>Two tuple literals with the same shape but different element types are different types, and they do not unify:</p>
+<p>The compiler sees <code>1</code> as <code>i32</code> and <code>2.5</code> as <code>f64</code>, so <code>pair</code> is <code>struct(i32, f64)</code>. There is no promotion from <code>1</code> to <code>1.0</code>; each element keeps its own type.</p>
+<p>Two tuple literals with the same shape but different element types do not unify:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var a = (1, 2);        // struct(i32, i32)
 var b = (1, 2.0);      // struct(i32, f64), not the same type as a</code></pre>
-<p>You cannot assign <code>b</code> to a variable of <code>a</code>'s type, and you cannot put them in the same vector, because <code>Vec&lt;struct(i32, i32)&gt;</code> and <code>Vec&lt;struct(i32, f64)&gt;</code> are as different as <code>i32</code> and <code>f64</code>. The good news is that this is exactly what you want: a function that takes a pair of integers should not silently accept a pair of (integer, float). The mistake you are most likely to make is writing <code>2</code> where you meant <code>2.0</code>, and the compiler catches it immediately rather than letting a truncation happen quietly at runtime.</p>
-<p>Where does the type go if you want to be explicit? The same place it always goes for a local: in front. You write the tuple type with <code>struct</code>:</p>
+<p>You cannot assign <code>b</code> to <code>a</code>'s type or put them in one vector: <code>Vec&lt;struct(i32, i32)&gt;</code> and <code>Vec&lt;struct(i32, f64)&gt;</code> differ as much as <code>i32</code> and <code>f64</code>. That is what you want, since a function taking integer pairs should not accept an (integer, float) pair. Writing <code>2</code> for <code>2.0</code> becomes a compile error, not a silent truncation.</p>
+<p>To be explicit, put the tuple type in front, as with any local:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(i32, f64) reading = (70, 0.55);
 struct(str, i32) entry = (&quot;ada&quot;, 1815);</code></pre>
 <p>The unit literal is <code>()</code>:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var nothing = ();      // the one value of the unit type</code></pre>
-<p>Tuples are values, and they behave like values. They live on the stack. They are copied when assigned, subject to the move rules you met in the chapters on memory. They are passed by value. No implicit boxing, and no heap allocation unless you deliberately put a tuple that owns heap data inside something that owns it. A <code>struct(i32, i32)</code> is eight bytes and moves like eight bytes. A <code>struct(f64, f64, f64)</code> is twenty-four bytes and moves like twenty-four bytes. Nothing is hidden.</p>
-<p>That "nothing is hidden" quality is why tuples are the right tool for hot paths and low-level code. No constructor call, no reference counting, no object header. It is just bytes laid out in order. When you hear someone say a feature "compiles away to nothing," a tuple is one of the few features that genuinely does: a <code>struct(i32, i32)</code> and two <code>i32</code> locals occupy the same memory and cost the same instructions.</p>
+<p>Tuples are values: they live on the stack, are copied on assignment subject to the usual move rules, and are passed by value. There is no implicit boxing or heap allocation unless the tuple owns heap data. A <code>struct(i32, i32)</code> is eight bytes; a <code>struct(f64, f64, f64)</code> is twenty-four. Nothing is hidden.</p>
+<p>That is why tuples suit hot paths: no constructor, no reference counting, no object header. A <code>struct(i32, i32)</code> and two <code>i32</code> locals occupy the same memory and cost the same instructions.</p>
 <section><h2 id="s12-4">Getting the Pieces Out by Position</h2></section>
 <p>Tuples are indexed by position with a dot and a decimal integer:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var t = (10, 20, 30);
 var first  = t.0;      // 10
 var second = t.1;      // 20
 var third  = t.2;      // 30</code></pre>
-<p>Two things distinguish this from array indexing. First, the index is not an expression; it is part of the syntax. <code>t.0</code> is valid, <code>t.i</code> is not, the compiler will reject the letter. Second, because the index is fixed at compile time, the compiler always knows the exact type of every element. If <code>t</code> is <code>struct(i32, f64, bool)</code>, then <code>t.0</code> is <code>i32</code>, <code>t.1</code> is <code>f64</code>, and <code>t.2</code> is <code>bool</code>, known at compile time with no runtime lookup and no bounds check. Compare an array, where <code>arr[i]</code> has one element type and the index is computed at runtime.</p>
+<p>Two things distinguish this from array indexing. The index is part of the syntax, not an expression: <code>t.0</code> is valid, <code>t.i</code> is not. And the index is fixed at compile time, so the compiler knows every element's exact type. If <code>t</code> is <code>struct(i32, f64, bool)</code>, then <code>t.0</code> is <code>i32</code>, <code>t.1</code> is <code>f64</code>, and <code>t.2</code> is <code>bool</code>, with no runtime lookup or bounds check. An array has one element type and a runtime index.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var pair = (1, 2.5);
 var first  = pair.0;     // an i32
 var second = pair.1;     // an f64</code></pre>
 <p>Each read knows its type before the program runs, which is why a tuple can hold values of different types where an array cannot.</p>
-<p>Hold on, why does it matter that the index is a literal and not a variable? Because that is precisely what lets the compiler turn each access into a fixed offset. <code>t.0</code> compiles to "the first field," not "look up field number zero." If the index could be a runtime value, the compiler would have to keep the types of the fields in some table and check the index at run time, and a tuple could hold elements of different types only if every access returned "one of these, we are not sure which." Because the index is a compile-time constant, a tuple can mix types freely and every access is a plain, typed field read. That is why a tuple access is free, and why tuples can be heterogeneous while arrays cannot.</p>
-<p>You can assign a whole tuple to a mutable variable, and you can reassign a tuple-valued location:</p>
+<p>A literal index lets the compiler turn each access into a fixed offset: <code>t.0</code> means "the first field," not "look up field zero." A runtime index would force a type table and a runtime check, and every access would return "one of these, we are not sure which." Because the index is a constant, tuples mix types freely and every access is a plain typed field read.</p>
+<p>You can assign a whole tuple to a mutable variable and reassign it:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var p = (1, 2);
 p = (5, 6);            // p is now (5, 6); the types still match</code></pre>
-<p>A tuple is not a place you reach into and edit piece by piece so much as a value you replace wholesale. Can you write <code>p.0 = 5</code>? The syntax exists, <code>.0</code> is a field access, and a field of a mutable local can be assigned, but reaching in to change one piece of a tuple is usually a sign that you wanted a struct with named mutable fields, or that you should build a fresh tuple. When you find yourself nudging <code>.1</code> and leaving the rest alone, stop and ask whether the value has quietly become a concept. Which, as we are about to see, is often the moment a pattern should take over.</p>
+<p>A tuple is replaced wholesale, not edited piece by piece. <code>p.0 = 5</code> is legal because <code>.0</code> is a field of a mutable local, but changing one piece usually means you wanted a struct with named mutable fields, or a fresh tuple. When you find yourself nudging <code>.1</code>, ask whether the value has quietly become a concept.</p>
 <section><h2 id="s12-5">Taking a Tuple Apart</h2></section>
-<p>Reading <code>t.0</code>, <code>t.1</code>, <code>t.2</code> is the only way to pull one piece out of a tuple at a time, and it is exactly what you want when you need one or two of the pieces. But there is a hard question hiding here that surprises people coming from Rust and Python: can you bind all the pieces to names in one line, the way <code>let (x, y) = pair;</code> does there?</p>
-<p>In Coral, the answer is no. The language has no multi-name binding declaration. You cannot write <code>var (x, y) = pair;</code>, and you cannot put a parenthesised pattern where a variable name goes. This is the same restraint you have already met twice: a statement that begins with <code>(</code> is a cast, and <code>(a, b)</code> in expression position is a tuple literal, so there is no room for a third reading of parentheses as a binding form. Rather than overload the syntax, Coral keeps the rule simple, a tuple is taken apart either one piece at a time by position, or all at once by a pattern in a <code>switch</code>, which is the subject of the next section.</p>
-<p>That means the everyday recipe is positional access, and it reads perfectly well:</p>
+<p>Reading <code>t.0</code>, <code>t.1</code>, <code>t.2</code> is the only way to pull one piece out at a time, and it suits one or two pieces. Can you bind all pieces in one line, as Rust and Python do with <code>let (x, y) = pair;</code>?</p>
+<p>No. There is no multi-name binding declaration: <code>var (x, y) = pair;</code> is invalid, and a parenthesised pattern cannot go where a variable name goes. A statement beginning with <code>(</code> is a cast, and <code>(a, b)</code> in expression position is a tuple literal, so parentheses cannot also mean binding. A tuple is taken apart one piece at a time, or all at once by a pattern in a <code>switch</code>.</p>
+<p>The everyday recipe is positional access:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var pair = divide(17, 5);      // pair : struct(i32, i32)
 var quotient = pair.0;
 var remainder = pair.1;</code></pre>
-<p>If you only want one piece, this is not a compromise; it is the clearest thing you can write. And here is a related fact you must internalise early, because the muscle memory is strong: there is no underscore discard placeholder in Coral. <code>_</code> is not a wildcard. In Rust you would write <code>let (keep, _) = pair;</code> to ignore the second piece; you cannot translate that line. So you reach for <code>.0</code> directly, which is exactly what you wanted anyway:</p>
+<p>For one piece this is the clearest form. There is also no underscore discard: <code>_</code> is not a wildcard, so Rust's <code>let (keep, _) = pair;</code> has no translation. Read <code>.0</code> directly:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var pair = (10, 20);
 var keep = pair.0;        // just read the first element</code></pre>
-<p>If you are coming from Rust or Python, this restriction can feel like a step backwards, so here is the intuition to put in place of the missing syntax. A tuple is a bucket of values identified by position, and <code>.0</code> and <code>.1</code> are the labels printed on the bucket's compartments. You reach into the compartment whose label you want; there is no shorthand that names every compartment at once. When you want <em>all</em> the pieces, you use a <code>switch</code> pattern, which is the next section.</p>
-<p>Now, when do you want <em>all</em> the pieces at once? That is what patterns are for, and they live where values are matched rather than where they are declared. A tuple is a value, and a tuple pattern is a way to ask the question "does this value have this shape, and if so, name the pieces." The next section is entirely about that.</p>
+<p>Coming from Rust or Python, this can feel backwards. Think of <code>.0</code> and <code>.1</code> as labels on the bucket's compartments: reach into the one you want; there is no shorthand naming every compartment. When you want <em>all</em> the pieces, use a <code>switch</code> pattern.</p>
+<p>Patterns live where values are matched, not declared. A tuple pattern asks "does this value have this shape, and if so, name the pieces."</p>
 <section><h2 id="s12-6">Patterns: Matching Tuples in a switch</h2></section>
-<p>A <code>switch</code> takes a value, tries its arms in order, and runs the first one whose pattern matches. A tuple pattern is written with parentheses and the same commas as a tuple literal, and each position holds either a sub-pattern or a fresh name to bind:</p>
+<p>A <code>switch</code> tries its arms in order and runs the first matching pattern. A tuple pattern uses parentheses and commas like a tuple literal, and each position holds a sub-pattern or a fresh name to bind:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (divide(10, 0)) {
     (value, true)  =&gt; println(&quot;ok: {}&quot;, value),
     (value, false) =&gt; println(&quot;division failed&quot;),
 }</code></pre>
-<p>Each arm is a tuple pattern: it matches the tuple position by position and binds the pieces it names. Because a <code>bool</code> has exactly two values and both arms are present, this switch is exhaustive and the compiler confirms it. If you later decide <code>divide</code> must also report an error string, the type changes and the compiler walks you through every switch that has to change, the same exhaustiveness benefit <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> describes at length.</p>
-<p>Here is that switch walked through slowly. Suppose <code>divide(10, 0)</code> returns the tuple <code>(0, false)</code>. The switch tries the first arm, <code>(value, true)</code>: it needs the second component to be <code>true</code>, but it is <code>false</code>, so this arm does not match. It tries the second arm, <code>(value, false)</code>: the second component is <code>false</code>, so it matches, binding <code>value</code> to <code>0</code> and running <code>println("division failed")</code>. First match wins, and the rest are skipped.</p>
+<p>Each arm matches position by position and binds the pieces it names. Because <code>bool</code> has exactly two values and both arms are present, the switch is exhaustive and the compiler confirms it. If <code>divide</code> later reports an error string, the type changes and the compiler walks you through every switch, the benefit <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> describes at length.</p>
+<p>For <code>divide(10, 0)</code> returning <code>(0, false)</code>, the first arm <code>(value, true)</code> fails because the second component is <code>false</code>. The second arm matches, binds <code>value</code> to <code>0</code>, and runs its body. First match wins.</p>
 <p>Patterns nest, because the type nests:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (bounds(values)) {
     (lo, hi, 0) =&gt; println(&quot;no data&quot;),
     (lo, hi, n) =&gt; println(&quot;{} readings span {}&quot;, n, lo, hi),
 }</code></pre>
-<p>The first arm matches only when the count is exactly zero and binds the two zeroes into <code>lo</code> and <code>hi</code> (which you ignore by not using them). The second arm is a catch-all binding pattern that names all three pieces. Because there is no wildcard, when you want to ignore a piece you name it and simply do not use it, or you write it as a literal that pins the value. Coral's patterns are about <em>shape and value</em>, not about discarding, and the habit of naming a piece you will not read is the small price of having no <code>_</code>.</p>
-<p>And <code>else</code> still works as the catch-all when you do not want to enumerate:</p>
+<p>The first arm matches only when the count is zero, binding both zeroes into <code>lo</code> and <code>hi</code>, which you ignore by not using them. The second names all three. With no wildcard, ignore a piece by naming it and not using it, or pin it with a literal. Coral's patterns are about shape and value, not discarding.</p>
+<p><code>else</code> is the catch-all when you do not want to enumerate:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (signOf(x), signOf(y)) {
     (1, 1)   =&gt; println(&quot;both positive&quot;),
     (0, 0)   =&gt; println(&quot;both zero&quot;),
     else     =&gt; println(&quot;something else&quot;),
 }</code></pre>
-<p>Notice the trick quietly at work here. We built a tuple out of two small values purely so that we could match on them. <code>(signOf(x), signOf(y))</code> is not stored in a variable or returned from a function; it is constructed at the moment of the switch and immediately taken apart. That is a recurring Coral idiom: when a decision depends on several small closed facts at once, package them into a tuple and match, and the compiler will check completeness for you. <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>, where patterns over tuples and variants are the main tool for taking data apart, builds on exactly this.</p>
-<p>One subtlety worth naming, because it trips people up. A binding pattern asks for the value at that position, and the value is copied or moved into the new name according to the usual ownership rules. Matching a tuple that owns heap data, say a <code>struct(String, usize)</code>, moves the <code>String</code> out of the tuple and into the new name. After that, the original tuple is partially moved and cannot be used as a whole. If you have not met move semantics yet, all you need for now is the rule of thumb: a pattern that binds a piece takes it, and does not copy it unless the piece is trivially copyable like a number.</p>
+<p>The idiom: <code>(signOf(x), signOf(y))</code> is built at the switch and immediately taken apart, never stored. When a decision depends on several small closed facts, package them into a tuple and match, and the compiler checks completeness. <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> builds on this.</p>
+<p>One subtlety: a binding pattern copies or moves the value into the new name by the usual ownership rules. Matching <code>struct(String, usize)</code> moves the <code>String</code> out, leaving the original partially moved and unusable as a whole. A pattern that binds a piece takes it unless the piece is trivially copyable like a number.</p>
 <section><h2 id="s12-7">Returning Several Values</h2></section>
-<p>This is the single best reason tuples exist, so it gets its own section. A function returns one value; a tuple lets that one value be several. The canonical example is a division that reports both the quotient and whether it succeeded:</p>
+<p>This is the best reason tuples exist. A function returns one value; a tuple lets it be several. A division reports its quotient and whether it succeeded:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(i32, bool) divide(i32 a, i32 b)
 {
     if (b == 0) return (0, false);
@@ -142,8 +142,8 @@ var keep = pair.0;        // just read the first element</code></pre>
 if (r.1) {
     println(&quot;quotient is {}&quot;, r.0);
 }</code></pre>
-<p>Compare the C convention: <code>i32 divide(i32 a, i32 b, bool* ok)</code>. The caller must declare a <code>bool</code> first, pass its address, and remember which argument was the output. The tuple puts the whole answer in one place and makes the call site read left to right. If you have ever written code where the out-parameters are threaded through three helper calls, you know exactly why this is better.</p>
-<p>The pattern scales. A function can return <code>struct(String, usize)</code> to hand back an owned buffer and its length, <code>struct(i32, i32, i32)</code> for a colour, <code>struct(T, T)</code> for a swap, or <code>struct(bool, T)</code> for a found-flag and a found value. Here is a swap:</p>
+<p>Compare C's <code>i32 divide(i32 a, i32 b, bool* ok)</code>: the caller declares a <code>bool</code>, passes its address, and remembers which argument is the output. The tuple keeps the answer in one place and reads left to right.</p>
+<p>The pattern scales to <code>struct(String, usize)</code> for an owned buffer and length, <code>struct(i32, i32, i32)</code> for a colour, <code>struct(T, T)</code> for a swap, or <code>struct(bool, T)</code> for a found flag and value. A swap:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(i32, i32) swap(i32 a, i32 b)
 {
     return (b, a);
@@ -152,7 +152,7 @@ if (r.1) {
 var pair = swap(x, y);
 x = pair.0;
 y = pair.1;</code></pre>
-<p>And here is a lookup that also reports the index it found, which is the shape you want for a search:</p>
+<p>A lookup that also reports the found index:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(usize, bool) indexOf(const i32[] data, i32 needle)
 {
     for (usize i = 0; i &lt; data.count(); i++) {
@@ -160,16 +160,16 @@ y = pair.1;</code></pre>
     }
     return (0, false);
 }</code></pre>
-<p>A caller who found what they wanted can read both pieces:</p>
+<p>A caller who found what they wanted reads both pieces:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var hit = indexOf(readings, 99);
 if (hit.1) {
     println(&quot;found 99 at position {}&quot;, hit.0);
 }</code></pre>
 <p>A caller who only cares whether it was found reads just the flag:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var found = indexOf(readings, 99).1;    // read just the flag</code></pre>
-<p>One warning that will save you a bug later. The <code>(0, false)</code> above is a sentinel: when the search fails, the function returns a real index of <code>0</code> that means nothing, paired with a flag that says "ignore it." If a caller forgets to check <code>found</code> and uses the index anyway, they will silently search at position zero. That is the weakness of encoding failure as a tuple: the failure path is a value the caller can ignore. The honest way to express "an index, or nothing" is <code>Option&lt;usize&gt;</code>, and the honest way to express "a value, or a reason it failed" is <code>Result&lt;T, E&gt;</code>. Both are the subject of <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>. A tuple is the right shape when every piece is always meaningful; the moment one piece is conditional, a variant says so in the type.</p>
+<p>One warning. <code>(0, false)</code> is a sentinel: a real index of <code>0</code> that means nothing, paired with a flag saying "ignore it." A caller who forgets the flag silently searches at position zero. That is the weakness of encoding failure as a tuple: the caller can ignore the failure path. Express "an index, or nothing" as <code>Option&lt;usize&gt;</code>, and "a value, or a reason it failed" as <code>Result&lt;T, E&gt;</code>, both in <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>. A tuple is right when every piece is always meaningful; when one piece is conditional, a variant says so in the type.</p>
 <section><h2 id="s12-8">Tuples in Generics and Containers</h2></section>
-<p>Because a tuple is a type like any other, it can be an element type, a map value, a generic argument, or a return type from a generic helper. This is where tuples earn their keep in the standard library:</p>
+<p>A tuple is a type like any other, so it can be an element type, map value, generic argument, or generic return type. This is where tuples earn their keep in the standard library:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;struct(str, i32)&gt; scores = Vec&lt;struct(str, i32)&gt;::new();
 scores.push((&quot;ada&quot;, 92));
 scores.push((&quot;grace&quot;, 97));
@@ -177,23 +177,23 @@ scores.push((&quot;grace&quot;, 97));
 for (var entry : scores) {
     println(&quot;{} scored {}&quot;, entry.0, entry.1);
 }</code></pre>
-<p>A <code>struct(str, i32)</code> is a perfectly good key-value pair. When you genuinely do not want to name the concept "score," a tuple is honest about the fact that it is just two things together. If you later decide the pair deserves a name, you promote it to a struct, and the change is local: a definition, a construction site, and the field accesses.</p>
-<p>Tuple-shaped return types are common in generic algorithms. A function that splits a vector at the first match can return <code>struct(Vec&lt;T&gt;, Vec&lt;T&gt;)</code>, everything before, everything after, rather than mutating two out-parameters. A function that finds the minimum and maximum in a single pass returns <code>struct(T, T)</code>. A partition operation returns <code>struct(Vec&lt;T&gt;, Vec&lt;T&gt;)</code> for the elements that passed and failed a test. In each case the tuple is the natural "this algorithm produces two answers" shape, and the caller reads the two halves out:</p>
+<p>A <code>struct(str, i32)</code> is a good key-value pair. When the concept does not need a name, a tuple is honest about being two things together. If the pair later deserves a name, promote it to a struct; the change is local to the definition, construction site, and field accesses.</p>
+<p>Tuple-shaped returns are common in generic algorithms. A split returns <code>struct(Vec&lt;T&gt;, Vec&lt;T&gt;)</code> rather than mutating out-parameters. A single-pass min and max returns <code>struct(T, T)</code>. A partition returns <code>struct(Vec&lt;T&gt;, Vec&lt;T&gt;)</code>. In each case the tuple is the natural "two answers" shape:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var split = splitAt(values, pivot);
 var before = split.0;
 var after  = split.1;</code></pre>
-<p>Because tuples nest and compose, you can also have a map whose values are tuples, or a tuple of vectors: <code>struct(Vec&lt;i32&gt;, Vec&lt;str&gt;)</code>. The type system keeps them straight. A <code>Map&lt;str, struct(f64, f64)&gt;</code> might map a city to its latitude and longitude; a <code>Map&lt;str, struct(u32, u32)&gt;</code> might map a word to its wins and losses. In both cases the tuple is doing the same job a lightweight struct would do, without the ceremony of a name.</p>
-<p>The one thing you cannot do is give a tuple methods, and we should be honest about how far this reaches. You cannot write an <code>extend</code> block for <code>struct(i32, i32)</code>, and you cannot implement a trait for a bare tuple. A tuple's only behaviour is its layout. That is the boundary line between tuples and structs, and it is Section12.9.</p>
-<p>In plain words, a tuple is data and nothing more. It has no methods, no name, and no behaviour beyond the bytes it holds. The moment you want a tuple to <em>do</em> something, to print itself, compare itself, or clean up after itself, it has grown beyond a tuple and wants to be a struct.</p>
-<p>Why this matters: because tuples are plain data, they are the cheapest way to return several answers and the easiest to use in a hot loop. A <code>struct(str, i32)</code> inside a <code>Vec</code> costs exactly what a two-field struct costs and nothing more, no methods, no vtable, no hidden allocation. The lightness you gain is the same lightness that stops you adding behaviour later, so choose it when the data really is just passing through.</p>
+<p>Tuples nest and compose: a map whose values are tuples, or a tuple of vectors such as <code>struct(Vec&lt;i32&gt;, Vec&lt;str&gt;)</code>. A <code>Map&lt;str, struct(f64, f64)&gt;</code> might map a city to latitude and longitude; a <code>Map&lt;str, struct(u32, u32)&gt;</code> might map a word to wins and losses. The tuple does a lightweight struct's job without the name.</p>
+<p>You cannot give a tuple methods: no <code>extend</code> block for <code>struct(i32, i32)</code>, no trait implementation for a bare tuple. A tuple's only behaviour is its layout. That boundary is Section12.9.</p>
+<p>A tuple is data and nothing more. When you want it to print, compare, or clean up after itself, it has grown beyond a tuple and wants to be a struct.</p>
+<p>Because tuples are plain data, they are the cheapest way to return several answers and the easiest to use in a hot loop. A <code>struct(str, i32)</code> inside a <code>Vec</code> costs exactly what a two-field struct costs: no methods, no vtable, no hidden allocation. That same lightness prevents adding behaviour later, so choose tuples when the data is just passing through.</p>
 <section><h2 id="s12-9">Tuple or Struct?</h2></section>
-<p>The two look similar and get used for the same job at different scales. The question "should this pair be a tuple or a struct?" comes up constantly, so here is a decision you can apply without agonising.</p>
+<p>The two look similar and serve the same job at different scales. A decision you can apply without agonising:</p>
 <p>Reach for a tuple when all of these hold:</p>
 <ul><li>there are two or three elements,</li><li>the order is obvious at the call site from context,</li><li>the tuple does not travel far from where it is created,</li><li>and you would not want a type name for it in the API documentation.</li></ul>
 <p>Reach for a struct when any of these hold:</p>
 <ul><li>there are more than three or four elements,</li><li>callers would need to remember which position means what,</li><li>the value crosses a module boundary or appears in a public signature,</li><li>the fields have different lifetimes or ownership rules,</li><li>or you want to add methods, drop semantics, or trait implementations.</li></ul>
-<p>There is also a hard technical difference, and it is the one that settles most arguments: you cannot add a method to a tuple. You cannot write an <code>extend</code> block for <code>struct(i32, i32)</code>, and you cannot implement a trait for a bare tuple. A tuple's only behaviour is its layout. When a value needs behaviour, a <code>drop</code>, a <code>toStr</code>, a comparison, a <code>clone</code>, it needs to be a struct, or (as we will see) a <code>distinct</code> type.</p>
-<p>Here is the wrong way and the right way, side by side. Wrong way: a tuple that has quietly become a concept, with comments standing in for field names.</p>
+<p>The decisive difference: you cannot add a method to a tuple. No <code>extend</code> block for <code>struct(i32, i32)</code>, no trait implementation for a bare tuple. A tuple's only behaviour is its layout. When a value needs a <code>drop</code>, a <code>toStr</code>, a comparison, or a <code>clone</code>, it needs a struct or a <code>distinct</code> type.</p>
+<p>Wrong way: a tuple that has quietly become a concept, with comments standing in for field names.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// a &quot;user&quot; is (id, name, email, active), good luck remembering which is which
 struct(i64, str, str, bool) user = (1, &quot;ada&quot;, &quot;ada@example.com&quot;, true);
 if (user.3) { ... }        // what is .3 again?</code></pre>
@@ -207,30 +207,29 @@ if (user.3) { ... }        // what is .3 again?</code></pre>
 
 User user = User { .id = 1, .name = &quot;ada&quot;, .email = &quot;ada@example.com&quot;, .active = true };
 if (user.active) { ... }   // unambiguous, and it survives a reorder of the fields</code></pre>
-<p>The tuple version is not wrong because it is short; it is wrong because the moment a value has a name in your head, the language should have that name too. A tuple that has grown a concept is a struct that has not been written down yet.</p>
-<p>Let me give you a test you can run in five seconds. Read the construction site out loud. If it sounds like a sentence about your problem, "a user is an id, a name, an email, and whether they are active", then the names belong in the code, and a struct is right. If it sounds like a sentence about plumbing, "give me this number and this flag so the next function can look", then a tuple is right. The tuple is not the junior version of the struct; they are two tools for two different jobs, and the common mistake is reaching for the tuple when the job is the struct.</p>
+<p>The tuple is not wrong because it is short; it is wrong because the value has a name in your head, and the language should have it too. A tuple that has grown a concept is a struct not yet written down.</p>
+<p>A five-second test: read the construction site aloud. If it sounds like a sentence about your problem, "a user is an id, a name, an email, and whether they are active," the names belong in the code and a struct is right. If it sounds like plumbing, "give me this number and this flag so the next function can look," a tuple is right.</p>
 <section><h2 id="s12-10">distinct: The Named Tuple</h2></section>
-<p>There is a middle ground between an anonymous tuple and a struct, and it is worth knowing because tuple-shaped quantities are the most common place the confusion bites. Suppose you have two measurements, both stored as <code>f64</code>: a distance in meters and a distance in feet. As raw floats, they are interchangeable, and one day someone will add meters to feet and get a plausible, wrong number.</p>
+<p>A middle ground matters because tuple-shaped quantities are where confusion bites. Two <code>f64</code> measurements, a distance in meters and one in feet, are interchangeable, and one day someone adds meters to feet and gets a plausible, wrong number.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">f64 meters = 100.0;
 f64 feet = meters;         // compiles; wrong, but nothing stops it</code></pre>
-<p>A <code>distinct</code> type gives you the tuple's data layout with a real name and real type identity, so the two can no longer be mixed:</p>
+<p>A <code>distinct</code> type gives the tuple's data layout a real name and type identity, so the two cannot be mixed:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct Meters = f64;
 pub distinct Feet   = f64;
 pub distinct Point  = struct(f64, f64);
 
 Meters distance = (Meters) 100.0;
 Feet wrong = (Feet) distance;      // error: distinct types do not convert</code></pre>
-<p>Read <code>(Meters) 100.0</code> as a cast: <code>100.0</code> is an <code>f64</code>, and you are deliberately saying "treat this as a Meters value." There is no <code>as</code> cast in Coral; a cast is written by putting the target type in parentheses before the value. A <code>distinct</code> type is a new nominal type whose representation is the underlying type. It has the tuple's bytes and the struct's identity. When you want the compiler to stop you from mixing up two same-shaped things, <code>distinct</code> is the right tool, not a struct wrapper you would have to unwrap at every use site.</p>
-<p>Here is the conversion that makes the two types useful rather than merely separate:</p>
+<p><code>(Meters) 100.0</code> is a cast: <code>100.0</code> is an <code>f64</code>, deliberately treated as <code>Meters</code>. Coral has no <code>as</code>; a cast puts the target type in parentheses before the value. A <code>distinct</code> type is a new nominal type whose representation is the underlying type. It has the tuple's bytes and the struct's identity, so use it when the compiler must stop you mixing two same-shaped things, not a struct wrapper you unwrap at every use.</p>
+<p>The conversion that makes the types useful:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Meters toMeters(Feet f) {
     return (Meters) (f.0 * 0.3048);
 }</code></pre>
-<p>Wait, <code>f.0</code>? Yes. When a <code>distinct</code> type's representation is a tuple, the value has positional access, because underneath it is still a tuple. <code>pub distinct Point = struct(f64, f64);</code> gives you <code>p.0</code> and <code>p.1</code> while still refusing to let a <code>Point</code> stand where an unrelated <code>struct(f64, f64)</code> is expected. You get positional convenience and nominal safety at the same time. For a <code>distinct</code> whose representation is a single scalar, there is nothing to index; you cast to the underlying type when you need the bytes, which is a visible reminder at every use site that a unit conversion could be happening.</p>
-<p>Think of <code>distinct</code> as a sticky note you put on a type. Under the note, <code>Meters</code> is just an <code>f64</code>, laid out in eight bytes. But the compiler reads the note, and it refuses to do arithmetic between two values whose notes differ, and it refuses to hand a <code>Meters</code> to code that asked for <code>f64</code> without a deliberate cast. You keep the tuple's cheap layout and gain the struct's identity.</p>
-<p>Why this matters: <code>distinct</code> is how a program says two things that look alike are not the same thing. Money in dollars and money in euros, a distance in meters and a distance in feet, a user id and an order id, all of them are the same number underneath and all of them are dangerous to mix. The <code>distinct</code> type gives you the cheap layout of the underlying value with the safety of a real name, and costs nothing at run time.</p>
+<p>Yes, <code>f.0</code>. When a <code>distinct</code> type's representation is a tuple, the value has positional access because underneath it is still a tuple. <code>pub distinct Point = struct(f64, f64);</code> gives <code>p.0</code> and <code>p.1</code> while refusing to let a <code>Point</code> stand where an unrelated <code>struct(f64, f64)</code> is expected. You get positional convenience and nominal safety. For a scalar representation there is nothing to index; cast to the underlying type when you need the bytes, a visible reminder that a unit conversion may be happening.</p>
+<p>Think of <code>distinct</code> as a sticky note on a type. Underneath, <code>Meters</code> is an eight-byte <code>f64</code>, but the compiler reads the note and refuses arithmetic between values whose notes differ, and refuses to hand a <code>Meters</code> to code asking for <code>f64</code> without a cast.</p>
+<p><code>distinct</code> says two things that look alike are not the same. Dollars and euros, meters and feet, a user id and an order id: same number underneath, dangerous to mix. You keep the cheap layout and gain a real name's safety at no runtime cost.</p>
 <section><h2 id="s12-11">A Worked Example: Bounds and Statistics</h2></section>
-<p>Put the pieces together on a small, realistic problem, and watch how many of them appear at once.</p>
-<p>Suppose you are reading sensor samples, a slice of <code>i32</code>, and you want the smallest reading, the largest reading, and how many there were, in one pass. That is one function producing three answers, which is exactly a tuple's job:</p>
+<p>A small realistic problem shows the pieces fitting together. Read sensor samples, a slice of <code>i32</code>, and want the smallest, largest, and count in one pass. That is one function producing three answers:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(i32, i32, usize) bounds(const i32[] data)
 {
     if (data.count() == 0) return (0, 0, 0);
@@ -242,27 +241,27 @@ Feet wrong = (Feet) distance;      // error: distinct types do not convert</code
     }
     return (lo, hi, data.count());
 }</code></pre>
-<p>Notice the empty case returns <code>(0, 0, 0)</code>, which is a sentinel the caller must interpret. That is a weakness, and later chapters fix it: a <code>Result</code> or an <code>Option</code> would say "no data" honestly instead of pretending the bounds are zero. For now, let the caller carry the convention.</p>
+<p>The empty case returns <code>(0, 0, 0)</code>, a sentinel the caller must interpret. Later chapters fix this: <code>Result</code> or <code>Option</code> would say "no data" honestly instead of pretending the bounds are zero.</p>
 <p>Callers get all three numbers with no out-parameters and no pre-declared storage:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(i32, i32, usize) b = bounds(values);
 println(&quot;{} readings, range {}..{}&quot;, b.2, b.0, b.1);</code></pre>
-<p>A caller who only cares about the range reads the two positions it wants and ignores the count entirely:</p>
+<p>A caller who only cares about the range reads the two positions it wants:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(i32, i32, usize) b = bounds(values);
 println(&quot;range {}..{}&quot;, b.0, b.1);</code></pre>
-<p>Now a caller who wants to branch on emptiness matches the tuple directly:</p>
+<p>A caller who wants to branch on emptiness matches the tuple directly:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (bounds(values)) {
     (lo, hi, 0) =&gt; println(&quot;no data&quot;),
     (lo, hi, n) =&gt; println(&quot;{} readings span {}&quot;, n, lo, hi),
 }</code></pre>
-<p>Now add a second function that turns the bounds into a report string, to see the tuple flow through a pipeline:</p>
+<p>A second function turns the bounds into a report string, showing the tuple flow through a pipeline:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str describe(const i32[] data)
 {
     var b = bounds(data);
     if (b.2 == 0) return &quot;no readings&quot;;
     return &quot;min &quot; + toStr(b.0) + &quot;, max &quot; + toStr(b.1) + &quot;, n &quot; + toStr(b.2);
 }</code></pre>
-<p><code>describe</code> reads by position rather than matching, because it uses all three pieces but reuses them across two branches, and reading <code>b.0</code> three times is clearer than three separate bindings. That is the judgement call the earlier sections described, made concrete.</p>
-<p>And a third function that splits the samples at a threshold, returning two vectors, the generic tuple return in action:</p>
+<p><code>describe</code> reads by position because it reuses all three pieces across two branches; reading <code>b.0</code> three times is clearer than three bindings. The judgement call made concrete.</p>
+<p>A third function splits the samples at a threshold, returning two vectors:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(Vec&lt;i32&gt;, Vec&lt;i32&gt;) partition(const i32[] data, i32 threshold)
 {
     Vec&lt;i32&gt; low  = Vec&lt;i32&gt;::new();
@@ -276,7 +275,7 @@ println(&quot;range {}..{}&quot;, b.0, b.1);</code></pre>
 <p>The call site reads like a sentence:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var split = partition(samples, 50);
 println(&quot;{} below the threshold, {} above&quot;, split.0.count(), split.1.count());</code></pre>
-<p>Finally, let us put the tuples to work together, which is the reason to write any of this. A summary function composes the three helpers and returns one flattened tuple for the caller:</p>
+<p>Finally, a summary function composes the three helpers and returns one flattened tuple:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(i32, i32, usize, usize, usize) summarize(const i32[] data)
 {
     var b = bounds(data);
@@ -287,9 +286,9 @@ println(&quot;{} below the threshold, {} above&quot;, split.0.count(), split.1.c
 var s = summarize(samples);
 println(&quot;{} readings, min {}, max {}, {} below zero, {} above&quot;,
         s.2, s.0, s.1, s.3, s.4);</code></pre>
-<p>Look at what has happened. Three functions, each with its own tuple type, compose into a fourth without a single out-parameter, without a single pre-declared buffer, and without a single comment explaining which argument was an input. Every piece of the answer has a name at the point where it is used, and a reader can follow the data from <code>bounds</code> and <code>partition</code> into the print in one glance.</p>
-<p>This is the pattern to internalise for the whole chapter: one function returns a tuple, the caller reads the pieces it needs by position, and positional access replaces a pile of out-parameters and pre-declared storage. Where the tuple's meaning stops being obvious, which happens as soon as it holds three or more same-typed values and travels across a function boundary, you promote it to a struct, and the compiler starts helping you again. The worked example above is right at the edge of that trade-off: <code>struct(i32, i32, usize, usize, usize)</code> is the largest tuple you should tolerate before reaching for a <code>Summary</code> struct with named fields. <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>'s <code>Option</code> and <code>Result</code> are what you reach for when a piece of the answer might not be there at all.</p>
-<p>Why this matters: nearly every programming task begins by asking a function for more than one thing, a value and its status, a slice and its length, a minimum and a maximum. A tuple is the small, cheap answer that keeps the call site readable, and the habit of returning several values in one place instead of threading out-parameters is the one that makes the later chapters' code feel tidy.</p>
+<p>Three functions, each with its own tuple type, compose into a fourth without an out-parameter, a pre-declared buffer, or a comment explaining an input. Every piece has a name where it is used.</p>
+<p>The pattern: one function returns a tuple, the caller reads the pieces by position, and positional access replaces out-parameters and pre-declared storage. Where meaning stops being obvious, which happens once a tuple holds three or more same-typed values across a function boundary, promote it to a struct. <code>struct(i32, i32, usize, usize, usize)</code> is about the largest tuple to tolerate before a named <code>Summary</code> struct. <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>'s <code>Option</code> and <code>Result</code> cover pieces that might be missing.</p>
+<p>Most tasks ask a function for more than one thing: a value and its status, a slice and its length, a minimum and a maximum. A tuple is the cheap answer that keeps the call site readable.</p>
 <section><h2 id="s12-12">Exercises</h2></section>
 <section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>What is the difference between <code>struct(i32)</code> and <code>i32</code> as a type? Why does the language spell tuple types with <code>struct(...)</code> rather than a bare <code>(...)</code>?</li><li><span class="ex-label">Comprehension</span>Given <code>var t = (1, 2.0, true)</code>, what is the type of <code>t</code>, and what is the type of <code>t.2</code>? Explain why <code>t.x</code> (with a letter) is a syntax error rather than something the compiler resolves at runtime.</li><li><span class="ex-label">Comprehension</span>Coral has no multi-name binding declaration and no underscore discard in patterns. Given <code>var counts = (3, 7, 11)</code>, write the line that gives you only the third value, and explain why you cannot write it as a binding form.</li><li><span class="ex-label">Implementation</span>Write <code>struct(i32, i32)</code> <code>minMax(const i32[] data)</code> returning the minimum and maximum in a single pass. Decide what to return for empty input and justify the choice in a comment. Then write the call site that reads both pieces.</li><li><span class="ex-label">Implementation</span>Write <code>struct(str, str)</code> <code>splitAt(str s, u8 delim)</code>: the part before the first <code>delim</code> and the part after it. Return <code>(s, "")</code> when the delimiter is absent. Use a byte-scanning helper or <code>str</code>'s search from the core library.</li><li><span class="ex-label">Patterns</span>Given a <code>Vec&lt;struct(str, i32)&gt;</code> of (name, score) pairs, write a loop that prints only the pairs above 90 by reading <code>.1</code>, and a <code>switch</code> over one pair that binds both pieces. Which reads better for which job?</li><li><span class="ex-label">Design</span>You have a function returning <code>struct(bool, String)</code> where the bool says whether parsing succeeded and the String holds either the value or an error message. Rewrite the API so the success path cannot read the error message as a value by accident. (Hint: this is a case for a <code>Result</code>, which <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a> covers; explain in two sentences why a tuple is the wrong shape here.)</li><li><span class="ex-label">Distinct</span>Define <code>pub distinct Celsius = f64;</code> and <code>pub distinct Fahrenheit = f64;</code>, plus a <code>toCelsius(Fahrenheit) Celsius</code> converter. Then try to pass a <code>Celsius</code> where a <code>Fahrenheit</code> is expected and describe the error. Why is <code>distinct</code> better than two raw <code>f64</code>s here, and better than a one-field struct?</li><li><span class="ex-label">Containers</span>Build a <code>Vec&lt;struct(u8, u8)&gt;</code> of twenty pairs, sort it by the first element, then check that no two adjacent pairs share a first element. Which parts get simpler when you read the pairs by position in a loop?</li><li><span class="ex-label">Meta</span>The chapter claims "if you are writing comments next to <code>.0</code> and <code>.1</code>, you wanted a struct." Find a place in the code you have written recently where a tuple carried a concept. Rewrite it as a struct. What broke, what got clearer, and was the trade worth it?</li></ol></section>
       <nav class="chapter-nav"><a href="../../speed/11-memory-management/index.html">← Previous</a><a href="../../speed/13-variants-enums-unions-and-pattern-matching/index.html">Next →</a></nav>

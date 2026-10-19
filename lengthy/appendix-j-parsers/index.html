@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Appendix J · Parsers from the Coral Book." />
+  <meta name="robots" content="index, follow" />
+  <title>Appendix J · Parsers | The Coral Book</title>
+  <link rel="canonical" href="https://coralc-lang.github.io/coral-docs/lengthy/appendix-j-parsers/index.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Appendix J · Parsers | The Coral Book" />
+  <meta property="og:description" content="Appendix J · Parsers from the Coral Book." />
+  <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/lengthy/appendix-j-parsers/index.html" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="stylesheet" href="../../lengthy/book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../../textbook/index.html">Editions</a><a href="../../lengthy/index.html">Lengthy</a><a href="../../speed/index.html">Speed</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Reference</p>
+      <h1>Appendix J · Parsers</h1>
+      
+      <p>Appendix J, Parsers</p>
+<p>This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A, A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.</p>
+<hr />
+<section><h2 id="std-parser">std::parser</h2></section>
+<h3 id="75-std-parser-csv-csvreader">75. <code>std::parser::csv</code>, <code>CsvReader</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+
+pub struct CsvReader
+{
+    const u8* data;
+    usize len;
+    usize pos;
+    usize line;
+    bool  error;
+    str   errMsg;
+    u8    delim;
+
+    static CsvReader new(str input)
+    bool eof()
+    Result&lt;bool, ParseError&gt; readRow(Vec&lt;String&gt;* fields)
+    // helpers: void fail(str msg); ParseError err(); bool _readField(String* out)
+}</code></pre>
+<h3 id="76-std-parser-ini-inifile-inisection">76. <code>std::parser::ini</code>, <code>IniFile</code> / <code>IniSection</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct IniSection
+{
+    HashMap&lt;String, String&gt; entries;
+
+    static IniSection new()
+    void dispose()
+    Option&lt;String&gt; get(str key)
+    void set(str key, str value)
+}
+
+pub struct IniFile
+{
+    Vec&lt;IniSection&gt; sections;
+    Vec&lt;String&gt;     names;
+
+    static IniFile new()
+    void dispose()
+    void parse(str input)                  // lenient; cannot fail
+    Option&lt;IniSection*&gt; section(str name)
+    Option&lt;String&gt; get(str section, str key)
+}
+
+pub extend IniSection : @drop { void drop(); }
+pub extend IniFile    : @drop { void drop(); }</code></pre>
+<h3 id="77-std-parser-json-jsonvalue">77. <code>std::parser::json</code>, <code>JsonValue</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum JsonType { Null, Bool, I64, F64, String, Array, Object }
+
+pub struct JsonValue
+{
+    JsonType type;
+    bool  boolVal;
+    i64   i64Val;
+    f64   f64Val;
+    String strVal;
+    Vec&lt;JsonValue&gt; arrVal;
+    Vec&lt;JsonPair&gt;  objVal;
+
+    static JsonValue nullVal()
+    static JsonValue boolVal(bool b)
+    static JsonValue i64Val(i64 n)
+    static JsonValue f64Val(f64 n)
+    static JsonValue stringVal(String s)
+    static JsonValue arrayVal()
+    static JsonValue objectVal()
+    void dispose()
+}
+
+pub struct JsonPair { String key; JsonValue value; }
+
+pub Result&lt;JsonValue, ParseError&gt; parseJson(str input)
+pub String serialize(JsonValue* v)
+pub extend JsonValue : @drop { void drop(); }</code></pre>
+<h3 id="78-std-parser-toml-tomldoc">78. <code>std::parser::toml</code>, <code>TomlDoc</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum TomlValueType { String, Integer, Float, Bool, Array, Table }
+
+pub struct TomlValue
+{
+    TomlValueType type;
+    String strVal;
+    i64    intVal;
+    f64    floatVal;
+    bool   boolVal;
+    Vec&lt;TomlValue&gt; arrVal;
+    Vec&lt;TomlPair&gt;  tableVal;
+
+    static TomlValue stringVal(str s)
+    static TomlValue intVal(i64 n)
+    static TomlValue floatVal(f64 n)
+    static TomlValue boolVal(bool b)
+    static TomlValue arrayVal()
+    static TomlValue tableVal()
+    void dispose()
+}
+
+pub struct TomlPair { String key; TomlValue value; }
+
+pub struct TomlDoc
+{
+    Vec&lt;TomlPair&gt; root;
+    static TomlDoc new()
+    void dispose()
+    Option&lt;TomlValue*&gt; get(str key)
+    Option&lt;TomlValue*&gt; getIn(str table, str key)
+}
+
+pub Result&lt;TomlDoc, ParseError&gt; parseToml(str input)
+pub extend TomlValue : @drop { void drop(); }
+pub extend TomlDoc   : @drop { void drop(); }</code></pre>
+<h3 id="79-std-parser-uuid-uuid">79. <code>std::parser::uuid</code>, <code>Uuid</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+
+pub struct Uuid
+{
+    u8 bytes[16];
+    static Uuid zero()
+    static Uuid v4()
+    static Result&lt;Uuid, ParseError&gt; fromString(str s)
+    String toString()
+    String toHex()
+    bool eq(Uuid other)
+    bool isNil()
+}
+pub String uuidV4()
+pub Result&lt;Uuid, ParseError&gt; parseUuid(str s)</code></pre>
+<h3 id="80-std-parser-xml-xmlnode">80. <code>std::parser::xml</code>, <code>XmlNode</code></h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum XmlNodeType { Element, Text, Comment, CData }
+
+pub struct XmlAttribute
+{
+    String name;
+    String value;
+    void dispose()
+}
+
+pub struct XmlNode
+{
+    XmlNodeType type;
+    String tag;
+    String text;
+    Vec&lt;XmlAttribute&gt; attrs;
+    Vec&lt;XmlNode&gt;      children;
+
+    static XmlNode element(str tag)
+    static XmlNode text(str content)
+    void dispose()
+    bool hasAttr(str name)
+    Option&lt;str&gt; getAttr(str name)
+    Option&lt;XmlNode*&gt; firstChild(str tagName)
+}
+
+pub Result&lt;XmlNode, ParseError&gt; parseXml(str input)
+pub String serializeXml(XmlNode* node)
+pub extend XmlNode : @drop { void drop(); }</code></pre>
+<h3 id="81-std-parser-crlb-coral-build-manifest-">81. <code>std::parser::crlb</code>, Coral build-manifest parser</h3>
+<blockquote><p>Exists at <code>parser/crlb.crl</code> but is <strong>not</strong> re-exported by <code>parser/lib.crl</code>; import it directly.</p></blockquote>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum CrbKind { Int, Bool, Str, List }
+
+pub struct CrbValue
+{
+    CrbKind kind;
+    i64    intVal;
+    bool   boolVal;
+    String strVal;
+    Vec&lt;CrbValue&gt; listVal;
+
+    static CrbValue intVal(i64 n)
+    static CrbValue boolVal(bool b)
+    static CrbValue stringVal(str s)
+    static CrbValue listVal()
+    void dispose()
+}
+
+pub struct CrbEntry { String key; CrbValue value; }
+
+pub struct CrbBuild
+{
+    String name;
+    String extends;          // empty if no extends clause
+    Vec&lt;CrbEntry&gt; entries;
+    Option&lt;CrbValue*&gt; get(str key)
+    void dispose()
+}
+
+pub struct CrbManifest
+{
+    Vec&lt;CrbEntry&gt; top;       // schema / strict / other top-level keys
+    Vec&lt;CrbBuild&gt; builds;
+
+    static CrbManifest new()
+    Option&lt;CrbValue*&gt; get(str key)
+    Option&lt;CrbBuild*&gt; findBuild(str name)
+    void dispose()
+}
+
+pub Result&lt;CrbManifest, ParseError&gt; parseCrlb(str input)
+pub extend CrbValue    : @drop
+pub extend CrbBuild    : @drop
+pub extend CrbManifest : @drop</code></pre>
+      <nav class="chapter-nav"><a href="../../lengthy/appendix-i-math-and-crypto/index.html">← Previous</a><a href="../../lengthy/appendix-k-misc-and-testing/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

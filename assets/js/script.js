@@ -111,8 +111,8 @@ function bindSearch() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  if (window.location.pathname.includes("/textbook/")) {
-    const textbookRoot = `${window.location.pathname.split("/textbook/")[0]}/textbook/`;
+  if (window.location.pathname.includes("/lengthy/")) {
+    const textbookRoot = `${window.location.pathname.split("/lengthy/")[0]}/lengthy/`;
     const dataScript = document.createElement("script");
     dataScript.src = `${textbookRoot}book-data.js`;
     dataScript.onload = () => {

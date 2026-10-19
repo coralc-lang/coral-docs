@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Objects Without Classes" />
+  <meta name="robots" content="index, follow" />
+  <title>Chapter 10 · Object-Oriented Programming | The Coral Book</title>
+  <link rel="canonical" href="https://coralc-lang.github.io/coral-docs/lengthy/10-object-oriented-programming/index.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Chapter 10 · Object-Oriented Programming | The Coral Book" />
+  <meta property="og:description" content="Objects Without Classes" />
+  <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/lengthy/10-object-oriented-programming/index.html" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="stylesheet" href="../../lengthy/book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../../textbook/index.html">Editions</a><a href="../../lengthy/index.html">Lengthy</a><a href="../../speed/index.html">Speed</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Chapter 10</p>
+      <h1>Object-Oriented Programming</h1>
+      <p class="lead">Objects Without Classes</p>
+      <p>Object-oriented programming organises a program around objects: bundles of data and the operations on that data, gathered into types, with the types related to one another by inheritance. The idea grew out of simulation. A program that models a thing gives the thing state, its data, and behaviour, what it can do, and object orientation makes that pairing the central organising unit of a program.</p>
+<p>The languages that named the idea added machinery around it. A <code>class</code> declares the blueprint for an object; a constructor builds one; a destructor releases what it held; inheritance lets one type be a kind of another; <code>virtual</code> and <code>override</code> let a subtype stand in for its base and answer a call in its own way; <code>public</code>, <code>private</code>, and <code>protected</code> fence off the parts of a type that outsiders may not touch. When a book lists the features of an object-oriented language, that is the list.</p>
+<p>Coral is not that language, and it is worth saying so on the first page rather than dressing up the absence. There is no <code>class</code> keyword, no inheritance between types, no virtual methods, no overriding, no abstract or sealed classes, and no access modifiers. If you came to this chapter from Java or C++, the machinery you expect is not here.</p>
+<p>The absence of the keyword is not the absence of the model, though, and this chapter is about the model that is here. Coral has a real object model, built from pieces you have already met: the struct is the type that bundles data with behaviour, the method is behaviour bound to a type, the trait is the interface a type agrees to, and <code>any Trait</code> is the explicit request for a runtime decision. Every question the class world asks has a Coral answer, where is the constructor, where is the destructor, where is the inheritance, and the answers are mostly "the struct, the factory, the scope, and the composition." Assembling those answers is what this chapter does.</p>
+<section><h2 id="s10-1">The Question of Objects</h2></section>
+<p>Start with the thing object orientation is actually for, because the machinery is easier to judge once the goal is clear. A program that models a problem keeps reaching for the same shape: a handful of values that belong together, plus the operations that make sense on them. A point has an x and a y and can be scaled or moved. A vector has a buffer and a length and can be pushed to. A file has a handle and can be read and closed. The data and the operations want to live together, because every time you separate them a reader has to carry both pieces of knowledge in their head at once.</p>
+<p>Object orientation answers that want by making the type the unit that holds both. That is the whole of the productive idea, and it is the part Coral keeps. What the class languages add on top is a set of relationships, inheritance, overriding, access control, for saying how one type relates to another and what parts of it outsiders may reach. Those relationships are what Coral declines, and the rest of this chapter is the accounting of what it uses instead.</p>
+<p>Here is the map, and the sections that follow fill it in. The class becomes the struct. The instance becomes a value of the struct. The constructor becomes a static factory method. The destructor becomes the scope plus the <code>@drop</code> trait. Inheritance becomes composition, and the interface becomes the trait. Virtual dispatch becomes <code>any Trait</code> or a function pointer. Encapsulation becomes the type itself plus the visibility of <code>pub</code>. None of those substitutions loses the productive idea, data and behaviour in one place, and each trades a piece of hidden machinery for something written where you can see it.</p>
+<section><h2 id="s10-2">Structs Are the Class</h2></section>
+<p>A class, in the languages that have the keyword, is a blueprint. It describes the fields every instance will carry and the methods every instance can perform, and the program creates instances from it rather than holding the class itself as a value. Coral's blueprint is the struct, and a value of a struct type is the instance.</p>
+<p>You have already met the standard library's workhorse under this light without naming it as such. Here is the vector, quoted from <code>std::vec</code>, fields and all:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec&lt;T&gt; {
+    T*    data;
+    usize len;
+    usize cap;
+}</code></pre>
+<p>The struct declares the data. <code>Vec&lt;i32&gt;</code> is the type, and a particular vector, three elements, a capacity of four, a buffer on the heap, is a value of it. The five-vector and the thousand-vector are two instances of one blueprint, each carrying its own <code>data</code>, <code>len</code>, and <code>cap</code>.</p>
+<p>The behaviour lives in an extend block beside the declaration, which is <a href="../06-traits-extend-and-polymorphism/index.html">Chapter 6</a>'s arrangement and is worth restating because it is the spine of the object model:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend&lt;T&gt; Vec&lt;T&gt; {
+    static Vec&lt;T&gt; new() {
+        return Vec&lt;T&gt; { .data = null, .len = 0, .cap = 0 };
+    }
+
+    void push(T val) {
+        if (self.len &gt;= self.cap) {
+            usize newCap = self.cap &gt; 0 ? self.cap * 2 : 4;
+            self.reserve(newCap);
+        }
+        self.data[self.len] = val;
+        self.len += 1;
+    }
+}</code></pre>
+<p>The struct and its extend block are one type to the reader, the fields and the operations on them in one place, but two declarations to the compiler. That split is the design choice that pays off for the whole chapter. In a language that fuses data and behaviour into a class, only the class's author can add a method; you cannot reach into a library's class and supply the one method you need. Coral separates them, so an extend block can add behaviour to any type you can see, even one that lives in another module. That sounds like a small convenience. It is what makes traits and dynamic dispatch possible, because a conformance is just an extend block that names a trait.</p>
+<p>Two spelling notes carry over from the last chapter. <code>pub</code> on the struct and on the extend block makes them visible outside the module; without it, they are private to the file. And a type you do not want extended can say so, with <code>#[[no_extend]]</code> on the declaration, sealing its interface to exactly the methods it ships:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_extend]]
+struct SecurityToken {
+    u64 secret;
+    i64 expiry;
+}</code></pre>
+<p>Most types want to be open, so sealing is a decision that requires an annotation rather than something that happens to you.</p>
+<section><h2 id="s10-3">Value Semantics and Reference Semantics</h2></section>
+<p>The class-versus-struct distinction in many languages is a distinction between reference semantics and value semantics, and it is the first place Coral's answer surprises people coming from the class world. A reference type is shared: two variables of a reference type can name the same object, and a change through one is visible through the other. A value type is copied: each variable holds its own value. In the class languages a class is usually a reference type; in Coral the struct is a value, and there is no reference type at all.</p>
+<p>A variable of a struct type holds the struct's fields. Assigning the struct to another variable copies those fields; passing it to a function passes the fields; returning it moves them out. There is no hidden address underneath, no identity the language manages, and no aliasing you did not write. Two <code>Point</code> values with the same x and y are the same point in every way that matters, because a point is its coordinates and nothing else.</p>
+<p>In plain words, a struct variable is like a box of pieces, not a pointer to a shared box. Hand a friend a copy of the pieces and the two boxes are separate: changing your pieces does not change theirs. A pointer (<code>T*</code>) is the opposite, it is an address two people can share, and Coral makes you write the pointer when you want that sharing.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Point { f64 x; f64 y; }
+Point a = Point { .x = 1.0, .y = 2.0 };
+Point b = a;          // b gets its own copy of the two fields
+b.x = 9.0;
+println(&quot;{} {}&quot;, a.x, b.x);   // 1.0 9.0, a is untouched</code></pre>
+<p>Two <code>Point</code> variables, two independent boxes of coordinates. Nothing in that snippet can make <code>a</code> change when <code>b</code> does, and that is the whole promise of value semantics.</p>
+<p>That simple story has one refinement, and it is the modern ownership model from <a href="../11-memory-management/index.html">Chapter 11</a> poking its head in. When a struct owns a resource, a heap buffer, a file handle, a lock, the copy of its fields would leave two variables pointing at one resource, and if both released it, the resource would be freed twice. Coral's rule for those types is that assignment moves rather than duplicates. <code>Vec&lt;u32&gt; a = ...; Vec&lt;u32&gt; b = a;</code> copies the three fields, and the compiler cancels <code>a</code>'s automatic cleanup, so exactly one variable is left responsible for the buffer. The move is what the fields look like they should be; the difference is that the compiler knows the source has given its resource away.</p>
+<p>So value semantics and moves are the same idea seen from two sides: a struct is its fields, and when the fields include ownership, the assignment hands that ownership over rather than sharing it. To share on purpose, you write the sharing down, with a pointer, or with a counted smart pointer:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;u32&gt; source = Vec&lt;u32&gt;::withCap(16);
+Vec&lt;u32&gt;* shared = &amp;source;          // an explicit reference, no copy
+shared-&gt;push(7);                     // the original sees the change
+
+SharedPtr&lt;Config&gt; config = ...;      // several holders, one count
+SharedPtr&lt;Config&gt; alias;
+alias.ptr = config.ptr;              // sharing, written by hand
+alias.rc  = config.rc;
+alias.rc-&gt;count += 1;</code></pre>
+<p>The difference between the class model and Coral here is not that Coral lacks references. It is that the reference is a type you write (<code>T*</code>, <code>SharedPtr&lt;T&gt;</code>) instead of a default you inherit. A value parameter is a copy or a move, a pointer parameter is a reference, and the signature says which is which. The value-versus-reference question is answered at each parameter, and the answer is visible in the type.</p>
+<p>Simply put, a struct value is a box you own, and a pointer is a shared address you chose to write down. When you pass a struct by value, you hand over a copy (or, for an owning type, the original itself); when you pass a pointer, you hand over the address and both sides see the same data. In a language where objects are references by default, this sharing happens invisibly; in Coral it happens only when a <code>*</code> appears in the type.</p>
+<section><h2 id="s10-4">Methods and the Receiver</h2></section>
+<p>A method is a function bound to a type: a function whose receiver is a value of that type. You met methods in <a href="../06-traits-extend-and-polymorphism/index.html">Chapter 6</a>, so this section only fixes the object-oriented vocabulary and the two spellings.</p>
+<p>If the word "receiver" is unfamiliar, it simply means the value the method was called on. When you write <code>c.bump()</code>, the value <code>c</code> is the receiver, and inside <code>bump</code> it is available under the name <code>self</code>. Calling a method is the same as calling a function with the receiver as its first argument, just written in the order you read naturally.</p>
+<p>The receiver of a method is the value the method was called on, and it is available inside the body under the name <code>self</code>. You do not write it in the parameter list; Coral supplies it, and the call site names it with a dot:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Counter {
+    void bump() {
+        self.value += 1;
+    }
+
+    i32 current() const {
+        return self.value;
+    }
+}</code></pre>
+<p><code>bump</code> mutates the receiver through <code>self</code>; <code>current</code> promises not to, and the trailing <code>const</code> is the promise. That promise has teeth: a const method that assigns to <code>self</code> is an error at the assignment, and a const method can be called on a value the caller considers read-only where a mutating one cannot.</p>
+<p>A method that belongs to the type rather than to any particular value is <code>static</code>, and it has no <code>self</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Counter {
+    static Counter start() {
+        return Counter { .value = 0 };
+    }
+}</code></pre>
+<p>Statics are called on the type with the double colon, <code>Counter::start()</code>; instance methods are called on a value with the dot, <code>c.bump()</code>. The <code>::</code> versus <code>.</code> distinction is the distinction between a type and a value, and it is visible at every call site, which is the whole point.</p>
+<p>A common beginner stumble is mixing these up. If the thing on the left is a type name, use <code>::</code>; if it is a value you declared, use <code>.</code>. <code>Counter::start()</code> makes a new counter; <code>c.bump()</code> changes the one you already have.</p>
+<p>There is one more spelling you will meet in the standard library: the explicit receiver, written as a first parameter instead of implied by <code>self</code>. <code>T get(const self*)</code> and <code>void bump(self*)</code> mean the same thing as the trailing-<code>const</code> and mutating forms above, with the receiver's pointer spelled out. The implicit form is the dominant one in application code because the bodies read more naturally; the explicit form appears where a method must hand the receiver onward or store it. Both describe the same method.</p>
+<section><h2 id="s10-5">Encapsulation and Information Hiding</h2></section>
+<p>Encapsulation is the practice of bundling data with the operations on it and controlling how the data is reached. The class languages enforce the control with <code>public</code>, <code>private</code>, and <code>protected</code>; Coral has none of those keywords. A field is reachable by any code that can name its type, and a method is callable by any code that can name its struct. What Coral controls instead is visibility between modules, and that is a single, coarse switch: <code>pub</code> or not.</p>
+<p>The reason the finer-grained keywords are absent is that Coral hides implementation with the type rather than with the field. An opaque type hides its storage behind a layout that has no meaning to the reader. A distinct type hides its representation behind a name:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct File = i32;</code></pre>
+<p>A <code>File</code> is an <code>i32</code> under the hood, but the type system will not let you use an <code>i32</code> where a <code>File</code> is expected, or a <code>File</code> where an <code>i32</code> is. The representation is hidden by the type itself, checked by the compiler, and no modifier is needed to protect it. When a type's fields really are its interface, the way <code>Vec</code>'s <code>data</code>, <code>len</code>, and <code>cap</code> are, the library leaves them public on purpose, because a documented layout is more useful than a guarded one.</p>
+<p>On top of the types, the library adds a convention: an underscore at the front of a name marks it internal. <code>_ensure</code>, <code>_grow</code>, <code>_normalize</code>, and <code>_sortByRange</code> are the machinery the public methods call, and the underscore tells the reader not to treat them as part of the type's surface. Nothing enforces the convention; the library honours it, and it works because the library's readers are its writers. Encapsulation in Coral is therefore structural and honest: a field is hidden when the type makes it meaningless to look at, marked internal when it is the library's own business, and otherwise open because there was never a reason to close it.</p>
+<section><h2 id="s10-6">Constructors</h2></section>
+<p>A constructor is the code that brings an object into existence and leaves it in a valid state. The class languages make it a special method with the class's name, and the reason it matters is the invariant. An invariant is a property a type promises always to hold, a vector's length is never greater than its capacity, a string's length is never greater than its allocation, and the constructor is where the invariants are established. An object built wrong fails later, subtly, in a method that trusted the invariant.</p>
+<p>Coral has one kind of constructor, and it is the static factory. A type is built by a static method that fills the fields and returns the value, and the standard library's constructors all follow one shape: declare the variable, set every field, return it.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend&lt;T&gt; Vec&lt;T&gt; {
+    static Vec&lt;T&gt; withCap(usize capacity) {
+        return Vec&lt;T&gt; {
+            .data = alloc&lt;T&gt;(capacity),
+            .len  = 0,
+            .cap  = capacity
+        };
+    }
+}</code></pre>
+<p>That single method carries the invariant into the type. Because <code>cap</code> is set to the size that was actually allocated and <code>len</code> to zero, the rule "length never exceeds capacity" holds from the first instant, and every other method may rely on it. The constructor is not an incantation; it is the setup code, named and visible.</p>
+<p>Factories are called on the type with <code>::</code>, and the name says what they build: <code>Vec&lt;i32&gt;::new()</code>, <code>Vec&lt;i32&gt;::withCap(1024)</code>, <code>Duration::fromSecs(seconds)</code>, <code>str::fromCstr(cstr)</code>. There is no constructor keyword and no special construction syntax, because the static method is the constructor and the field assignment is the construction. Because names distinguish the forms, there is no constructor overloading either, <code>new</code> and <code>withCap</code> are two constructors of the vector, named for what they do.</p>
+<p>The class world's copy and move constructors have no place here, and Section10.3 already said why. A copy is a struct assignment, which copies the fields; a move is the same assignment on an owning type, which transfers the resource. Neither is code the type supplies. If a type needs a deep copy of what it owns, it provides a method that does the copy, <code>String::clone</code> is the standard example, and the caller writes that method's name, so the copy is never a surprise the compiler performs behind a <code>=</code>.</p>
+<section><h2 id="s10-7">Destructors and Deterministic Cleanup</h2></section>
+<p>A destructor is the constructor's mirror: the code that runs when an object's life ends and releases what it held. The class languages attach it to the class and have the runtime call it; a garbage-collected language runs a finalizer at the collector's leisure. Coral's answer is the scope, and it comes in three forms that <a href="../11-memory-management/index.html">Chapter 11</a> develops in full. This section names them so the object model is complete.</p>
+<p>The first form is the ordinary cleanup method, and the standard library's owning types declare it under the name <code>dispose</code>. It is a method like any other, called at a point the program chooses:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend&lt;T&gt; Vec&lt;T&gt; {
+    void dispose() {
+        dealloc&lt;T&gt;(self.data);
+        self.data = null;
+        self.len  = 0;
+        self.cap  = 0;
+    }
+}</code></pre>
+<p>The release happens when <code>dispose</code> is called and not before, which is the determinism the manual model buys: the memory is freed at a line you can point at.</p>
+<p>If cleanup-on-exit is new, think of <code>defer</code> as promising the janitor a job before you leave the room. Whichever door you exit through, the normal end of the block, or an early return, the cleanup runs on the way out. Writing the cleanup next to the acquisition, in the same place, is what makes it easy to see that the pair is complete.</p>
+<p>The second form is <code>defer</code>, the statement that binds a cleanup to a block and guarantees it on every exit. Where a destructor is tied to a scope by the language, <code>defer</code> ties it by writing the tie down:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void process(File f) {
+    defer fileClose(f);
+    // ... read the file ...
+    // fileClose(f) runs here, on every path out, including an early return
+}</code></pre>
+<p>The third form is the one that most resembles a destructor, and it is the compiler-provided <code>@drop</code> trait from <a href="../06-traits-extend-and-polymorphism/index.html">Chapter 6</a>. A type that conforms to <code>@drop</code> gets its cleanup call emitted automatically at the end of every scope where a value of the type dies, once, on every exit path, in reverse order of declaration, exactly like the <code>defer</code> statements of the same scope:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend&lt;T&gt; SmartPtr&lt;T&gt; : @drop {
+    void drop() {
+        self.dispose();
+    }
+}</code></pre>
+<p>With this conformance, every <code>SmartPtr&lt;T&gt;</code> local is released at its closing brace, and the program writes no release at all. That is the destructor, opt-in and named.</p>
+<p>One honest note, and it returns in full in the memory chapter. The standard library's own files mostly free by hand rather than relying on <code>@drop</code>, and they say so at the top of the file with <code>#[[no_drop_all]]</code>, which turns automatic cleanup off for the whole file. Library code lays out and frees its bytes deliberately, and skipping the auto-RAII work keeps the library's compile times down, since the library is compiled by every program that imports it. Your application file, which has no such attribute, gets the automatic release. You never call <code>drop()</code> yourself, E1301 forbids it, because a value's scope will end and the automatic call will run too. If you need to release something early, you call its ordinary cleanup method, or you scope the value so the boundary you want is the one you wrote.</p>
+<p>A common mistake here is to call the cleanup yourself when the compiler is already going to. If a value conforms to <code>@drop</code>, the scope fires its <code>drop</code> on exit; a hand-written <code>drop()</code> call is E1301 precisely because it would run the release twice. The rule of thumb: call the ordinary method (<code>dispose</code>) if you want to release early, and otherwise let the scope finish and do it for you once.</p>
+<section><h2 id="s10-8">Inheritance and Its Absence</h2></section>
+<p>Inheritance is a relationship in which one type is defined as an extension of another. The subclass gets everything the base has and adds its own, and the is-a relationship, a circle is a kind of shape, a cat is a kind of animal, is what inheritance expresses. Because it is a relationship between types, it drags in a whole family of machinery: single and multiple inheritance, mixins, abstract and sealed classes, method overriding, virtual methods, the diamond problem, virtual inheritance, and the linearisation rules that untangle the diamond.</p>
+<p>Coral has none of it, and the absence is a stated position rather than a gap. There is no subtyping: a type is exactly what it is, and no value of one type stands in for a value of another. That single fact empties the whole list. There is no single or multiple inheritance because there is no inheritance. There are no mixins and no abstract or sealed classes because there are no classes. There is no method overriding because a method belongs to its struct and there is no base method to replace. There is no diamond problem because a diamond is drawn with inheritance edges and the graph has no edges. There is no linearisation because there is no hierarchy to order. The machinery has no subject, and Coral does not carry it around empty.</p>
+<p>What replaces inheritance is the pair Section10.9 and Section10.10 take up: composition for building a type out of other types, and traits for promising a set of operations. Where the class world says "a Circle is a Shape," Coral says "a Circle has these fields" and "a Circle keeps the Shape promise." The is-a relationship has no type form; the has-a relationship does, and the promise relationship does, and together they cover what inheritance was for.</p>
+<section><h2 id="s10-9">Composition and Delegation</h2></section>
+<p>Composition is building a type by containing other types. Where inheritance says a type is a kind of another, composition says a type has another. The containing type holds the contained one as a field, and its behaviour is built from the contained type's operations. Composition over inheritance is the rule of thumb that prefers the has-a building to the is-a building, because it keeps the pieces independent; in Coral it is not a preference, it is the only option, and the library is the proof that it is enough.</p>
+<p>Delegation is composition in action: a type contains another and forwards its operations to it. The standard library's queue is the cleanest example. A queue is a double-ended queue with the far door removed.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Queue&lt;T&gt; {
+    Deque&lt;T&gt; inner;
+}
+
+pub extend&lt;T&gt; Queue&lt;T&gt; {
+    static Queue&lt;T&gt; new() {
+        return Queue&lt;T&gt; { .inner = Deque&lt;T&gt;::new() };
+    }
+
+    void enqueue(T val)   { self.inner.pushBack(val); }
+    T dequeue()           { return self.inner.popFront(); }
+    T peek()              { return self.inner.front(); }
+    usize count() const   { return self.inner.count(); }
+    bool isEmpty() const  { return self.inner.isEmpty(); }
+    void dispose()        { self.inner.dispose(); }
+}</code></pre>
+<p>Every operation forwards. <code>enqueue</code> is <code>pushBack</code> under another name, <code>dequeue</code> is <code>popFront</code>, and the queue's behaviour is the deque's behaviour with fewer doors. The virtue is that the queue does not copy the deque's logic; it reuses it. When the deque's <code>pushBack</code> gets faster or its <code>popFront</code> gets a fix, the queue inherits the improvement for free, because it forwards. The reuse that inheritance promises, the subclass sharing the base's implementation, is delivered here without a subclass relationship.</p>
+<p>Simply put, inheritance says "a queue is a kind of deque"; composition says "a queue has a deque." The second is often the truer statement, because a queue is not really interchangeable with a general deque, it is a deque with a narrower promise. By holding one as a field rather than claiming to be one, the queue keeps its own identity and its own interface, and the deque stays free to change underneath it.</p>
+<p>A decorator is a delegation with behaviour added at the seam. A logging queue wraps a queue, forwards the core operations, and contributes an extra:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct LoggingQueue&lt;T&gt; {
+    Queue&lt;T&gt; inner;
+}
+
+pub extend&lt;T&gt; LoggingQueue&lt;T&gt; {
+    void enqueue(T val) {
+        println(&quot;enqueue&quot;);
+        self.inner.enqueue(val);
+    }
+
+    T dequeue() {
+        T v = self.inner.dequeue();
+        println(&quot;dequeue&quot;);
+        return v;
+    }
+}</code></pre>
+<p><code>LoggingQueue</code> is a queue by interface and a wrapper by construction, and the same pattern works for any seam you want to observe. The standard library composes more than one level: the set is a hash map with a restricted interface, and the cache is a map and a list working together, consulting one and reordering the other. In every case the containing type is not a descendant of what it holds; it is built from it, and the pieces stay free to change on their own.</p>
+<section><h2 id="s10-10">Traits as Interfaces</h2></section>
+<p>The interface, the named set of operations a piece of shared code is written against, is the trait, and <a href="../06-traits-extend-and-polymorphism/index.html">Chapter 6</a> covers it completely. What belongs in this chapter is the object-oriented framing, because the trait is what replaces the interface and a large part of inheritance at once.</p>
+<p>In plain words, a trait is a job description. It lists the things a type must be able to do, <code>area</code>, <code>perimeter</code>, <code>name</code>, without saying how. Each type that applies for the job writes its own answers in an extend block, and the compiler checks that every listed duty was actually filled. A function written against the job description then works with any type that holds the job.</p>
+<p>Picture a drawing program that holds a list of shapes and must report the largest area. Written with no interface machinery, it inspects each shape's kind and switches: the circle branch, the rectangle branch. Every new kind of shape means editing the code that measures shapes, and every place that code lives is a place to miss. The trait fixes this. It declares the operations once, each type supplies its own bodies in an extend block, and the measuring code is written against the operations rather than against any one kind.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Shape {
+    f64 area() const;
+    f64 perimeter() const;
+    str name() const;
+}
+
+pub extend Circle : Shape {
+    f64 area() const      { return 3.14159 * self.radius * self.radius; }
+    f64 perimeter() const { return 2.0 * 3.14159 * self.radius; }
+    str name() const      { return &quot;circle&quot;; }
+}</code></pre>
+<p>The colon reads "satisfies": <code>Circle : Shape</code> means Circle keeps the Shape promise. Notice what the block does not say. There is no sentence that a Circle is a kind of Shape; Circle stays exactly Circle and merely promises the three methods, implemented with the circle's own formulas. The conformance is nominal, a type must mean to satisfy the trait and say so, and because it is declared it can be checked, method by method. A missing method is E1203 and a wrong signature is E1202, and the check happens at the conformance site rather than at some distant call.</p>
+<p>A type may satisfy several traits, one block each, and the traits do not arrange themselves into a hierarchy. One rule keeps the resolution simple: a type may conform to a given trait only once, so there is exactly one implementation of <code>Shape::area</code> for Circle and no ambiguity to break. (Defining the same method twice for one type is E1201.) And now the payoff, shared code written against the trait, where the requirement is checked at each instantiation rather than written as a clause on the signature:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">f64 largestArea&lt;T&gt;(Vec&lt;T&gt; shapes) {
+    f64 best = 0.0;
+    for (T s : shapes) {
+        f64 a = s.area();
+        if (a &gt; best) best = a;
+    }
+    return best;
+}</code></pre>
+<p>The body calls <code>area()</code> on values of <code>T</code> without knowing what <code>T</code> is. When the compiler generates the function for a particular <code>T</code>, it confirms that <code>T</code> has the operation; call it with a type that does not satisfy Shape and the build fails naming the type. The function is written once and works for a vector of circles, of rectangles, and of triangles written next week. Because the concrete type is known at each instantiation, the call resolves to the right formula at compile time, with no table lookup and no runtime cost. That is the interface whole: declare the promise, implement it per type, write the shared code against the trait, let the compiler check everything before the program exists.</p>
+<section><h2 id="s10-11">Dynamic Dispatch: any Trait and Function Pointers</h2></section>
+<p>Every conformance so far has been static: the concrete type is known, and the call resolves to the one implementation. Sometimes the concrete type is not known, you have a list mixing circles and squares, and you want to call <code>area</code> on each in turn. That is what <code>any Trait</code> is for.</p>
+<p>Think of a universal remote. It holds a row of buttons and can control any television that speaks the standard signal; it does not contain a television, only a reference to one plus the knowledge to send the right commands. Which television answers is decided when you point it, not when it was made.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;any Shape&gt; shapes = Vec&lt;any Shape&gt;::new();
+shapes.push(Circle { .radius = 1.0 });
+shapes.push(Square { .side = 2.0 });
+
+for (any Shape s : shapes) {
+    println(&quot;{}: area {}&quot;, s.name(), s.area());
+}</code></pre>
+<p>A value of type <code>any Shape</code> is a fat pointer: a reference to the value and a reference to its Shape implementation. Calling <code>s.area()</code> dispatches through the second reference to the concrete implementation, so the call site does not know whether it holds a circle or a square and the decision is made at runtime. This is the trait object, and it is the dynamic half of polymorphism. The trade-offs are the usual ones, an extra indirection per call, a pointer-sized pair rather than a plain reference, and no inlining across a boundary the compiler cannot see, and Coral makes them visible rather than hiding them. Through an <code>any Shape</code> you can call exactly the methods Shape declares and no others; the trait is the window, and you see what it frames.</p>
+<p>The other form of runtime choice is the function pointer, and it is the one the collections use. A hash map does not know at compile time how to hash or compare its keys, so it stores the functions:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct HashMap&lt;K, V&gt; {
+    usize(K)   hashFn;
+    bool(K, K) eqFn;
+    // ...
+}</code></pre>
+<p>The constructor takes the two functions as arguments, and when the map needs to hash a key it calls the stored function; which function runs was decided when the map was built. The map's ordered cousin stores a comparison function, <code>i32(K)</code>, for the same reason. This is dynamic dispatch written plainly: the behaviour is chosen by value, stored in the object, and invoked through the pointer, and the reader sees the choice in the field list. The class languages hide a vtable and a slot per virtual method; Coral shows the pointer and its type, and the compiler checks that the function you store has the shape the field declares.</p>
+<section><h2 id="s10-12">Polymorphism in Coral</h2></section>
+<p>Polymorphism is the ability of one piece of code to work with values of many types, and the three kinds the guide names reduce to two in Coral, because the third has no subject.</p>
+<p>Parametric polymorphism is the generic. A function or type parameterised by a type, <code>Vec&lt;T&gt;</code>, a <code>HashMap&lt;K, V&gt;</code>, <code>largestArea&lt;T&gt;</code>, works for every concrete argument the compiler checks, and each use instantiates the parameter. This is Coral's mainstay, and the collections are built on it.</p>
+<p>Ad-hoc polymorphism is the same operation meaning different things on different types: <code>area</code> on a Circle and <code>area</code> on a Square. Coral's ad-hoc polymorphism is the trait, and the resolution is static, chosen per use at compile time.</p>
+<p>Subtype polymorphism is the class world's kind, where a value of a subclass stands in for a value of the base and dispatch finds the subclass's version. Coral has no subtyping, so the kind does not exist. Its purpose, write code against a general shape and run it on every concrete type, is served by the trait, written against the operations and resolved per type, or by <code>any Trait</code> when the concrete type is not known until runtime. The polymorphism is not lost; it is renamed, and the renaming is the type-first style. Each kind is checked at compile time and each is visible in the signature, which is where the next section takes over.</p>
+<section><h2 id="s10-13">Pattern Matching on Types</h2></section>
+<p>The class languages reach pattern matching through the visitor pattern and double dispatch, built on virtual calls. Coral's answer is the switch and the compile-time comparison, and it needs no special machinery.</p>
+<p>A switch over a variant dispatches on the shape of a value, and the compiler checks that every case is covered:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Shape {
+    Circle    { f64 radius; }
+    Rectangle { f64 width; f64 height; }
+    Point,
+}
+
+pub extend Shape {
+    f64 area() const {
+        switch (self) {
+            Shape::Circle { radius }           =&gt; 3.14159 * radius * radius,
+            Shape::Rectangle { width, height } =&gt; width * height,
+            Shape::Point                       =&gt; 0.0,
+        }
+    }
+}</code></pre>
+<p>The pattern <code>Shape::Circle { radius }</code> both checks that this is a circle and binds its radius to a local name the arm's body can use. A switch over a variant or an enum must be exhaustive or carry an <code>else</code>; forget a case and the compiler reports it (E0608), naming what is missing. That is why adding a case to a variant is safe, every switch that handles it refuses to compile until it handles the new case too.</p>
+<p>If pattern matching is new, it helps to walk one example slowly. Give the <code>Shape</code> variant the value <code>Shape::Circle { .radius = 2.0 }</code>. The switch asks each arm in turn: is this a <code>Circle</code>? Yes. So it makes a local <code>radius</code> holding <code>2.0</code> and runs that arm's body, computing <code>3.14159 * 2.0 * 2.0</code>. The other arms are never tried.</p>
+<p>The same dispatch happens on types inside a generic, using a <code>comptime</code> block. Because the type parameter is known during the build, a switch over it resolves to a single arm, and only that arm is generated:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void render&lt;T&gt;(T value) {
+    comptime {
+        switch (@typeof(value)) {
+            i32 =&gt; printInt(value),
+            f64 =&gt; printFloat(value),
+            else =&gt; @compileError(&quot;render has no case for this type&quot;),
+        }
+    }
+}</code></pre>
+<p>The type parameter is a compile-time value, the switch is decided while the program is being built, and the cases that do not match are never generated at all. This is pattern matching on types, and <code>@compileError</code> is how a generic states a requirement in its own words when the body alone would give a less clear message. When you do want the visitor pattern, you build it from these pieces: a <code>switch</code> over the element's variant dispatches by kind, a function pointer field chosen at construction dispatches the call the way a visitor's vtable would, and the double dispatch is the two hops written out. The patterns are available as code, and the code is the honest form.</p>
+<section><h2 id="s10-14">The Object Lifecycle</h2></section>
+<p>Every object has a life: it is created, it is used, and it is released. The class world formalises the stages into construction order and destruction order; Coral's stages are the factory, the scope, and the drop.</p>
+<p>Construction order is simple because there is no hierarchy. The constructor declares the value, fills the fields in the order the code writes, and returns; there is no base to build first and no hidden step, so the object is usable the moment the factory returns it and its invariants are whatever the factory established. Destruction order mirrors it: automatic drops run in reverse order of the values' declarations, innermost scope first, exactly like the <code>defer</code> statements of the same scope. Two locals released at a closing brace are released last-declared-first, so a value that depends on another is torn down before the thing it depends on.</p>
+<p>Copy and move are the third stage, and Coral's answer is the one Section10.3 gave. There are two cases and no more: a plain struct assignment copies the fields, and an assignment on an owning type moves the resource by cancelling the source's automatic release. There is no ownership transfer that a separate runtime tracks, the compiler handles the move, and beyond it the ownership is the writer's, as the memory chapter explains. The lifecycle is explicit at every point: the factory names the birth, the scope names the death, and the assignment says whether the value was copied or handed over.</p>
+<section><h2 id="s10-15">Singletons, Pools, and Flyweights</h2></section>
+<p>The class world's final handful of patterns are about managing objects rather than defining them, and it is worth naming each before Coral's answer.</p>
+<p>A singleton is a class that permits one instance, used when a program wants a single global point of access. Its value is that every part of the program reaches the same object by the same name; its cost is the hidden global state. An object pool is a set of prebuilt instances that are borrowed and returned instead of created and destroyed, used when building an object is expensive and the churn is high. A flyweight is an object shared across many uses because its state is too heavy to duplicate, with the shared state stored once and the per-use state kept by the user.</p>
+<p>Coral's answer to the singleton is that the pattern is not the idiom, for the same reason the language passes values explicitly everywhere: hiding a piece of state behind a global accessor makes it reachable from everywhere and accountable to no one. The standard library does keep a small amount of module-level state, the default allocator is a module-level pointer, and it is read and replaced through ordinary functions, but that is a deliberate, visible global, not a singleton class with a private instance and a <code>getInstance</code>. When a program needs one of something, it creates one value and passes it where it is needed, and the compiler's generics make that cheap.</p>
+<p>The pool, by contrast, is a real standard library type and the pattern made concrete. <code>Pool&lt;T&gt;</code> holds a region carved into fixed-size blocks linked into a free list, hands a block out on <code>acquire</code>, and takes it back on <code>release</code>, reusing the block instead of asking the allocator:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Pool&lt;Node&gt; pool = Pool&lt;Node&gt;::new();
+Node* n = pool.acquire();     // a recycled block, or null if it cannot grow
+// ... use n ...
+pool.release(n);
+pool.dispose();               // return the whole region</code></pre>
+<p>Reuse costs two pointer stores instead of an allocator round trip, and because the blocks come from one small region the working set stays hot. <a href="../11-memory-management/index.html">Chapter 11</a> covers the allocator form of the same idea.</p>
+<p>The flyweight has no type of its own, and it does not need one, because Coral's sharing is already explicit. A program that wants a thousand references to one heavy object stores the pointer and copies the pointer; the sharing is written, and the reader sees it. That is the flyweight's discipline, spelled out. Every pattern in this section is available in Coral as code, and the language's contribution is that the code is visible and checked.</p>
+<section><h2 id="s10-16">A Worked Example: The Shape Library</h2></section>
+<p>The pieces assemble into a small library, and the assembly is the object model in miniature: a trait for the operations, a few concrete types, and a client that works through the trait.</p>
+<p>The trait states the rules; then the concrete shapes implement it, each with its own fields and its own formulas:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Square {
+    f64 side;
+}
+
+pub extend Square : Shape {
+    f64 area() const      { return self.side * self.side; }
+    f64 perimeter() const { return 4.0 * self.side; }
+    str name() const      { return &quot;square&quot;; }
+}</code></pre>
+<p>A client that reports on a collection uses the trait object, because the collection is heterogeneous:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void report(Vec&lt;any Shape&gt; shapes) {
+    for (any Shape s : shapes) {
+        println(&quot;{}: area {}, perimeter {}&quot;, s.name(), s.area(), s.perimeter());
+    }
+}</code></pre>
+<p><code>report</code> is written once, against Shape, and it runs for a vector of circles, a vector of squares, or a vector of any shape the library adds later. Adding a shape is a new struct and a new conformance; <code>report</code>, the trait, and every existing shape stay unchanged. That is the open-closed idea, open to new types, closed to modification of the code that uses them, and it is achieved by the trait and the dispatch through it. Notice the choice of <code>any Shape</code> rather than a generic: the vector mixes concrete types, so the common dynamic type is exactly what makes the collection possible. A generic could report a homogeneous <code>Vec&lt;T&gt;</code>, but not a mixed one, because <code>T</code> would have to be a single type. The choice between a generic and <code>any</code> follows from the data, not from taste.</p>
+<p>Why this matters in a real program: this is the shape behind a plugin system, a renderer that draws many kinds of object, or a payment handler that supports many providers. You write the walking, reporting, or drawing code once against the trait, and every new kind of thing is a new type plus a conformance, no existing function is edited. The one cost is the runtime indirection of <code>any Shape</code>, which is exactly the trade the class world pays for a virtual call, made visible instead of hidden.</p>
+<p>A common mistake is to reach for <code>any Shape</code> when every element is the same type. If your vector holds only circles, <code>Vec&lt;Circle&gt;</code> plus a generic <code>report&lt;T&gt;</code> is faster and is checked at compile time; <code>any</code> earns its keep only when the elements genuinely differ at runtime.</p>
+<section><h2 id="s10-17">The Encapsulation Tradeoff</h2></section>
+<p>Encapsulation is always a trade between safety and reach. The class languages let a type declare some members private, forcing the program through the type's methods; the safety is that the internals cannot be disturbed, and the cost is that the program must go through the interface.</p>
+<p>Coral's trade is different, and it is worth stating plainly because it is a trade the reader should evaluate rather than assume. Every field of an ordinary struct is reachable by any code that can name the type, so the safety does not come from blocking access. It comes from making the internals not worth disturbing. The opaque type hides its storage behind a meaningless layout. The distinct type hides its representation behind a name, so <code>File</code> and <code>i32</code> are not interchangeable. The underscore marks the internal methods. <code>pub</code> controls what crosses a module boundary and nothing else.</p>
+<p>What the reader pays for this is discipline. A field is reachable; whether it should be touched is documented by the type's declaration, not enforced by a keyword. What the reader gains is that nothing is hidden, every part of a type's behaviour is in the code that defines it, and the truth about how a value is laid out is available to anyone who needs it. That is the same trade the rest of the language makes: the rigour lives in what is written, and the type system guards the invariants that can be expressed as types rather than the fields that are merely private.</p>
+<section><h2 id="s10-18">A Worked Example: The Repository</h2></section>
+<p>The repository pattern gathers the model's patterns in one place: a trait as the interface, composition for the implementation, and a client written against the trait rather than a concrete type.</p>
+<p>The trait names the operations. <code>Record</code> is an ordinary struct with an id and a value, and the repository stores and finds records by id:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Repository {
+    Option&lt;Record&gt; findById(u64 id);
+    void insert(Record r);
+}</code></pre>
+<p>The in-memory implementation composes a <code>Vec&lt;Record&gt;</code>, and the methods forward to it:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct MemoryRepository {
+    Vec&lt;Record&gt; records;
+}
+
+pub extend MemoryRepository : Repository {
+    Option&lt;Record&gt; findById(u64 id) {
+        for (Record r : self.records) {
+            if (r.id == id) return Option&lt;Record&gt;::Some { .value = r };
+        }
+        return Option&lt;Record&gt;::None;
+    }
+
+    void insert(Record r) {
+        self.records.push(r);
+    }
+}</code></pre>
+<p><code>findById</code> returns <code>Option&lt;Record&gt;</code> rather than a pointer that might be null, which is the type-safe spelling of possible absence: the caller cannot forget to check, because there is no value to use until unwrapping. A client written against the trait works for any implementation:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void touch&lt;R&gt;(R repo, u64 id) {
+    Option&lt;Record&gt; found = repo.findById(id);
+    if (found.isSome()) {
+        Record r = found.unwrap();
+        r.value += 1;
+        repo.insert(r);
+    }
+}</code></pre>
+<p><code>touch</code> never names <code>MemoryRepository</code>. It names the operations the trait declares, and the compiler checks at the instantiation that <code>R</code> supplies them. Swapping in a repository backed by a database is a new struct and a new conformance, and <code>touch</code> is unchanged. Composition, the trait, and static resolution are the object model's answer to the design the class world does with inheritance, and the answer is the same pattern in the language's own shape.</p>
+<section><h2 id="s10-19">The OOP Verdict</h2></section>
+<p>The chapter ends where it began, with the qualifier. Coral is not an object-oriented language in the class sense, and the absent machinery has been named without apology: no classes, no inheritance, no virtual methods, no overriding, no access modifiers, and no destructor in the class sense, the <code>@drop</code> trait and the scope standing in as the automatic release.</p>
+<p>But the object model is real. The struct is the class-like type, the method is its behaviour, the factory is its constructor, the scope and <code>@drop</code> are its destructor, the trait is its interface, the composition is its inheritance, and <code>any Trait</code> and the function pointer are its dynamic dispatch. What Coral keeps is the productive core of object orientation, data and behaviour in one type, and what it drops is the hierarchy of hidden relationships the class model builds around it. The result is a model in which the relationships are values (a contained field, a promise, a function pointer) rather than keywords, so every one of them is visible at the point it is used. The struct is enough, and the library, which is built entirely from these pieces, is the proof.</p>
+<section><h2 id="s10-20"><a href="../10-object-oriented-programming/index.html">Chapter 10</a> Summary</h2></section>
+<p>Object-oriented programming organises a program around objects, and Coral's object model is the struct, the method, the trait, and the composition, with none of the class machinery.</p>
+<p>The struct is the class-like type, holding fields and, in an extend block, the methods that operate on them; a value of the struct type is an instance. <code>pub</code> controls visibility across modules, and <code>#[[no_extend]]</code> seals a type against further extension.</p>
+<p>Structs have value semantics: a variable holds its fields, assignment copies them, and for an owning type the assignment is a move that transfers the resource rather than duplicating it. Sharing is written, with a pointer or a counted smart pointer, never assumed.</p>
+<p>Methods bind to their type through the receiver, available implicitly as <code>self</code> or spelled as an explicit first parameter. Const methods promise not to mutate; static methods belong to the type and are called with <code>::</code>; instance methods are called on a value with <code>.</code>.</p>
+<p>Coral has no <code>public</code>, <code>private</code>, or <code>protected</code>. Encapsulation is the opaque type, the distinct type, the underscore convention, and the module-level switch <code>pub</code>, the type hides what it can and the rest is a documented interface.</p>
+<p>A constructor is a static factory method: declare the value, fill every field, return it, called on the type with <code>::</code>. It establishes the type's invariants, and it is the whole of construction, there are no copy or move constructors.</p>
+<p>A destructor is the scope. Releasing happens through an ordinary cleanup method such as <code>dispose</code>, through <code>defer</code>, or automatically through the compiler-provided <code>@drop</code> trait, whose cleanup is emitted at the end of every scope where a value dies, once, in reverse order of declaration. The standard library's own files opt out with <code>#[[no_drop_all]]</code> and free by hand.</p>
+<p>Inheritance does not exist: no subtyping, no single or multiple inheritance, no mixins, no abstract or sealed classes, no overriding, no virtual methods, no diamond, no linearisation. Composition replaces the is-a relationship with the has-a relationship.</p>
+<p>Composition and delegation are the model: the queue wraps a deque and forwards every operation, a decorator forwards and adds behaviour at the seam, and the set and cache are built from a map and a list.</p>
+<p>The trait is the interface: a named set of method signatures, implemented per type in an extend block, nominal and checked (E1202 and E1203 for a bad or missing method, E1201 for a duplicate). A generic written against the trait works for every implementing type, resolved statically.</p>
+<p>Dynamic dispatch is <code>any Trait</code>, a fat pointer that carries the value and its implementation, or a function pointer stored in a field, as the hash map's hash and equality functions and the ordered map's comparator.</p>
+<p>Polymorphism is parametric, through generics, and ad hoc, through traits. There is no subtype polymorphism; the trait and <code>any Trait</code> serve its purpose.</p>
+<p>Type dispatch is the switch over a variant or enum, checked for exhaustiveness (E0608), and the <code>comptime</code> comparison for a generic type parameter, where <code>@typeof</code> names the type and <code>@compileError</code> rejects an unsupported one.</p>
+<p>The lifecycle is explicit: construction order is the factory's code order, destruction order is the reverse of declaration, and copy and move are the two cases of assignment.</p>
+<p>There is no singleton idiom; the standard library passes state explicitly, with a few visible module-level globals such as the default allocator. The object pool is the <code>Pool&lt;T&gt;</code> type, and the flyweight is explicit sharing by pointer.</p>
+<p>The shape library shows the model whole: a trait, concrete types conforming to it, and a client written against the trait, extended by adding types without touching existing code.</p>
+<p>Encapsulation in Coral trades barriers for visibility: fields are reachable, and the safety comes from opaque and distinct types, the underscore convention, and the documented interface, not from walls.</p>
+<p>The repository pattern shows the model composed: a trait as the interface, a concrete implementation over a vector, and a client written against the trait that works for any implementation.</p>
+<p>Coral's object model is the struct, the method, the trait, and the composition, and this chapter is the assembly of the pieces the language already has.</p>
+<section><h2 id="s10-21">Exercises</h2></section>
+<section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>Explain the difference between a method in an inherent extend block and a method in an extend-trait block. Give one method that belongs in each for a <code>Stack&lt;T&gt;</code>, and say who decides which block it goes in.</li><li>Value and reference. Write a <code>Point</code> struct and a <code>Vec&lt;f64&gt;</code> field, then explain what happens to each on assignment, the copy of the struct's fields, and the move of the owning field. Add a line that shares the vector on purpose, and say what you had to write that a class language would have given you for free.</li><li><span class="ex-label">Constructors</span>Declare a <code>Duration</code> struct with a seconds field and two factories, <code>fromSecs</code> and <code>fromMillis</code>, and write the invariant each establishes. Then add a convenience factory that calls another factory rather than duplicating the field setup.</li><li><span class="ex-label">Diagnostics</span>Trigger each of E1201, E1202, E1203, and E1301 with a small example and write the corrected version beside it. For E1301, explain why the fix is to let the scope finish rather than to call the drop yourself.</li><li><span class="ex-label">Composition</span>Write a <code>Stack&lt;T&gt;</code> that composes a <code>Vec&lt;T&gt;</code> and forwards <code>push</code>, <code>pop</code>, and <code>isEmpty</code>. Then write a <code>CountingStack&lt;T&gt;</code> that wraps your stack and counts how many times <code>push</code> was called. Which of the two forwards, and which adds behaviour at the seam?</li><li><span class="ex-label">Dispatch</span>Write a <code>Vec&lt;any Shape&gt;</code> holding a Circle, a Square, and a Triangle drawn from the chapter, and print each area. Then rewrite the loop as a generic function. State what each version accepts and what each costs at runtime.</li><li><span class="ex-label">Design</span>You are designing a serialisation library. Decide, with one sentence each, what should be a trait, what should be a generic function, and what should be a plain concrete function. Name one thing that goes wrong if you make the wrong one a trait, and one thing that goes wrong if you make the wrong one concrete.</li><li>Pattern matching. Add a <code>Triangle</code> case to the <code>Shape</code> variant from Section10.13, then add the arm its <code>area</code> method now requires, and explain what the compiler would have reported had you forgotten. Then add a fifth case and describe the same effect.</li><li><span class="ex-label">Lifecycle</span>Write a function that opens two smart pointers and returns early on the second failed allocation. Trace, in order, the automatic releases that run on the early return and on the normal exit, and explain why the order is the reverse of the declarations.</li><li><span class="ex-label">Meta</span>Coral has no inheritance; a type acquires behaviour only by extending or conforming, and sealing requires an explicit <code>#[[no_extend]]</code>. Argue that this is a limitation, then argue that it is a strength. Which position do you find more convincing, and why?</li><li><span class="ex-label">Encapsulation</span>Take a struct from the standard library whose fields are public, <code>Vec</code> is the obvious one, and write a short argument for why those fields are public rather than hidden behind accessors. Then do the same for a type that hides its representation, such as <code>File</code> or <code>Mutex</code>, and say what the distinct or opaque type buys.</li></ol></section>
+      <nav class="chapter-nav"><a href="../../lengthy/09-type-system/index.html">← Previous</a><a href="../../lengthy/11-memory-management/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>
