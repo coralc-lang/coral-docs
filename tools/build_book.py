@@ -506,7 +506,7 @@ def shell(root, title_tag, page_title, kicker_html, lead_html, body_html, prev, 
       <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
     </a>
     <nav class="topnav" aria-label="Main navigation">
-      <a href="{root}textbook/index.html">Book contents</a><a href="{root}coral-docs/index.html">Coral Docs</a><a href="{root}coral-docs/getting-started/index.html">Install</a>
+      <a href="{root}textbook/index.html">Editions</a><a href="{root}textbook/lengthy/index.html">Lengthy</a><a href="{root}speed/index.html">Speed</a><a href="{root}coral-docs/index.html">Coral Docs</a>
     </nav>
   </header>
   <main class="content">
@@ -649,7 +649,7 @@ def main():
         summary = info["subtitle"] or ""
         topics = "".join(f"<li>{inline(t['title'], '')}</li>" for t in info["topics"][:8])
         return (
-            f'<li><a href="{info["href"]}"><span><span class="chapter-title">{html.escape(info["title"])}</span>'
+            f'<li><a href="../{info["href"]}"><span><span class="chapter-title">{html.escape(info["title"])}</span>'
             f'<span class="chapter-summary">{inline(summary, "")}</span></span>'
             f'<span class="chapter-state">{state}</span></a>'
             f'<details class="chapter-topics"><summary>Chapter topics</summary><ul>{topics}</ul></details></li>'
@@ -662,7 +662,7 @@ def main():
             f'<section class="book-part"><p class="part-label">{label}</p><ol class="chapter-list">{lis}</ol></section>'
         )
     apx_lis = "".join(
-        f'<li><a href="{a["href"]}"><span><span class="chapter-title">{html.escape(a["title"])}</span>'
+        f'<li><a href="../{a["href"]}"><span><span class="chapter-title">{html.escape(a["title"])}</span>'
         f'<span class="chapter-summary"></span></span><span class="chapter-state">Reference</span></a></li>'
         for a in apx_order
     )
@@ -675,32 +675,33 @@ def main():
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="The Coral Book: a chapter-by-chapter introduction to the Coral systems programming language." />
+  <meta name="description" content="The Coral Book, Lengthy Edition: a chapter-by-chapter introduction to the Coral systems programming language." />
   <meta name="robots" content="index, follow" />
-  <link rel="canonical" href="{BASE_URL}/textbook/" />
-  <meta property="og:title" content="The Coral Book" />
+  <link rel="canonical" href="{BASE_URL}/textbook/lengthy/" />
+  <meta property="og:title" content="The Coral Book · Lengthy Edition" />
   <meta property="og:description" content="A chapter-by-chapter introduction to the Coral systems programming language." />
-  <meta property="og:url" content="{BASE_URL}/textbook/" />
+  <meta property="og:url" content="{BASE_URL}/textbook/lengthy/" />
   <meta name="twitter:card" content="summary" />
-  <title>The Coral Book</title>
-  <link rel="stylesheet" href="./book.css" />
-  <script src="../assets/js/script.js" defer></script>
+  <title>The Coral Book · Lengthy Edition</title>
+  <link rel="stylesheet" href="../book.css" />
+  <script src="../../assets/js/script.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand-wrap" href="../coral-docs/index.html" style="color:inherit;text-decoration:none">
-      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">the book</span></span>
+    <a class="brand-wrap" href="../../coral-docs/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">lengthy edition</span></span>
     </a>
     <nav class="topnav" aria-label="Main navigation">
-      <a href="../coral-docs/index.html">Coral Docs</a><a href="../coral-docs/getting-started/index.html">Install</a><a href="../coral-docs/tooling/index.html">Tooling</a><a href="./index.html" aria-current="page">Textbook</a>
+      <a href="./index.html" aria-current="page">Lengthy contents</a><a href="../../speed/index.html">Speed edition</a><a href="../../coral-docs/index.html">Coral Docs</a><a href="../../coral-docs/getting-started/index.html">Install</a>
     </nav>
   </header>
   <main class="content">
     <article class="article">
       <header class="book-hero">
-        <div class="book-kicker">A guided path through Coral</div>
+        <div class="book-kicker">Lengthy Edition</div>
         <h1>The Coral Book</h1>
-        <p>A chapter-by-chapter introduction to the language: its C-family syntax, type-first declarations, and the newer features built around them.</p>
+        <p>The full book: every explanation, every worked example, every aside. A chapter-by-chapter introduction to the language, its C-family syntax, type-first declarations, and the newer features built around them.</p>
+        <p>Want the same ground with the prose cut to the bone? Read the <a href="../../speed/index.html">Speed Edition</a>.</p>
       </header>
       <h2>Reading path</h2>
       <p>The book follows a progression: first learn to read Coral, then use it to build programs, then work problems end to end.</p>

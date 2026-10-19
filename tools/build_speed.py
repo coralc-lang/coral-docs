@@ -66,7 +66,7 @@ def shell(root, title_tag, page_title, kicker, lead, body, prev, nxt, canonical,
       <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">speed edition</span></span>
     </a>
     <nav class="topnav" aria-label="Main navigation">
-      <a href="{root}speed/index.html">Speed contents</a><a href="{root}textbook/index.html">Lengthy edition</a><a href="{root}coral-docs/index.html">Coral Docs</a>
+      <a href="{root}speed/index.html">Speed contents</a><a href="{root}textbook/lengthy/index.html">Lengthy edition</a><a href="{root}coral-docs/index.html">Coral Docs</a>
     </nav>
   </header>
   <main class="content">
