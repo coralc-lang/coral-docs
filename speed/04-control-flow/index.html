@@ -31,7 +31,7 @@
       <p class="lead">More Than Just if and for</p>
       <p>Control flow decides what runs, how many times, and in what order. It is where a program's shape is decided, and where a language that fights you is most visible.</p>
 <p>Coral's control flow is C's, plus structure: a ranged for over containers, defer for guaranteed cleanup, and a pattern-matching switch with guards, ranges, and exhaustiveness checking. Every condition is a real bool, and control flow is explicit.</p>
-<p>This chapter covers conditionals, loops, the iterator protocol, break and continue, and defer. Error handling with Result and Option has its own chapter, because it is control flow built on types rather than keywords.</p>
+<p>This chapter covers conditionals, loops, the @iter protocol, break and continue, and defer. Error handling with Result and Option has its own chapter, because it is control flow built on types rather than keywords.</p>
 <section><h2 id="s4-1">The if Statement</h2></section>
 <p>The if statement evaluates a bool condition and runs a block when it is true.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">if (condition)
@@ -333,40 +333,63 @@ for (u64 i = 0; i &lt; n; i++)
     // body, with x bound to each element
 }</code></pre>
 <p>Read it as "for each x in the container." You manage no counter, start index, or stopping bound; the loop hands you one element at a time.</p>
-<p>The ranged for visits elements in order, binding the loop variable to each. The variable is declared with var, and its type is inferred from the container. The library's variadic print uses it over argument packs:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void vaprint(... args)
+<p>An explicit element type may replace var:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">for (i32 value : ints) { ... }</code></pre>
+<p>A var loop can also bind several names at once, when at() returns a tuple:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">for (var index, value : pairs) { ... }</code></pre>
+<p>Each name takes one tuple element, in order, so the tuple must have exactly one element per binding. This works only with var; the explicit element type takes a tuple type instead, as in for (struct(i32, i32) pair : pairs).</p>
+<p>Iteration is index based: the compiler reads the container's count once, then asks for each element by index in increasing order. The loop variable is a copy, so assigning to it does not change the collection; use an index loop with atPtr() to mutate in place.</p>
+<p>A ranged for can walk a slice by giving a half-open index range, in two equivalent spellings:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">for (var x : values(start, end))       { ... }
+for (var x : values.range(start, end)) { ... }</code></pre>
+<p>Both call range(start, end). end is exclusive, the bounds are clamped to the element count, and end &lt; start runs the body zero times, so an overshooting range is safe. A single-bound form such as values(end) is not supported.</p>
+<p>The ranged for is defined over the @iter protocol, so any type that opts in can be iterated.</p>
+<section><h2 id="s4-11">The @iter Protocol</h2></section>
+<p>The ranged for works through the @iter protocol, a small set of methods a type provides. Arrays and slices are iterable already; a type opts in with an @iter extend block.</p>
+<p>The protocol is index based and has three methods:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">method                                     required            contract
+usize count()                              always              number of elements
+T     at(usize i)                          always              element at 0 &lt;= i &lt; count()
+IterRange range(usize start, usize end)    bounded form only   the clamped interval [start, end)</code></pre>
+<p>A plain loop calls count() once, then at(i) for each index. A bounded loop also calls range(start, end), which clamps the interval and returns it as an IterRange. range() is O(1) for the built-in collections. When a var loop binds several names, at() returns the tuple those names destructure, one element per name.</p>
+<p>@iter is structural: no runtime object, vtable, or methods of its own, so the methods live in the extend block. A type you write joins the same way:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::range { IterRange };
+
+pub extend CountTo : @iter
 {
-    for (var arg : args) _fprintOne(1, arg);
+    usize count() { return self.n; }
+    i32   at(usize i) { return (i32)i; }
+    IterRange range(usize start, usize end) { ... }
 }</code></pre>
-<p>arg is bound to each argument, with no index, bounds, or step. Use this loop when the elements matter and the index does not.</p>
-<p>Summing a vector shows the difference from indexing:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 total = 0;
-for (var v : vec) total += v;</code></pre>
-<p>The ranged for is defined over the iterator protocol, so any type implementing the protocol can be iterated. It is a general mechanism, not a special case.</p>
-<section><h2 id="s4-11">The Iterator Protocol</h2></section>
-<p>The ranged for works through a protocol, the deal between container and loop. Understanding it explains what the loop does.</p>
-<p>An iterable type provides a way to obtain an iterator, which tracks position, provides the current element, and advances. Vectors walk contiguous storage, linked lists walk nodes, and maps walk entries. Each collection knows how to walk itself.</p>
-<p>The compiler lowers a ranged for to protocol operations: obtain the iterator, then while it has a next element, bind the variable, run the body, and advance. The efficient walk is chosen per type, hiding storage while preserving performance.</p>
-<p>The ranged for is not a macro for known containers. Implement the protocol for your own type, such as a Tree walked in order, and for (var n : tree) works without the body knowing the traversal.</p>
-<p>The protocol keeps the ranged for general and efficient: the container implements its traversal once, in the fastest way for its layout, and every ranged for reuses it.</p>
+<p>IterRange, with fields start and end, is declared in std::collections::range. It is deliberately non-generic, so importing a collection does not instantiate a container such as Vec&lt;T&gt; merely because range() is declared.</p>
+<p>The collections that opt in:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">type              order               at() cost   notes
+Vec&lt;T&gt;            insertion           O(1)
+Arr&lt;T, N&gt;         index               O(1)
+Deque&lt;T&gt;          front to back       O(1)
+RingBuf&lt;T&gt;        oldest to newest    O(1)
+Queue&lt;T&gt;          front to back       O(1)        does not consume
+LinkedList&lt;T&gt;     head to tail        O(i)        prefer each() for large lists
+PriorityQueue&lt;T&gt;  heap-array order    O(1)        not sorted; pop() consumes by priority
+Bitset            bit index           O(1)        yields bool</code></pre>
+<p>Map, HashMap, Set, Tree, Trie, Cache, and UnorderedMap do not implement @iter, having no single canonical indexed order; walk them with each().</p>
+<p>A type marked @iter must provide count() and at(); the compiler names the missing method and the protocol if one is absent. A bounded loop also needs range(). Using the ranged for on a type that is neither an array, a slice, nor @iter is an error. Multi-binding is var-only and needs at() to return a tuple with one element per binding; iteration yields copies.</p>
 <section><h2 id="s4-12">Iteration and Invalidation</h2></section>
-<p>The iterator protocol has a discipline: do not modify a container's structure while iterating over it.</p>
-<p>An iterator holds a position. If storage moves, as when a vector grows, the iterator points at freed or reused memory. If the element count changes, positions can skip or read past the end. An iterator is a snapshot, valid only while structure stays stable.</p>
-<p>A vector being modified during iteration:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// Wrong: pushing inside the loop may reallocate or extend
-// the storage, and the iterator&#x27;s position no longer lines up.
+<p>One discipline follows from the index-based protocol: do not change a container's element count while a ranged for is walking it.</p>
+<p>The loop samples count() once, then indexes up to that count. If the body shrinks the container, a later at(i) reaches past the new end and trips the bounds assertion. If the body grows it, the extra elements are never visited, because the loop still runs against the old count; growth can also move the storage and dangle a pointer from atPtr().</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// Wrong: the loop sampled the count before the body ran, and
+// pushing may reallocate the storage underneath it.
 for (var x : v)
 {
     if (x == FLAG) v.push(x * 2);   // do not mutate while iterating
 }</code></pre>
-<p>This is not safety theater; it follows from the protocol and layout. A linked list's iterator is a node pointer valid while the node exists; a vector's is a buffer pointer valid while the buffer stays put.</p>
-<p>Collect results into a separate container while iterating, then modify the original after iteration: read while iterating, write after.</p>
+<p>Read while iterating, write after. Collect what you need into a separate container, then change the original once the loop finishes:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// Correct: collect the interesting indices, then act after iteration.
 Vec&lt;u64&gt; found;
 for (var x : v)
     if (x == FLAG) found.push(indexOf(x));
 for (var idx : found)
-    v.remove(idx);</code></pre>
+    v.removeAt(idx);</code></pre>
 <section><h2 id="s4-13">break and continue</h2></section>
 <p>Two statements control loop bodies: break and continue.</p>
 <p>break exits the innermost loop immediately, continuing after it. It ends infinite loops and stops searches early.</p>
@@ -681,10 +704,10 @@ void tokenize(str src, void(Token) emit)
 <p>Control flow maps directly to hardware, which explains its shape. A processor understands only sequential instructions and branch instructions.</p>
 <p>An if compiles to a comparison and a conditional branch. A while compiles to a comparison, a body, and a branch back. A for is a while with initialization, condition, and step arranged. A switch compiles to comparisons or a jump table. Every construct is comparisons and branches.</p>
 <p>This is why the C model is right for Coral: conditions are comparisons, loops are branches, and the cost of a decision is a comparison and a jump, visible in the source.</p>
-<p>The additions follow the same rule. The ranged for compiles to the container's iterator walk; the pattern switch to comparisons or a jump table; defer to cleanup at each exit point. Each is convenience in the source and plain branches in the machine.</p>
+<p>The additions follow the same rule. The ranged for compiles to an index loop over the container; the pattern switch to comparisons or a jump table; defer to cleanup at each exit point. Each is convenience in the source and plain branches in the machine.</p>
 <section><h2 id="s4-32">Control Flow and the Type-First Principle</h2></section>
 <p>Coral's control flow is C's, so a C programmer reads it correctly on sight. The additions, ranged for, defer, and the pattern switch, modernize without breaking the model.</p>
-<p>The additions are type-driven. The ranged for is defined by the iterator protocol, the switch by patterns built from types with exhaustiveness checking, and conditions by bool. Control flow is the type system directing execution.</p>
+<p>The additions are type-driven. The ranged for is defined by the @iter protocol, the switch by patterns built from types with exhaustiveness checking, and conditions by bool. Control flow is the type system directing execution.</p>
 <p><a href="../04-control-flow/index.html">Chapter 4</a> Summary</p>
 <p>Coral's control flow is C's, with conditions that must be real bools and no truthiness.</p>
 <p>if, else if, and else form ordered decision chains, and short-circuit conditions make bound and pointer tests safe inline.</p>
@@ -692,8 +715,8 @@ void tokenize(str src, void(Token) emit)
 <p>The switch is also an expression: it pairs patterns with results using a fat arrow, uses else as the wildcard, produces a value, and checks exhaustiveness over enums.</p>
 <p>Pattern matching is built from types: literals, constants, enum variants, barred lists, ranges, variant destructuring, guards, and else. A value's type selects its behavior.</p>
 <p>while tests before each iteration and may run zero times. for combines initialization, condition, and step. loop is the explicit infinite loop.</p>
-<p>The ranged for iterates over container elements directly, defined by the iterator protocol each container implements.</p>
-<p>Iterators hold positions, so modifying a container's structure during iteration invalidates them. Collect results while iterating; modify after.</p>
+<p>The ranged for iterates over container elements directly, defined by the @iter protocol each container implements.</p>
+<p>The loop samples the element count once, so modifying a container's structure during iteration reads past the end or skips elements. Collect results while iterating; modify after.</p>
 <p>break exits the innermost loop; continue skips to the next iteration. Both act only on the nearest loop.</p>
 <p>Early return exits a function when a decision is made, keeping the happy path straight-line.</p>
 <p>defer registers cleanup to run when a scope exits, regardless of how, in reverse order. It is Coral's resource-cleanup guarantee without exceptions.</p>
@@ -707,6 +730,10 @@ void tokenize(str src, void(Token) emit)
 <p>Control flow in Coral is the type system directing execution, and the modern additions are type-driven without breaking the C model.</p>
       <nav class="chapter-nav"><a href="../../speed/03-operators-and-expressions/index.html">← Previous</a><a href="../../speed/05-functions-and-procedures/index.html">Next →</a></nav>
     </article>
+    <footer class="site-footer">
+      <span class="footer-note">The Coral Book · Speed Edition</span>
+      <nav aria-label="Footer"><a href="../../sitemap/index.html">Sitemap</a></nav>
+    </footer>
   </main>
 </body>
 </html>

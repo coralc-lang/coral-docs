@@ -1,8 +1,10 @@
 # Coral Docs Site
 
-Static website prototype for Coral's current documentation and the separate Coral
-Textbook project. The book landing page is `textbook/index.html`; individual lessons
-live in numbered chapter folders. The previous site-root `index.html` was removed.
+Static website for Coral's current documentation and the separate Coral Textbook
+project. The site landing page is the generated root `index.html`; the book landing
+page is `textbook/index.html`, and individual lessons live in numbered chapter
+folders. The site is published as plain static files (see `.nojekyll`), not rendered
+by Jekyll.
 
 ## Install the compiler
 

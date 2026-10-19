@@ -456,22 +456,24 @@ Each call passes the running total, and the final call returns it. The recursion
 
 Coral does not require tail-recursive style. The tree traversal recurses non-tail and runs fine because its depth is the tree's depth. Use the accumulator when a recursion must go deep.
 
-5.17 Generators, Lazy Sequences, and the Iterator Protocol
+5.17 Generators, Lazy Sequences, and Iteration
 
 A generator is a function that can pause, yield a value, and resume. Coral has no generators and no yield statement.
 
-The reason is the same as for closures: a generator has hidden state, a frame that survives calls and a suspended stack. That state is invisible in the signature.
+The reason is the same as for closures: a generator has hidden state, a frame that survives calls and a suspended stack, invisible in the signature.
 
-Coral's answer is the iterator protocol. A type implements it, and the ranged for drives it. The iterator computes each element on demand, providing the same laziness, with state stored explicitly in the iterator object.
+The nearest tool is the @iter protocol of Chapter 4, but it is not a generator: @iter is index based and eager, walking a container that already holds its elements by calling count() once and at(i) per index. It computes nothing on demand and has no hidden suspension point; the state of an iteration is a plain index.
 
-    for (var line : file.lines())
+There is therefore no lazy sequence and no lines() iterator that materializes a file one line at a time. When a source produces values as you go, drive it with a loop and keep the state yourself:
+
+    while (true)
     {
-        // each line is read on demand as the loop reaches it
+        str line = readLine();
+        if (line.len == 0) break;   // end of input
+        process(line);
     }
 
-file.lines() does not build a list up front. It returns an iterator that produces the next line when asked, so breaking after ten lines leaves the other 999,990 unmaterialized. The laziness is real, with state in the open.
-
-The protocol covers what generators cover: lazy sequences compute on each step, and stateful iteration carries state in fields. Bidirectional sends are not part of the protocol; operations that feed values use explicit parameters.
+The loop reads one line per turn and stops when the source ends, buffering nothing up front. Because @iter is structural and eager, there is no protocol for sending a value back into a running sequence; operations that feed a stream take explicit parameters.
 
 5.18 Async, Await, and Threads
 

@@ -34,8 +34,11 @@
 <hr />
 <section><h2 id="0-prelude-and-module-layout">0. Prelude and module layout</h2></section>
 <h3 id="prelude">Prelude</h3>
-<p>The following are merged into every translation unit automatically:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">std::io::ios          // print / println / eprint / eprintln / readLine / ...
+<p>The following modules are merged into every translation unit automatically, so all of their public names are in scope with no import:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">std::io::ios          // print println eprint eprintln vaprint flush
+                      // _spaces _repeat _hex _bin _fixed
+                      // parseI64 parseU64 parseF64
+                      // readChar readLine read readVal
 std::text::string     // String
 std::option           // Option&lt;T&gt;
 std::result           // Result&lt;T, E&gt;
@@ -77,7 +80,7 @@ pub mod time      = import time;
 pub mod duration  = import duration;
 pub mod intrinsics = import memory::intrinsics;</code></pre>
 <p>Submodule manifests: ``` collections/lib.crl : arr vec bitset cache deque hashmap iter linkedlist map</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">                  priorityqueue queue ringbuf set sort tree trie unordered_map</code></pre>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">                  priorityqueue queue range ringbuf set sort tree trie unordered_map</code></pre>
 <p>text/lib.crl        : ascii crlb regex string strutil uri utf8 data/lib.crl        : option result math/lib.crl        : complex math matrix random vector io/lib.crl          : bio cmd env fios fs ios log net path process temp term memory/lib.crl      : mman allocators intrinsics pool shared_ptr smart_ptr memory/allocators/lib.crl : allocator tlsf mimalloc concurrent/lib.crl  : async mutex rwlock semaphore signal thread threadpool crypto/lib.crl      : aes base64 bloom crc hash hex hmac sha256 parser/lib.crl      : csv ini json toml uuid xml fmt/lib.crl         : fmt misc/lib.crl        : erased cast testing/lib.crl     : test core/lib.crl        : cchar limits char_util platform/lib.crl    : libc win32 ```</p>
 <blockquote><p><strong>Known inconsistencies in the manifests (not fixed here):</strong> - <code>text/lib.crl</code> declares <code>pub mod crlb = import crlb;</code>, but no <code>text/crlb.crl</code> exists, this import is dangling. - <code>parser/crlb.crl</code> exists but is <strong>not</strong> re-exported by <code>parser/lib.crl</code>. - <code>std/lib.crl</code> does <strong>not</strong> re-export <code>misc</code> or <code>testing</code>; import those paths directly.</p></blockquote>
 <hr />
@@ -515,6 +518,13 @@ f64    tgamma(f64 x) lgamma(f64 x)</code></pre>
 <hr />
 <section><h2 id="std-collections">std::collections</h2></section>
 <p>Imported via <code>std::collections</code>. <code>Vec&lt;T&gt;</code> is also re-exported as <code>std::vec</code> and prelude-imported; <code>Arr&lt;T, N&gt;</code> as <code>std::arr</code>.</p>
+<p>Iteration: the iterable containers implement the built-in <code>@iter</code> marker trait, which the ranged for loop of <a href="../04-control-flow/index.html">Chapter 4</a> drives. Such a type supplies <code>usize count()</code>, <code>T at(usize i)</code>, and, for bounded loops, <code>IterRange range(usize start, usize end)</code>, all in an <code>@iter</code> extend block. The half-open bounds type is declared in <code>std::collections::range</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct IterRange
+{
+    usize start;
+    usize end;
+}</code></pre>
+<p><code>Vec</code>, <code>Arr</code>, <code>Deque</code>, <code>RingBuf</code>, <code>Queue</code>, <code>LinkedList</code>, <code>PriorityQueue</code>, and <code>Bitset</code> implement <code>@iter</code>; the associative containers (<code>Map</code>, <code>HashMap</code>, <code>Set</code>, <code>Tree</code>, <code>Trie</code>, <code>Cache</code>, <code>UnorderedMap</code>) do not, and are walked with <code>each()</code>.</p>
 <h3 id="7-std-collections-arr-arr-t-n">7. <code>std::collections::arr</code>, <code>Arr&lt;T, N&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Arr&lt;T, N&gt;
 {
@@ -532,7 +542,8 @@ f64    tgamma(f64 x) lgamma(f64 x)</code></pre>
     void        fill(T val)
     void        copyTo(T* dst)
     void        copyFrom(const T* src)
-}</code></pre>
+}
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="8-std-collections-vec-vec-t-aka-std-vec">8. <code>std::collections::vec</code>, <code>Vec&lt;T&gt;</code> (aka <code>std::vec</code>)</h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec&lt;T&gt;
 {
@@ -571,7 +582,8 @@ f64    tgamma(f64 x) lgamma(f64 x)</code></pre>
 }
 // helper: void _sortByRange(usize lo, usize hi, bool(T, T) less)
 //         usize _partitionBy(usize lo, usize hi, bool(T, T) less)
-pub extend&lt;T&gt; Vec&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; Vec&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="9-std-collections-bitset-bitset">9. <code>std::collections::bitset</code>, <code>Bitset</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Bitset
 {
@@ -582,6 +594,7 @@ pub extend&lt;T&gt; Vec&lt;T&gt; : @drop { void drop(); }</code></pre>
     static Bitset new(u64 numBits)
     void dispose()
     u64  count()          // numBits
+    bool at(usize i)      // bit value, for for-in
     u64  wordCount()
     void set(u64 bit)
     void clear(u64 bit)
@@ -600,7 +613,8 @@ pub extend&lt;T&gt; Vec&lt;T&gt; : @drop { void drop(); }</code></pre>
     void not()
     void _maskPadding()
 }
-pub extend Bitset : @drop { void drop(); }</code></pre>
+pub extend Bitset : @drop { void drop(); }
+// @iter: u64 count(); bool at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="10-std-collections-cache-lru-cache-k-v">10. <code>std::collections::cache</code>, LRU <code>Cache&lt;K, V&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct CacheEntry&lt;K, V&gt;
 {
@@ -659,7 +673,8 @@ pub extend&lt;K, V&gt; Cache&lt;K, V&gt; : @drop { void drop(); }</code></pre>
     void   clear()
     void   _grow()
 }
-pub extend&lt;T&gt; Deque&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; Deque&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="12-std-collections-hashmap-hashmap-k-v">12. <code>std::collections::hashmap</code>, <code>HashMap&lt;K, V&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant CollectionError { AllocFailed { str msg; } }
 
@@ -695,7 +710,7 @@ pub struct HashMap&lt;K, V&gt;
 }
 pub extend&lt;K, V&gt; HashMap&lt;K, V&gt; : @drop { void drop(); }</code></pre>
 <h3 id="13-std-collections-iter-generic-iteratio">13. <code>std::collections::iter</code>, Generic iteration helpers</h3>
-<p>Free functions over <code>Vec&lt;T&gt;</code>.</p>
+<p>Free functions over <code>Vec&lt;T&gt;</code>. These are convenience algorithms for vectors, not generic <code>@iter</code> adapters; use the ranged for when iterating another collection.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Vec&lt;U&gt; map&lt;T, U&gt;(const Vec&lt;T&gt;* v, U(T) fn)
 pub Vec&lt;T&gt; filter&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
 pub T      reduce&lt;T&gt;(const Vec&lt;T&gt;* v, T init, T(T, T) fn)
@@ -736,6 +751,7 @@ pub struct LinkedList&lt;T&gt;
     void dispose()
     usize count()
     bool  isEmpty()
+    T     at(usize i)  // O(i); walks from the head
     void  pushFront(T val)
     void  pushBack(T val)
     T     popFront()
@@ -746,7 +762,8 @@ pub struct LinkedList&lt;T&gt;
     void  remove(ListNode&lt;T&gt;* node)
     void  each(void(T) fn)
 }
-pub extend&lt;T&gt; LinkedList&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; LinkedList&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="15-std-collections-map-ordered-avl-map-k">15. <code>std::collections::map</code>, Ordered AVL <code>Map&lt;K, V&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant CollectionError { AllocFailed { str msg; } }
 
@@ -793,13 +810,15 @@ pub extend&lt;K, V&gt; Map&lt;K, V&gt; : @drop { void drop(); }</code></pre>
     void dispose()
     usize count()
     bool  isEmpty()
+    T     at(usize i)  // heap-array order, not sorted
     void  push(T val)
     T     pop()
     T     peek()
     void  clear()
     // helpers: _grow _siftUp _siftDown
 }
-pub extend&lt;T&gt; PriorityQueue&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; PriorityQueue&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="17-std-collections-queue-fifo-queue-t">17. <code>std::collections::queue</code>, FIFO <code>Queue&lt;T&gt;</code></h3>
 <p>Wraps <code>Deque&lt;T&gt;</code>.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Queue&lt;T&gt;
@@ -810,12 +829,14 @@ pub extend&lt;T&gt; PriorityQueue&lt;T&gt; : @drop { void drop(); }</code></pre>
     void dispose()
     usize count()
     bool  isEmpty()
+    T     at(usize i)
     void  enqueue(T val)
     T     dequeue()
     T     peek()
     void  clear()
 }
-pub extend&lt;T&gt; Queue&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; Queue&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="18-std-collections-ringbuf-ringbuf-t">18. <code>std::collections::ringbuf</code>, <code>RingBuf&lt;T&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct RingBuf&lt;T&gt;
 {
@@ -838,7 +859,8 @@ pub extend&lt;T&gt; Queue&lt;T&gt; : @drop { void drop(); }</code></pre>
     T     at(usize i)
     void  clear()
 }
-pub extend&lt;T&gt; RingBuf&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; RingBuf&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="19-std-collections-set-set-t">19. <code>std::collections::set</code>, <code>Set&lt;T&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Set&lt;T&gt;
 {
@@ -1412,17 +1434,13 @@ pub void eprintln&lt;comptime T&gt;(T fmt, ...)
 pub void vaprint(... args)
 pub void flush()
 
-// formatting helpers passed as arguments
-pub struct Spaces { u64 count; }
-pub struct Repeat { u8 ch; u64 count; }
-pub struct Hex    { u64 value; }
-pub struct Bin    { u64 value; }
-pub struct Fixed  { f64 value; u64 precision; }
-pub Spaces spaces(u64 count)
-pub Repeat repeat(u8 ch, u64 count)
-pub Hex    hex(u64 value)
-pub Bin    bin(u64 value)
-pub Fixed  fixed(f64 value, u64 precision)
+// formatting helpers passed as arguments (constructors; the manipulator
+// types themselves are module-internal)
+pub Spaces _spaces(u64 count)
+pub Repeat _repeat(u8 ch, u64 count)
+pub Hex    _hex(u64 value)
+pub Bin    _bin(u64 value)
+pub Fixed  _fixed(f64 value, u64 precision)
 
 // parsing
 pub i64 parseI64(str sv, bool* ok)
@@ -2398,6 +2416,10 @@ pub void testSummary()
 pub bool testAllPassed()</code></pre>
       <nav class="chapter-nav"><a href="../../speed/appendix-k-misc-and-testing/index.html">← Previous</a><span></span></nav>
     </article>
+    <footer class="site-footer">
+      <span class="footer-note">The Coral Book · Speed Edition</span>
+      <nav aria-label="Footer"><a href="../../sitemap/index.html">Sitemap</a></nav>
+    </footer>
   </main>
 </body>
 </html>

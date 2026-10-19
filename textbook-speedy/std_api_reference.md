@@ -26,10 +26,14 @@ tree under `lib/` and reflects the current dialect.
 ## 0. Prelude and module layout
 
 ### Prelude
-The following are merged into every translation unit automatically:
+The following modules are merged into every translation unit automatically, so
+all of their public names are in scope with no import:
 
 ```
-std::io::ios          // print / println / eprint / eprintln / readLine / ...
+std::io::ios          // print println eprint eprintln vaprint flush
+                      // _spaces _repeat _hex _bin _fixed
+                      // parseI64 parseU64 parseF64
+                      // readChar readLine read readVal
 std::text::string     // String
 std::option           // Option<T>
 std::result           // Result<T, E>
@@ -81,7 +85,7 @@ pub mod intrinsics = import memory::intrinsics;
 Submodule manifests:
 ```
 collections/lib.crl : arr vec bitset cache deque hashmap iter linkedlist map
-                      priorityqueue queue ringbuf set sort tree trie unordered_map
+                      priorityqueue queue range ringbuf set sort tree trie unordered_map
 text/lib.crl        : ascii crlb regex string strutil uri utf8
 data/lib.crl        : option result
 math/lib.crl        : complex math matrix random vector
@@ -580,6 +584,24 @@ f64    tgamma(f64 x) lgamma(f64 x)
 Imported via `std::collections`. `Vec<T>` is also re-exported as `std::vec` and
 prelude-imported; `Arr<T, N>` as `std::arr`.
 
+Iteration: the iterable containers implement the built-in `@iter` marker trait,
+which the ranged for loop of Chapter 4 drives. Such a type supplies `usize
+count()`, `T at(usize i)`, and, for bounded loops, `IterRange range(usize start,
+usize end)`, all in an `@iter` extend block. The half-open bounds type is declared
+in `std::collections::range`:
+
+```coral
+pub struct IterRange
+{
+    usize start;
+    usize end;
+}
+```
+
+`Vec`, `Arr`, `Deque`, `RingBuf`, `Queue`, `LinkedList`, `PriorityQueue`, and
+`Bitset` implement `@iter`; the associative containers (`Map`, `HashMap`, `Set`,
+`Tree`, `Trie`, `Cache`, `UnorderedMap`) do not, and are walked with `each()`.
+
 ### 7. `std::collections::arr`, `Arr<T, N>`
 
 ```coral
@@ -600,6 +622,7 @@ pub struct Arr<T, N>
     void        copyTo(T* dst)
     void        copyFrom(const T* src)
 }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)
 ```
 
 ### 8. `std::collections::vec`, `Vec<T>` (aka `std::vec`)
@@ -643,6 +666,7 @@ pub struct Vec<T>
 // helper: void _sortByRange(usize lo, usize hi, bool(T, T) less)
 //         usize _partitionBy(usize lo, usize hi, bool(T, T) less)
 pub extend<T> Vec<T> : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)
 ```
 
 ### 9. `std::collections::bitset`, `Bitset`
@@ -657,6 +681,7 @@ pub struct Bitset
     static Bitset new(u64 numBits)
     void dispose()
     u64  count()          // numBits
+    bool at(usize i)      // bit value, for for-in
     u64  wordCount()
     void set(u64 bit)
     void clear(u64 bit)
@@ -676,6 +701,7 @@ pub struct Bitset
     void _maskPadding()
 }
 pub extend Bitset : @drop { void drop(); }
+// @iter: u64 count(); bool at(usize i); IterRange range(usize start, usize end)
 ```
 
 ### 10. `std::collections::cache`, LRU `Cache<K, V>`
@@ -743,6 +769,7 @@ pub struct Deque<T>
     void   _grow()
 }
 pub extend<T> Deque<T> : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)
 ```
 
 ### 12. `std::collections::hashmap`, `HashMap<K, V>`
@@ -784,7 +811,8 @@ pub extend<K, V> HashMap<K, V> : @drop { void drop(); }
 ```
 
 ### 13. `std::collections::iter`, Generic iteration helpers
-Free functions over `Vec<T>`.
+Free functions over `Vec<T>`. These are convenience algorithms for vectors, not
+generic `@iter` adapters; use the ranged for when iterating another collection.
 
 ```coral
 pub Vec<U> map<T, U>(const Vec<T>* v, U(T) fn)
@@ -831,6 +859,7 @@ pub struct LinkedList<T>
     void dispose()
     usize count()
     bool  isEmpty()
+    T     at(usize i)  // O(i); walks from the head
     void  pushFront(T val)
     void  pushBack(T val)
     T     popFront()
@@ -842,6 +871,7 @@ pub struct LinkedList<T>
     void  each(void(T) fn)
 }
 pub extend<T> LinkedList<T> : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)
 ```
 
 ### 15. `std::collections::map`, Ordered AVL `Map<K, V>`
@@ -896,6 +926,7 @@ pub struct PriorityQueue<T>
     void dispose()
     usize count()
     bool  isEmpty()
+    T     at(usize i)  // heap-array order, not sorted
     void  push(T val)
     T     pop()
     T     peek()
@@ -903,6 +934,7 @@ pub struct PriorityQueue<T>
     // helpers: _grow _siftUp _siftDown
 }
 pub extend<T> PriorityQueue<T> : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)
 ```
 
 ### 17. `std::collections::queue`, FIFO `Queue<T>`
@@ -918,12 +950,14 @@ pub struct Queue<T>
     void dispose()
     usize count()
     bool  isEmpty()
+    T     at(usize i)
     void  enqueue(T val)
     T     dequeue()
     T     peek()
     void  clear()
 }
 pub extend<T> Queue<T> : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)
 ```
 
 ### 18. `std::collections::ringbuf`, `RingBuf<T>`
@@ -951,6 +985,7 @@ pub struct RingBuf<T>
     void  clear()
 }
 pub extend<T> RingBuf<T> : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)
 ```
 
 ### 19. `std::collections::set`, `Set<T>`
@@ -1652,17 +1687,13 @@ pub void eprintln<comptime T>(T fmt, ...)
 pub void vaprint(... args)
 pub void flush()
 
-// formatting helpers passed as arguments
-pub struct Spaces { u64 count; }
-pub struct Repeat { u8 ch; u64 count; }
-pub struct Hex    { u64 value; }
-pub struct Bin    { u64 value; }
-pub struct Fixed  { f64 value; u64 precision; }
-pub Spaces spaces(u64 count)
-pub Repeat repeat(u8 ch, u64 count)
-pub Hex    hex(u64 value)
-pub Bin    bin(u64 value)
-pub Fixed  fixed(f64 value, u64 precision)
+// formatting helpers passed as arguments (constructors; the manipulator
+// types themselves are module-internal)
+pub Spaces _spaces(u64 count)
+pub Repeat _repeat(u8 ch, u64 count)
+pub Hex    _hex(u64 value)
+pub Bin    _bin(u64 value)
+pub Fixed  _fixed(f64 value, u64 precision)
 
 // parsing
 pub i64 parseI64(str sv, bool* ok)

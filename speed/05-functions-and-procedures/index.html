@@ -334,16 +334,18 @@ bumpCounter(&amp;n);   // n is 2</code></pre>
 <p>In factorial, <code>n * fact(n - 1)</code> cannot return immediately; it must multiply after the call. In sumRange, the recursive call is the entire return value, <code>return sumRange(...)</code>, so the frame can be recycled and the compiler can turn it into a loop reassigning n and acc.</p>
 <p>Each call passes the running total, and the final call returns it. The recursion is a loop in recursive clothing.</p>
 <p>Coral does not require tail-recursive style. The tree traversal recurses non-tail and runs fine because its depth is the tree's depth. Use the accumulator when a recursion must go deep.</p>
-<section><h2 id="s5-17">Generators, Lazy Sequences, and the Iterator Protocol</h2></section>
+<section><h2 id="s5-17">Generators, Lazy Sequences, and Iteration</h2></section>
 <p>A generator is a function that can pause, yield a value, and resume. Coral has no generators and no yield statement.</p>
-<p>The reason is the same as for closures: a generator has hidden state, a frame that survives calls and a suspended stack. That state is invisible in the signature.</p>
-<p>Coral's answer is the iterator protocol. A type implements it, and the ranged for drives it. The iterator computes each element on demand, providing the same laziness, with state stored explicitly in the iterator object.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">for (var line : file.lines())
+<p>The reason is the same as for closures: a generator has hidden state, a frame that survives calls and a suspended stack, invisible in the signature.</p>
+<p>The nearest tool is the @iter protocol of <a href="../04-control-flow/index.html">Chapter 4</a>, but it is not a generator: @iter is index based and eager, walking a container that already holds its elements by calling count() once and at(i) per index. It computes nothing on demand and has no hidden suspension point; the state of an iteration is a plain index.</p>
+<p>There is therefore no lazy sequence and no lines() iterator that materializes a file one line at a time. When a source produces values as you go, drive it with a loop and keep the state yourself:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">while (true)
 {
-    // each line is read on demand as the loop reaches it
+    str line = readLine();
+    if (line.len == 0) break;   // end of input
+    process(line);
 }</code></pre>
-<p>file.lines() does not build a list up front. It returns an iterator that produces the next line when asked, so breaking after ten lines leaves the other 999,990 unmaterialized. The laziness is real, with state in the open.</p>
-<p>The protocol covers what generators cover: lazy sequences compute on each step, and stateful iteration carries state in fields. Bidirectional sends are not part of the protocol; operations that feed values use explicit parameters.</p>
+<p>The loop reads one line per turn and stops when the source ends, buffering nothing up front. Because @iter is structural and eager, there is no protocol for sending a value back into a running sequence; operations that feed a stream take explicit parameters.</p>
 <section><h2 id="s5-18">Async, Await, and Threads</h2></section>
 <p>Some languages have async and await, with an event loop, futures, cancellation, and backpressure. Coral has neither, and no event loop in the language.</p>
 <p>Async and await graft suspension onto functions, requiring hidden suspended frames, a scheduler, and a runtime. Coral's concurrency is threads, with explicit synchronization, covered in a later chapter.</p>
@@ -521,6 +523,10 @@ pub f64 largestArea(const Vec&lt;any Shape&gt;* shapes)
 <p>And a function is a unit of trust. Small, well named, and honestly typed, it can be believed because you can read everything it might do. A big program is a web of small trustworthy functions, each checked against its neighbors: many small things you understand instead of one big thing you hope works.</p>
       <nav class="chapter-nav"><a href="../../speed/04-control-flow/index.html">← Previous</a><a href="../../speed/06-traits-extend-and-polymorphism/index.html">Next →</a></nav>
     </article>
+    <footer class="site-footer">
+      <span class="footer-note">The Coral Book · Speed Edition</span>
+      <nav aria-label="Footer"><a href="../../sitemap/index.html">Sitemap</a></nav>
+    </footer>
   </main>
 </body>
 </html>

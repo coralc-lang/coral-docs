@@ -6,7 +6,7 @@ A Language Without a Library Is a Set of Keywords
 
 Remove every library from your language and only keywords and byte-moving remain. The container that holds an unknown-length list, the text buffer, and the lookup table all live in the standard library. The language is the grammar; the library is the vocabulary.
 
-Coral's library is a tree of capabilities. Under `std` sit `collections`, `text`, `io`, `fmt`, `math`, `memory`, `crypto`, `concurrent`, `parser`, `data`, and `testing`; under `collections`, `arr`, `vec`, `map`, `hashmap`, `unordered_map`, `set`, `queue`, `deque`, `ringbuf`, `priorityqueue`, `linkedlist`, `tree`, `trie`, `bitset`, `cache`, `iter`, and `sort`.
+Coral's library is a tree of capabilities. Under `std` sit `collections`, `text`, `io`, `fmt`, `math`, `memory`, `crypto`, `concurrent`, `parser`, `data`, and `testing`; under `collections`, `arr`, `vec`, `map`, `hashmap`, `unordered_map`, `set`, `queue`, `deque`, `ringbuf`, `priorityqueue`, `linkedlist`, `tree`, `trie`, `bitset`, `cache`, `iter`, `sort`, and `range`.
 
 `std` is the portable surface. `core` is what the language is built from: `str` (methods in `core::str`), `cchar`, `char_util`, and `core::limits`. Normal programs import from `std`; `platform` wraps the OS and is reached only close to the metal.
 
@@ -27,21 +27,22 @@ Every module below lives under `std::collections`; the import column is the exac
     module (import path)               type               backing structure          order         per-op cost
     std::collections::vec              Vec<T>             growable array (ptr/len/cap) insertion     push,pop,at O(1); insert,remove O(n)
     std::collections::arr              Arr<T, N>          inline fixed array          insertion     all O(1); no heap
-    std::collections.map               Map<K, V>          AVL tree                    key order     O(log n)
-    std::collections.hashmap           HashMap<K, V>      linear-probing hash table   none          O(1) average
-    std::collections.unordered_map     UnorderedMap<K, V> HashMap wrapper             none          O(1) average
-    std::collections.set               Set<T>             HashMap<T, bool>            none          O(1) average
-    std::collections.queue             Queue<T>           Deque wrapper (one end)     FIFO          O(1) amortised
-    std::collections.deque             Deque<T>           growable ring (masked)      both ends     O(1) amortised
-    std::collections.ringbuf           RingBuf<T>         fixed ring, overwrite-old   circular      O(1)
-    std::collections.priorityqueue     PriorityQueue<T>   binary heap over an array   min-first     O(log n)
-    std::collections.linkedlist        LinkedList<T>      doubly linked list          insertion     ends O(1); scan O(n)
-    std::collections.tree              Tree<T>            vector-of-children tree      traversal     append child O(1)
-    std::collections.trie              Trie               byte-keyed prefix tree      prefix        O(key length)
-    std::collections.bitset            Bitset             packed 64-bit words          bit index     test,set,toggle O(1)
-    std::collections.cache             Cache<K, V>        hash map + LRU list         recency       O(1) average
-    std::collections.iter              free functions over a `Vec<T>`
-    std::collections.sort              free functions over a `Vec<T>`
+    std::collections::map               Map<K, V>          AVL tree                    key order     O(log n)
+    std::collections::hashmap           HashMap<K, V>      linear-probing hash table   none          O(1) average
+    std::collections::unordered_map     UnorderedMap<K, V> HashMap wrapper             none          O(1) average
+    std::collections::set               Set<T>             HashMap<T, bool>            none          O(1) average
+    std::collections::queue             Queue<T>           Deque wrapper (one end)     FIFO          O(1) amortised
+    std::collections::deque             Deque<T>           growable ring (masked)      both ends     O(1) amortised
+    std::collections::ringbuf           RingBuf<T>         fixed ring, overwrite-old   circular      O(1)
+    std::collections::priorityqueue     PriorityQueue<T>   binary heap over an array   min-first     O(log n)
+    std::collections::linkedlist        LinkedList<T>      doubly linked list          insertion     ends O(1); scan O(n)
+    std::collections::tree              Tree<T>            vector-of-children tree      traversal     append child O(1)
+    std::collections::trie              Trie               byte-keyed prefix tree      prefix        O(key length)
+    std::collections::bitset            Bitset             packed 64-bit words          bit index     test,set,toggle O(1)
+    std::collections::cache             Cache<K, V>        hash map + LRU list         recency       O(1) average
+    std::collections::iter              free functions over a `Vec<T>`
+    std::collections::sort              free functions over a `Vec<T>`
+    std::collections::range             IterRange          half-open index bounds      index         O(1)
 
 Three facts hold. Every container is generic and monomorphised (`Vec<i32>` and `Vec<String>` share one source, as in Chapter7). No container takes an allocator: all use the process-wide allocator in `std::memory::mman` (`alloc<T>`, `dealloc<T>`, `realloc<T>`, routing to `defaultAllocator`), so arenas are separate (16.12). Struct fields have no visibility keyword, so `Vec.data`, `Vec.len`, `Vec.cap`, and `MapEntry`'s fields are interface.
 
@@ -238,7 +239,7 @@ To modify in place rather than copy out, `getPtr` returns `Option<V*>`:
         *slot.unwrap() = *slot.unwrap() + 1;   // increment in place
     }
 
-Because a Map is ordered, iteration is in key order via `each`, since the map exposes no iterator:
+Because a Map is ordered, iteration is in key order via `each`, since the map implements no `@iter`:
 
     void printAge(str key, i32 value) {
         println("{} = {}", key, value);
@@ -251,7 +252,7 @@ The method set: `new`, `dispose`, `count`, `isEmpty`, `insert`, `get`, `getPtr`,
 
 `insert` returns `Result<V, CollectionError>::Ok { .value = value }`, handing your value back, so it is not "insert-or-update returning the old value." AVL deletion copies the in-order successor's key and value up, then deletes the successor; for owning types this moves the same object between nodes, which is fine because the map never frees keys or values (16.12).
 
-There is no iterator, reverse iterator, `firstKey`/`lastKey`, or range scan. For descending order, collect keys with `each` into a `Vec<K>` and reverse, or pass a negated comparator (`i32 reverseCmp(K a, K b) { return -cmpAsc(a, b); }`), which keeps the AVL invariants. For "all keys in `[lo, hi)`", collect and filter, or use a structure with a range operation.
+There is no `@iter` implementation, no reverse iteration, `firstKey`/`lastKey`, or range scan. For descending order, collect keys with `each` into a `Vec<K>` and reverse, or pass a negated comparator (`i32 reverseCmp(K a, K b) { return -cmpAsc(a, b); }`), which keeps the AVL invariants. For "all keys in `[lo, hi)`", collect and filter, or use a structure with a range operation.
 
 16.4 The Hashed Maps: HashMap and UnorderedMap
 
@@ -554,9 +555,19 @@ The structure is a `HashMap<K, CacheEntry<K, V>*>` plus a doubly-linked recency 
 
 We use the standard-library LRU cache in the second worked example.
 
-16.11 iter and sort
+16.11 Iteration, iter, and sort
 
-Two utilities cut across every container.
+Three utilities cut across every container, the first being the `@iter` protocol that drives the ranged for of Chapter 4.
+
+Iteration is index based. A container opts in by providing `count()`, `at(usize i)`, and, for bounded loops, `IterRange range(usize start, usize end)` in an `@iter` extend block. The ranged for asks `count()` once, then `at(i)` per index. The types that opt in are `Vec`, `Arr`, `Deque`, `RingBuf`, `Queue`, `LinkedList`, `PriorityQueue`, and `Bitset`; the associative containers (`Map`, `HashMap`, `Set`, `Tree`, `Trie`, `Cache`, `UnorderedMap`) do not, having no single canonical indexed order, and are walked with `each()`. `IterRange`, with fields `start` and `end`, lives in `std::collections::range`:
+
+    import(lib) std::collections::range { IterRange };
+
+    for (var x : v)             { ... }   // whole vector
+    for (var x : v(1, 3))       { ... }   // indexes 1 and 2, half-open
+    for (var x : v.range(1, 3)) { ... }   // the same, method spelling
+
+The bounded form clamps its bounds to `count()` and treats `end < start` as an empty loop, so a runtime range never indexes out of bounds. The loop variable is a copy; use an index loop with `atPtr()` to write through it.
 
 `std::collections::sort` implements ordering on Vecs, with typed entry points and a generic one:
 
@@ -604,7 +615,7 @@ These adaptors turn a loop into a sentence: `map` does this to every element and
 
 Allocators: `map`, `filter`, `take`, `skip`, `slice`, `zip`, `unique`, `flatten`, `enumerate` return new Vecs. Scalars: `reduce`, `forEach`, `find`, `findIndex`, `hasAny`, `all`, `countIf`, `minBy`, `maxBy`, `sum`, `average`. `find` returns `T()` on no match, so `0` is ambiguous; use `findIndex` (`isize` or `-1`). `minBy`, `maxBy`, and `sum` assert non-empty; `average` returns `0.0` for empty. `slice` is half-open and clamps; invalid bounds return empty. `zip` stops at the shorter input and yields `Pair` with `first` and `second`. `enumerate` returns indices. `unique` is O(n^2). `flatten` takes `Vec<Vec<T>>*`.
 
-`sort` is median-of-three quicksort, as `Vec::sortBy` uses. `sortI32`, `sortusize`, `sortF64`, `sortBy`, and `reverse` mutate in place and take a non-const `Vec<T>*`; `isSortedI32`, `isSortedusize`, `isSortedBy`, `binarySearchI32`, `binarySearchusize`, and `binarySearchBy` take `const Vec<T>*`. Typed sorts use `<`, so `sortF64` inherits `NaN` behaviour. `binarySearchBy` takes a three-way comparator; searches return `isize` or `-1`, not an insertion point.
+`sort` is median-of-three quicksort, as `Vec::sortBy` uses. `sortI32`, `sortusize`, `sortF64`, `sortBy`, and `reverse` mutate in place and take a non-const `Vec<T>*`; `isSortedI32`, `isSortedusize`, `isSortedBy`, `binarySearchI32`, `binarySearchusize`, and `binarySearchBy` take `const Vec<T>*`. Typed sorts use `<`, so `sortF64` inherits `NaN` behaviour. `binarySearchBy` takes a three-way comparator; searches return `isize` or `-1`, not an insertion point. Neither `iter` nor `sort` is an `@iter` adapter: the helpers in `iter` take a `Vec<T>` pointer, so use the ranged for when iterating another collection.
 
 16.12 Ownership, Allocation, and Who Frees What
 

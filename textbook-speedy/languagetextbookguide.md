@@ -73,7 +73,7 @@ A truly great programming language textbook is a **pedagogical system**, not jus
 
 **Loops**
 - `while`, `do-while`, `for`, `for-each`/`for-in`
-- Iterator protocol: how `for-each` actually works under the hood
+- @iter protocol: how `for-each` actually works under the hood
 - `break`/`continue` with labels, early return strategies
 - Loop fusion vs unrolling (conceptual, not optimization-focused)
 
@@ -119,7 +119,7 @@ A truly great programming language textbook is a **pedagogical system**, not jus
 
 **Implementation Details**
 - Time/space complexity guarantees (amortized analysis)
-- Iterator invalidation rules (modifying while iterating)
+- Iteration invalidation rules (modifying while iterating)
 - Custom hash functions, equality contracts for collection keys
 
 **Strings & Text**

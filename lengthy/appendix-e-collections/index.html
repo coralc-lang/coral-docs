@@ -34,6 +34,13 @@
 <hr />
 <section><h2 id="std-collections">std::collections</h2></section>
 <p>Imported via <code>std::collections</code>. <code>Vec&lt;T&gt;</code> is also re-exported as <code>std::vec</code> and prelude-imported; <code>Arr&lt;T, N&gt;</code> as <code>std::arr</code>.</p>
+<p>Iteration: the iterable containers implement the built-in <code>@iter</code> marker trait, which the ranged for loop of <a href="../04-control-flow/index.html">Chapter 4</a> drives. Such a type supplies <code>usize count()</code>, <code>T at(usize i)</code>, and, for bounded loops, <code>IterRange range(usize start, usize end)</code>, all in an <code>@iter</code> extend block. The half-open bounds type is declared in <code>std::collections::range</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct IterRange
+{
+    usize start;
+    usize end;
+}</code></pre>
+<p><code>Vec</code>, <code>Arr</code>, <code>Deque</code>, <code>RingBuf</code>, <code>Queue</code>, <code>LinkedList</code>, <code>PriorityQueue</code>, and <code>Bitset</code> implement <code>@iter</code>; the associative containers (<code>Map</code>, <code>HashMap</code>, <code>Set</code>, <code>Tree</code>, <code>Trie</code>, <code>Cache</code>, <code>UnorderedMap</code>) do not, and are walked with <code>each()</code>.</p>
 <h3 id="7-std-collections-arr-arr-t-n">7. <code>std::collections::arr</code>, <code>Arr&lt;T, N&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Arr&lt;T, N&gt;
 {
@@ -51,7 +58,8 @@
     void        fill(T val)
     void        copyTo(T* dst)
     void        copyFrom(const T* src)
-}</code></pre>
+}
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="8-std-collections-vec-vec-t-aka-std-vec">8. <code>std::collections::vec</code>, <code>Vec&lt;T&gt;</code> (aka <code>std::vec</code>)</h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec&lt;T&gt;
 {
@@ -90,7 +98,8 @@
 }
 // helper: void _sortByRange(usize lo, usize hi, bool(T, T) less)
 //         usize _partitionBy(usize lo, usize hi, bool(T, T) less)
-pub extend&lt;T&gt; Vec&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; Vec&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="9-std-collections-bitset-bitset">9. <code>std::collections::bitset</code>, <code>Bitset</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Bitset
 {
@@ -101,6 +110,7 @@ pub extend&lt;T&gt; Vec&lt;T&gt; : @drop { void drop(); }</code></pre>
     static Bitset new(u64 numBits)
     void dispose()
     u64  count()          // numBits
+    bool at(usize i)      // bit value, for for-in
     u64  wordCount()
     void set(u64 bit)
     void clear(u64 bit)
@@ -119,7 +129,8 @@ pub extend&lt;T&gt; Vec&lt;T&gt; : @drop { void drop(); }</code></pre>
     void not()
     void _maskPadding()
 }
-pub extend Bitset : @drop { void drop(); }</code></pre>
+pub extend Bitset : @drop { void drop(); }
+// @iter: u64 count(); bool at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="10-std-collections-cache-lru-cache-k-v">10. <code>std::collections::cache</code>, LRU <code>Cache&lt;K, V&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct CacheEntry&lt;K, V&gt;
 {
@@ -178,7 +189,8 @@ pub extend&lt;K, V&gt; Cache&lt;K, V&gt; : @drop { void drop(); }</code></pre>
     void   clear()
     void   _grow()
 }
-pub extend&lt;T&gt; Deque&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; Deque&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="12-std-collections-hashmap-hashmap-k-v">12. <code>std::collections::hashmap</code>, <code>HashMap&lt;K, V&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant CollectionError { AllocFailed { str msg; } }
 
@@ -214,7 +226,7 @@ pub struct HashMap&lt;K, V&gt;
 }
 pub extend&lt;K, V&gt; HashMap&lt;K, V&gt; : @drop { void drop(); }</code></pre>
 <h3 id="13-std-collections-iter-generic-iteratio">13. <code>std::collections::iter</code>, Generic iteration helpers</h3>
-<p>Free functions over <code>Vec&lt;T&gt;</code>.</p>
+<p>Free functions over <code>Vec&lt;T&gt;</code>. These are convenience algorithms for vectors, not generic <code>@iter</code> adapters; use the ranged for when iterating another collection.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Vec&lt;U&gt; map&lt;T, U&gt;(const Vec&lt;T&gt;* v, U(T) fn)
 pub Vec&lt;T&gt; filter&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)
 pub T      reduce&lt;T&gt;(const Vec&lt;T&gt;* v, T init, T(T, T) fn)
@@ -255,6 +267,7 @@ pub struct LinkedList&lt;T&gt;
     void dispose()
     usize count()
     bool  isEmpty()
+    T     at(usize i)  // O(i); walks from the head
     void  pushFront(T val)
     void  pushBack(T val)
     T     popFront()
@@ -265,7 +278,8 @@ pub struct LinkedList&lt;T&gt;
     void  remove(ListNode&lt;T&gt;* node)
     void  each(void(T) fn)
 }
-pub extend&lt;T&gt; LinkedList&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; LinkedList&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="15-std-collections-map-ordered-avl-map-k">15. <code>std::collections::map</code>, Ordered AVL <code>Map&lt;K, V&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant CollectionError { AllocFailed { str msg; } }
 
@@ -312,13 +326,15 @@ pub extend&lt;K, V&gt; Map&lt;K, V&gt; : @drop { void drop(); }</code></pre>
     void dispose()
     usize count()
     bool  isEmpty()
+    T     at(usize i)  // heap-array order, not sorted
     void  push(T val)
     T     pop()
     T     peek()
     void  clear()
     // helpers: _grow _siftUp _siftDown
 }
-pub extend&lt;T&gt; PriorityQueue&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; PriorityQueue&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="17-std-collections-queue-fifo-queue-t">17. <code>std::collections::queue</code>, FIFO <code>Queue&lt;T&gt;</code></h3>
 <p>Wraps <code>Deque&lt;T&gt;</code>.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Queue&lt;T&gt;
@@ -329,12 +345,14 @@ pub extend&lt;T&gt; PriorityQueue&lt;T&gt; : @drop { void drop(); }</code></pre>
     void dispose()
     usize count()
     bool  isEmpty()
+    T     at(usize i)
     void  enqueue(T val)
     T     dequeue()
     T     peek()
     void  clear()
 }
-pub extend&lt;T&gt; Queue&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; Queue&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="18-std-collections-ringbuf-ringbuf-t">18. <code>std::collections::ringbuf</code>, <code>RingBuf&lt;T&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct RingBuf&lt;T&gt;
 {
@@ -357,7 +375,8 @@ pub extend&lt;T&gt; Queue&lt;T&gt; : @drop { void drop(); }</code></pre>
     T     at(usize i)
     void  clear()
 }
-pub extend&lt;T&gt; RingBuf&lt;T&gt; : @drop { void drop(); }</code></pre>
+pub extend&lt;T&gt; RingBuf&lt;T&gt; : @drop { void drop(); }
+// @iter: usize count(); T at(usize i); IterRange range(usize start, usize end)</code></pre>
 <h3 id="19-std-collections-set-set-t">19. <code>std::collections::set</code>, <code>Set&lt;T&gt;</code></h3>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Set&lt;T&gt;
 {
@@ -471,6 +490,10 @@ pub extend Trie : @drop { void drop(); }</code></pre>
 pub extend&lt;K, V&gt; UnorderedMap&lt;K, V&gt; : @drop { void drop(); }</code></pre>
       <nav class="chapter-nav"><a href="../../lengthy/appendix-d-prelude-core-and-platform/index.html">← Previous</a><a href="../../lengthy/appendix-f-text-data-time-and-formatting/index.html">Next →</a></nav>
     </article>
+    <footer class="site-footer">
+      <span class="footer-note">The Coral Book</span>
+      <nav aria-label="Footer"><a href="../../sitemap/index.html">Sitemap</a></nav>
+    </footer>
   </main>
 </body>
 </html>
