@@ -111,13 +111,16 @@ function bindSearch() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  if (window.location.pathname.includes("/lengthy/")) {
-    const textbookRoot = `${window.location.pathname.split("/lengthy/")[0]}/lengthy/`;
+  const edition = window.location.pathname.match(/\/(lengthy|speed)\//);
+  if (edition) {
+    const name = edition[1];
+    const bookRoot = `${window.location.pathname.split(`/${name}/`)[0]}/${name}/`;
+    window.__BOOK_ROOT__ = bookRoot;
     const dataScript = document.createElement("script");
-    dataScript.src = `${textbookRoot}book-data.js`;
+    dataScript.src = `${bookRoot}book-data.js`;
     dataScript.onload = () => {
       const navigationScript = document.createElement("script");
-      navigationScript.src = `${textbookRoot}book-nav.js`;
+      navigationScript.src = `${bookRoot}book-nav.js`;
       document.body.append(navigationScript);
     };
     document.body.append(dataScript);

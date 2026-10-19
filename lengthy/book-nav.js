@@ -1,4 +1,4 @@
-const bookRoot = new URL("./", document.currentScript.src);
+const bookRoot = window.__BOOK_ROOT__ ? new URL(window.__BOOK_ROOT__, window.location.href) : new URL("./", document.currentScript.src);
 const bookData = window.CORAL_BOOK || { parts: [] };
 const parts = bookData.parts;
 
@@ -67,7 +67,7 @@ const group = (label, links) => {
 
 sidebar.append(
   group("Start here", [
-    { href: "index.html", text: "Book contents", prefix: "/textbook/index.html" },
+    { href: "index.html", text: "Book contents", prefix: true },
     { href: "../coral-docs/index.html", text: "Coral Docs home" },
   ]),
   ...parts.map((part) =>
@@ -76,7 +76,7 @@ sidebar.append(
       part.chapters.map(({ href, number, title, topics }) => ({
         href,
         text: number ? `${number} · ${title}` : title,
-        prefix: `/textbook/${href}`,
+        prefix: true,
         topics,
       }))
     )
