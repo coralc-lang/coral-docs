@@ -8,11 +8,11 @@ Appendices (appendix-*.txt) and std_api_reference.md are Markdown.
 Output: textbook/<slug>/index.html for every chapter/appendix, a regenerated
 textbook/index.html landing page, and textbook/book-data.js (navigation data).
 """
+import datetime
 import html
 import glob
 import os
 import re
-
 SRC = "/home/cerie/Documents/coralc/coral-docs/textbook"
 SITE = "/home/cerie/Documents/coral-docs"
 OUT = os.path.join(SITE, "textbook")
@@ -141,6 +141,15 @@ def slugify(s):
 
 def inline(text, ref_prefix="../"):
     out = esc(text)
+    # protect `code spans` first so ** or * inside them stays literal
+    codes = []
+
+    def stash(m):
+        codes.append(m.group(1))
+        return f"\x00{len(codes) - 1}\x00"
+
+    out = re.sub(r"`([^`]+)`", stash, out)
+
     # chapter cross references
     def chref(m):
         n = int(m.group(1))
@@ -152,8 +161,12 @@ def inline(text, ref_prefix="../"):
     out = re.sub(r"\bChapter\s*(\d+)\b", chref, out)
     out = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', out)
     out = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", out)
-    out = re.sub(r"`([^`]+)`", r"<code>\1</code>", out)
     out = re.sub(r"(?<![\w*])\*([^*\n]+)\*(?![\w*])", r"<em>\1</em>", out)
+    out = re.sub(
+        r"\x00(\d+)\x00",
+        lambda m: f"<code>{codes[int(m.group(1))]}</code>",
+        out,
+    )
     return out
 
 
@@ -760,10 +773,14 @@ def main():
         out_rel = os.path.join(os.path.dirname(rel), os.path.splitext(os.path.basename(rel))[0])
         urls.append(f"{BASE_URL}/{out_rel.replace(os.sep, '/')}/index.html")
     seen = list(dict.fromkeys(urls))
+    today = datetime.date.today().isoformat()
     sitemap = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        + "".join(f"  <url><loc>{html.escape(u)}</loc></url>\n" for u in seen)
+        + "".join(
+            f"  <url><loc>{html.escape(u)}</loc><lastmod>{today}</lastmod></url>\n"
+            for u in seen
+        )
         + "</urlset>\n"
     )
     write(os.path.join(SITE, "sitemap.xml"), sitemap)

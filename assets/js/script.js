@@ -6,39 +6,52 @@ const escapeHtml = (value) =>
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
 
+const CORAL_KEYWORDS = new Set([
+  "var", "struct", "enum", "variant", "extend", "pub", "static", "return",
+  "fn", "import", "mod", "new", "if", "else", "while", "for", "loop",
+  "switch", "defer", "break", "continue", "true", "false", "null", "self",
+  "const", "extern", "trait", "union", "volatile", "comptime", "any",
+  "where", "match", "case", "default", "typeof",
+]);
+
+const CORAL_TYPES = new Set([
+  "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128",
+  "usize", "isize", "f32", "f64", "bool", "void", "str", "char", "rawptr",
+]);
+
+const CORAL_ATOM =
+  /\/\/[^\n]*|\/\*[\s\S]*?\*\/|#\[\[[\s\S]*?\]\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|0[xX][0-9a-fA-F][0-9a-fA-F_]*|0[bB][01][01_]*|\d[\d_]*(?:\.[\d_]+)?(?:[eE][+-]?\d+)?|@[A-Za-z_]\w*|[A-Za-z_]\w*|->|::|\.\.\.|\+\+|--|&&|\|\||[=!<>]=|[+\-*/%=<>!&|^~?:@#]|[{}()\[\];,.]/g;
+
+function classifyToken(raw, text, after) {
+  if (text.startsWith("//") || text.startsWith("/*")) return "comment";
+  if (text.startsWith("#[[")) return "attribute";
+  if (text[0] === '"' || text[0] === "'") return "string";
+  if (text[0] >= "0" && text[0] <= "9") return "number";
+  if (text[0] === "@") return "builtin";
+  if (/[A-Za-z_]/.test(text[0])) {
+    if (CORAL_KEYWORDS.has(text)) return "keyword";
+    if (CORAL_TYPES.has(text)) return "type";
+    if (/^[A-Z]/.test(text)) return "type";
+    return /^\s*\(/.test(after) ? "function" : "";
+  }
+  if (/[{}()\[\];,.]/.test(text)) return "punctuation";
+  return "operator";
+}
+
 function tokenizeCode(raw) {
-  const patterns = [
-    ["comment", /\/\/[^\n]*|\/\*[\s\S]*?\*\//],
-    ["string", /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/],
-    ["number", /\b(?:0x[0-9a-fA-F]+|\d+\.\d+|\d+)\b/],
-    [
-      "keyword",
-      /\b(?:var|struct|enum|variant|extend|pub|static|return|fn|import|mod|new|if|else|while|for|loop|switch|def|defer|break|continue|true|false|null|println|printf|self|const|extern|trait|union|volatile|comptime|any|where|match|case)\b/,
-    ],
-    [
-      "type",
-      /\b(?:i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|f32|f64|bool|void|usize|isize|str|char|rawptr|String|Vec|Option|Result)\b/,
-    ],
-    ["function", /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\()/],
-    ["operator", /->|::|\.\.\.|[+\-*/%=<>!&|^~?:@#]/],
-    ["punctuation", /[{}()\[\];,.]/],
-  ];
-
-  const master = new RegExp(
-    patterns.map(([, re]) => `(${re.source})`).join("|"),
-    "gm"
-  );
-
+  const scanner = new RegExp(CORAL_ATOM.source, "g");
   let result = "";
   let last = 0;
   let match;
-  while ((match = master.exec(raw)) !== null) {
+  while ((match = scanner.exec(raw)) !== null) {
+    const text = match[0];
     if (match.index > last) result += escapeHtml(raw.slice(last, match.index));
-    const idx = match.slice(1).findIndex((value) => value !== undefined);
-    const cls = idx >= 0 ? patterns[idx][0] : "plain";
-    result += `<span class="token ${cls}">${escapeHtml(match[0])}</span>`;
-    last = match.index + match[0].length;
-    if (match[0].length === 0) master.lastIndex += 1;
+    const cls = classifyToken(raw, text, raw.slice(scanner.lastIndex));
+    result += cls
+      ? `<span class="token ${cls}">${escapeHtml(text)}</span>`
+      : escapeHtml(text);
+    last = scanner.lastIndex;
+    if (text.length === 0) scanner.lastIndex += 1;
   }
   if (last < raw.length) result += escapeHtml(raw.slice(last));
   return result;
