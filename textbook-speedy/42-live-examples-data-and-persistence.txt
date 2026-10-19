@@ -1,0 +1,950 @@
+Chapter42
+
+Live Examples: Data and Persistence
+
+Bytes That Outlive the Process
+
+Everything in memory dies with the process. The moment the program exits, every `Vec`, every `String`, every carefully assembled struct is gone, and the next run starts from nothing. Persistence is the set of techniques that moves data across that boundary: into files, in a format that a later run, or a different program, can read back. This chapter is the workshop for that boundary. It builds a CSV writer and reader, a quoted-field CSV parser, a `key=value` config loader, a hand-rolled JSON-like serializer for a small struct, a fixed-layout binary record, a CRC32 checksum, a log-structured append-only key-value store, a compact in-memory index from key to file offset, and an atomic write that swaps a finished temporary file into place. Each is short. Each is a shape you will meet again under a different name.
+
+There is a discipline underneath all of them, and it is worth stating before the first example. A file is just a sequence of bytes. What makes those bytes meaningful is a contract: a layout, an encoding, an order. Writing is turning your in-memory values into bytes that obey the contract; reading is the reverse. Nearly every bug in persistence is a contract that was broken on one side and not the other: a field written big-endian and read little-endian, a length that counted characters on one path and bytes on another, a quoting rule that governed the writer but not the reader. The examples below are chosen so that each contract is small enough to hold in your head, because a contract you can hold in your head is a contract you can keep.
+
+Two honesties run through the chapter. First, the standard library here is thin on purpose. `std::io::fs` gives you `fileOpen`, `fileRead`, `fileWrite`, `fileSeek`, `readFileToString`, and `writeFileFromString`, and that is the whole of the file surface you need; the formats above it are yours to define. `std::fmt::format` is a stub, so text is built with `String` and the integer and float helpers `formatInt` and `formatFloat`, not with `printf`-style formatting. Second, and this is the one that matters for anything you store on a disk you do not control: moving bytes to a file is not the same as making them durable, and a rename is atomic only under conditions the code cannot check. Every section that touches a disk says exactly what it does and does not guarantee, and none of them oversells.
+
+A note on the imports. File work comes from `import(lib) std::io::fs`, which exports `File`, `IoError`, and the `open`/`read`/`write`/`seek` family, plus the `O_*` and `SEEK_*` constants. Text building uses `String` from the prelude, and `splitVec`, `trim`, and `indexOfChar` from `import(lib) std::text::strutil`. Byte formatting uses `formatInt` and `formatFloat` from `import(lib) std::fmt::fmt`. Maps use `import(lib) std::collections::hashmap { HashMap }`. `Vec` and `str` are prelude names. `println` comes from `std::io::ios`, which is prelude-imported.
+
+42.1 Writing and Reading a CSV File
+
+The problem. You have a table of records in memory and want to store them as comma-separated values, one record per line, in a file you can read back. This is the least ceremony you can ask of a persistence format, and the first one every tool reaches for.
+
+CSV is a line-oriented text format: each line is a record, each record is a list of fields separated by commas. Its simplicity is deceptive. A field that contains its own comma, a newline, or a double quote must be protected, and the usual rule is to wrap the field in double quotes and double any quote inside it. A writer that ignores this rule produces a file that a strict reader will split in the wrong place. The example below writes the rule down once, in `csvField`, and uses it for every field so that no call site can forget it.
+
+    import(lib) std::io::fs { fileOpen, fileClose, fileWrite, writeFileFromString,
+                               readFileToString, File, IoError };
+    import(lib) std::io::ios { println };
+    import(lib) std::text::string { String };
+    import(lib) std::text::strutil { splitVec, trim };
+    import(lib) std::fmt::fmt { formatInt, formatFloat };
+    import(lib) std::vec { Vec };
+
+    struct Row {
+        str name;
+        i32 age;
+        f64 score;
+    }
+
+    void csvField(String* out, str field) {
+        // Quote the field only when a comma, quote, or newline would split it.
+        bool needsQuotes = field.containsByte((u8)',') ||
+                           field.containsByte((u8)'"') ||
+                           field.containsByte((u8)'\n');
+        // Bare field: copy the bytes through unchanged.
+        if (!needsQuotes) {
+            out->appendView(field);
+            return;
+        }
+        // Quoted field: wrap it and double any embedded quote.
+        out->pushChar((u8)'"');
+        for (usize i = 0; i < field.len; i += 1) {
+            u8 c = field.at(i);
+            if (c == (u8)'"') out->pushChar((u8)'"');   // a quote becomes two
+            out->pushChar(c);
+        }
+        out->pushChar((u8)'"');
+    }
+
+    String csvFromRows(const Vec<Row>* rows) {
+        // Header line first, then one line per record.
+        String out = String::from("name,age,score");
+        for (usize i = 0; i < rows->count(); i += 1) {
+            out.pushChar((u8)'\n');
+            Row r = rows->at(i);
+            // The name is the only field that may need quoting.
+            csvField(&out, r.name);
+            out.pushChar((u8)',');
+            // Integers and floats become ASCII digits via the fmt helpers.
+            String age = formatInt((i64)r.age, 10u, false);
+            out.appendView(age.asView());
+            out.pushChar((u8)',');
+            String score = formatFloat(r.score, 2u);
+            out.appendView(score.asView());
+        }
+        return out;
+    }
+
+    void main() {
+        Vec<Row> rows = Vec<Row>::new();
+        rows.push(Row { .name = "Ada Lovelace", .age = 36, .score = 91.5 });
+        rows.push(Row { .name = "Grace \"Amazing\" Hopper", .age = 45, .score = 99.25 });
+
+        String csv = csvFromRows(&rows);
+        String path = String::from("/tmp/coral-people.csv");
+
+        // Mode "w" creates or truncates the file, then writes the buffer whole.
+        Result<bool, IoError> wr = writeFileFromString(path.asView(), &csv);
+        // Error path: the write failed, so stop before reading.
+        if (wr.isErr()) { println("write failed"); return; }
+        println("wrote {} bytes", csv.len);
+
+        // Read the entire file back into an owned buffer.
+        Result<String, IoError> rr = readFileToString(path.asView());
+        // Error path: nothing to parse if the read failed.
+        if (rr.isErr()) { println("read failed"); return; }
+        String back = rr.unwrap();
+        // Split on newlines; the trailing newline yields one empty line.
+        Vec<str> lines = splitVec(back.asView(), (u8)'\n');
+        for (usize i = 0; i < lines.count(); i += 1) {
+            str line = lines.at(i);
+            // Skip the empty field after the final newline.
+            if (line.len == 0) continue;
+            println("line {}: {}", i, line);
+        }
+    }
+
+`csvField` is the whole contract in one place: a field is emitted bare unless it contains a comma, a quote, or a newline, in which case it is wrapped and its own quotes are doubled. `csvFromRows` builds the header, then each row, reusing `formatInt` and `formatFloat` to turn the numbers into bytes. The temporary `String` for the age is a local, so it is dropped at the end of its iteration, after its bytes have been copied into `out`. Nothing about the format depends on the file functions at all; `writeFileFromString` writes the finished buffer in one call, and `readFileToString` reads the whole file back into a `String`.
+
+Cost and notes. Encoding is O(total bytes) with one `String` append per byte run, and `writeFileFromString` is a single open, a loop of `fileWrite` calls, and a close. The format itself is wasteful compared to a binary one: an `i32` costs up to eleven bytes of text instead of four, and every read pays to parse. What it buys is inspectability, one of the few properties that survives across programs, editors, and decades. CSV is the format you choose when the people reading it are as important as the machine.
+
+Edge cases and variations. The writer never quotes a field that does not need it, and a reader that handles the escaping (41.2) will agree. A field containing a `\r` is not quoted here, which is fine on a system that splits on `\n`; a writer targeting old Windows should quote `\r` and `\n` both. Leading and trailing spaces in a field are preserved, because CSV does not trim, and a consumer that wants them gone must call `trim` itself. The `age` and `score` fields assume the value fits their types; a real writer would refuse a score of `NaN` rather than print `nan`. And an empty table still emits the header line, which is the right answer for a reader looking for column names.
+
+42.2 Parsing Quoted CSV with a State Machine
+
+The problem. You have a CSV file, possibly written by the previous section, possibly by a spreadsheet, and you need its fields as slices you can look at without copying the whole file again. This is the reader that matches the writer, and it is where a naive `splitVec(..., ',')` falls apart: it cannot tell a separator from a comma inside quotes.
+
+A CSV parser is a tiny state machine. At any moment it is either inside a bare field or inside a quoted one; inside a quoted field, a quote either closes the field or, if another quote follows, is a literal one. This is exactly the kind of problem where a loop over bytes with a small amount of state beats any cleverness. The two subtle points are that a quoted field's content is a view into the input buffer, so the buffer must stay alive and unmodified, and that any output built by appending must reserve up front, because growing a `String` can move its bytes and invalidate views taken before the growth.
+
+    import(lib) std::io::fs { readFileToString, IoError };
+    import(lib) std::io::ios { println };
+    import(lib) std::text::string { String };
+    import(lib) std::text::strutil { splitVec };
+    import(lib) std::vec { Vec };
+
+    // A parsed field, plus whether it was written in quotes.
+    struct Field {
+        str text;
+        bool quoted;
+    }
+
+    // Parse one line into fields; quoted fields may hold commas.
+    Vec<Field> parseCsvLine(str line) {
+        Vec<Field> fields = Vec<Field>::new();
+        usize i = 0;
+        // Walk the line; i is the position of the next unread byte.
+        while (i <= line.len) {
+            if (i == line.len) {
+                break;
+            }
+            // A leading quote begins a quoted field.
+            if (line.at(i) == (u8)'"') {
+                i += 1;
+                usize start = i;
+                // A quoted field cannot be returned as a single view if it
+                // contains doubled quotes, so build only when needed.
+                usize extraQuotes = 0;
+                usize scan = i;
+                // Scan to the closing quote, skipping doubled pairs.
+                while (scan < line.len) {
+                    if (line.at(scan) == (u8)'"') {
+                        if (scan + 1 < line.len && line.at(scan + 1) == (u8)'"') {
+                            extraQuotes += 1;
+                            scan += 2;
+                            continue;
+                        }
+                        break;
+                    }
+                    scan += 1;
+                }
+                // No escapes: the field is a zero-copy slice of the line.
+                if (extraQuotes == 0) {
+                    fields.push(Field { .text = line.slice(start, scan),
+                                        .quoted = true });
+                } else {
+                    // Escaped: build a decoded copy of the field.
+                    usize cap = (scan - start) - extraQuotes;
+                    // Reserve exactly once so views into buf stay valid.
+                    String buf = String::withCap(cap + 1);
+                    usize p = start;
+                    while (p < scan) {
+                        if (line.at(p) == (u8)'"' && p + 1 < scan &&
+                            line.at(p + 1) == (u8)'"') {
+                            buf.pushChar((u8)'"');
+                            p += 2;
+                        } else {
+                            buf.pushChar(line.at(p));
+                            p += 1;
+                        }
+                    }
+                    fields.push(Field { .text = buf.asView(), .quoted = true });
+                }
+                // Skip the closing quote and, if present, the comma.
+                i = scan + 1;
+                if (i < line.len && line.at(i) == (u8)',') i += 1;
+            } else {
+                // Bare field: scan to the next comma.
+                usize start = i;
+                while (i < line.len && line.at(i) != (u8)',') i += 1;
+                fields.push(Field { .text = line.slice(start, i),
+                                    .quoted = false });
+                if (i < line.len) i += 1;
+            }
+        }
+        return fields;
+    }
+
+    void describe(str line) {
+        Vec<Field> fs = parseCsvLine(line);
+        // Header count, then one indented line per field.
+        println("{} fields:", fs.count());
+        for (usize i = 0; i < fs.count(); i += 1) {
+            Field f = fs.at(i);
+            println("  [{}] {}{}", i, if (f.quoted) "Q " else "B ", f.text);
+        }
+    }
+
+    void main() {
+        // Exercise bare, escaped, embedded-comma, and empty lines.
+        describe("Ada Lovelace,36,91.5");
+        describe("\"Grace \"\"Amazing\"\" Hopper\",45,99.25");
+        describe("\"a,b\",c");
+        describe("");
+    }
+
+The outer loop alternates: if the byte at `i` is a quote, it is a quoted field, scanned to its closing quote with doubled quotes collapsed; otherwise it is a bare field, scanned to the next comma. A quoted field with no internal doubled quotes is returned as a `slice` of the original line, a genuine view with no copy. Only when doubled quotes must be collapsed is a scratch `String` built, and it is pre-sized with `withCap(cap + 1)` so its storage is allocated once and never reallocated while its view is being stretched. That single line is the difference between a parser that works and one that produces a dangling view the moment the buffer grows.
+
+Cost and notes. Each line is a single pass, O(bytes), and usually allocates only the `Vec<Field>`. The unquoted and unescaped cases cost nothing beyond the slice; the escaped case costs one allocation per field, unavoidable if you want contiguous text. The parser copies nothing else, which is why the `line` it is given must outlive the fields. In `main` the lines come from string literals, which live for the whole program, so the views are safe; a caller reading from a real buffer must keep that buffer alive for as long as any returned `str` is used.
+
+Edge cases and variations. A trailing comma produces a final empty field, which is correct for `"a,"`. An empty line produces zero fields, because the loop breaks immediately; a stricter reader might return one empty field instead, and the choice should be documented because spreadsheets disagree. The parser does not handle a quote appearing in the middle of a bare field; some dialects treat it literally, others reject it, and this one treats it literally by scanning to the comma. A quoted field broken across lines is not supported, which is the price of parsing line by line; whole-file parsing needs the state machine to carry the inside-quotes state across `\n`. And `withCap(cap + 1)` reserves one byte for a terminator that `asView` does not strictly need, but the slack keeps the invariant obvious and costs at most a byte.
+
+42.3 A `key=value` Configuration File
+
+The problem. A program needs a handful of settings that the user can change without recompiling: a host, a port, a retry count. The smallest useful configuration format is one `key=value` per line, with blank lines and lines beginning with `#` ignored, and that is the format this section reads. It is the shape of `.ini`, of `.env`, and of a thousand hand-rolled config files.
+
+The idea. Read the whole file into one buffer, split it into lines, and for each non-blank line find the first `=`; the text to its left, trimmed, is the key, and the text to its right, trimmed, is the value. Store the pairs in a hash map keyed by the text of the key. Two details carry the format. First, the split is on the *first* `=`, so a value may itself contain `=`. Second, the map holds `str` views into the buffer, not copies, so the buffer must outlive the map, the same lifetime discipline the CSV reader of 41.2 demanded. When a key appears twice, the later assignment wins, because that is what every config parser does.
+
+The implementation.
+
+    import(lib) std::io::fs { readFileToString, writeFileFromString, IoError };
+    import(lib) std::io::ios { println, parseU64 };
+    import(lib) std::text::string { String };
+    import(lib) std::text::strutil { splitVec };
+    import(lib) std::collections::hashmap { HashMap };
+    import(lib) std::option { Option };
+    import(lib) std::vec { Vec };
+
+    // Hash and equality for str keys. The map stores borrowed views, so the
+    // whole config buffer must outlive it (see main); eq must match hash.
+    usize hashView(str s) {
+        usize h = 5381;
+        // Fold each byte into the running hash.
+        for (usize i = 0; i < s.len; i += 1)
+            h = h * 33 + (usize)s.at(i);         // djb2: cheap, spreads bytes
+        return h;
+    }
+
+    // Equality must match hashView, or lookups miss.
+    bool eqView(str a, str b) {
+        return a.equals(b);                      // consistent with hashView
+    }
+
+    // Parse the whole buffer into a map of views.
+    HashMap<str, str> parseConfig(str text) {
+        HashMap<str, str> cfg = HashMap<str, str>::new(hashView, eqView);
+        Vec<str> lines = splitVec(text, (u8)'\n');
+        for (usize i = 0; i < lines.count(); i += 1) {
+            // Trim surrounding whitespace before deciding.
+            str line = lines.at(i).trim();       // drop edge whitespace
+            if (line.len == 0) continue;         // blank line
+            if (line.at(0) == (u8)'#') continue; // comment line
+            // Split on the first '=', so a value may itself contain '='.
+            usize eq = line.findByte((u8)'=');
+            if (eq >= line.len) continue;        // no '=' => not an assignment
+            // Key and value are trimmed slices of the buffer.
+            str key = line.slice(0, eq).trim();
+            str val = line.slice(eq + 1, line.len).trim();
+            if (key.len == 0) continue;          // refuse an empty key
+            cfg.insert(key, val);                // duplicate key: last wins
+        }
+        return cfg;
+    }
+
+    // Typed accessor: default on a missing key or a malformed number.
+    u64 getConfigU64(HashMap<str, str>* cfg, str key, u64 fallback) {
+        Option<str> v = cfg->get(key);
+        if (v.isNone()) return fallback;         // absent key uses the default
+        bool ok;
+        // parseU64 signals failure through its bool out-parameter.
+        u64 n = parseU64(v.unwrap(), &ok);
+        return ok ? n : fallback;                // malformed value -> default
+    }
+
+    void main() {
+        String sample = String::from("# coral demo\nhost = localhost\nport = 8080\nretries=5\n");
+        String path = String::from("/tmp/coral.conf");
+        writeFileFromString(path.asView(), &sample);
+
+        // Read it back; text owns the bytes the map will view.
+        Result<String, IoError> rr = readFileToString(path.asView());
+        if (rr.isErr()) { println("cannot read config"); return; }
+        String text = rr.unwrap();               // owns the bytes the map views
+
+        // Parse into a map whose keys and values borrow text.
+        HashMap<str, str> cfg = parseConfig(text.asView());
+        println("keys {}", cfg.count());
+        Option<str> host = cfg.get("host");
+        if (host.isSome()) println("host = {}", host.unwrap());
+        println("port = {}", getConfigU64(&cfg, "port", 80u));
+        println("retries = {}", getConfigU64(&cfg, "retries", 3u));
+        println("missing = {}", getConfigU64(&cfg, "missing", 7u));
+    }
+
+The parser does no memory allocation per entry beyond the map's own table, because every key and value is a slice of `text`. `line.trim()` removes the spaces (`host = localhost` has one on each side of the `=`), `findByte` locates the separator, and `slice(0, eq)` / `slice(eq + 1, line.len)` carve out the two halves. The `>= line.len` test is the parse guard: `findByte` returns the length itself when the byte is absent, so that comparison is the "not found" case. `getConfigU64` is the typed accessor a caller actually wants: it looks up the raw string, parses it, and falls back to a default on either absence or malformed text, so a bad config degrades instead of crashing.
+
+Cost and notes. Reading and splitting is O(total bytes) and the map is O(1) average per lookup. The values are views, so the only steady cost is one hash map. Parsing a value is done on demand by `getConfigU64`, once per call, which is fine for the handful of lookups a startup performs; a hot path would parse once into a struct. The `parseU64` helper takes a `bool*` out-parameter rather than returning an `Option`, which is the prelude's convention for the fast numeric parsers.
+
+Edge cases and variations. An empty value (`key=`) is accepted and yields an empty view, which `parseU64` rejects so the default applies. A line with no `=` is skipped silently, which forgives a stray header; a stricter parser would report it. The `#` test is on the first non-space byte, so `  # note` is a comment but `key=#value` keeps the `#` as part of the value. This format has no sections, no quoting, and no escape for `=` or `#`; the next section shows what a richer format costs. To support an override file, parse the base config and then parse the overlay into the *same* map, letting later inserts win, the "last wins" rule makes layering fall out for free.
+
+42.4 A Hand-Rolled JSON-like Serializer
+
+The problem. You have a small struct and you want to move it to another program, or to a file, in a format a human can read and a different language can parse. JSON is that format. The standard library does not give you reflection over arbitrary structs, so the honest way to understand serialization is to write the object by hand, field by field, and write the matching reader.
+
+The idea. Serialization is a walk over the fields: write `"name":`, write the escaped string, write `,"port":`, write the integer, and so on. Deserialization is a tiny recognizer over the object's pairs: read a quoted key, read the colon, read a value, and dispatch on which key it was. The only non-obvious piece is string escaping, and it is the same contract as CSV quoting from 41.1, the writer must protect `"` and `\`, and the reader must undo exactly what the writer did. This is deliberately a subset: objects only, one level deep, string and integer and boolean values, no arrays, no floats, no `null`, and no `\u` escapes. That subset is enough to be useful and small enough to keep in your head.
+
+The implementation.
+
+    import(lib) std::io::ios { println, parseI64 };
+    import(lib) std::text::string { String };
+    import(lib) std::fmt::fmt { formatInt };
+
+    struct Server {
+        String name;                             // owned, so it outlives `json`
+        i32 port;
+        bool tls;
+    }
+
+    // Write `s` as a JSON string: wrap in quotes, escape " and \ and newline.
+    void jsonEscape(String* out, str s) {
+        out->pushChar((u8)'"');
+        for (usize i = 0; i < s.len; i += 1) {
+            u8 c = s.at(i);
+            if (c == (u8)'"' || c == (u8)'\\') {
+                out->pushChar((u8)'\\');         // a backslash before the byte
+                out->pushChar(c);
+            // A newline becomes the two-character escape \n.
+            } else if (c == (u8)'\n') {
+                out->appendView("\\n");          // two characters for a newline
+            } else {
+                out->pushChar(c);                // ordinary byte passes through
+            }
+        }
+        out->pushChar((u8)'"');
+    }
+
+    // Serialize the struct field by field, in a fixed order.
+    String jsonFromServer(const Server* s) {
+        String out = String::from("{");
+        out.appendView("\"name\":");
+        jsonEscape(&out, s->name.asView());
+        out.appendView(",\"port\":");
+        String p = formatInt((i64)s->port, 10u, false);
+        out.appendView(p.asView());
+        out.appendView(",\"tls\":");
+        out.appendView(s->tls ? "true" : "false");
+        out.pushChar((u8)'}');
+        return out;
+    }
+
+    // Read a JSON string beginning at json.at(i) == '"'; unescape into `out`
+    // and return the index just past the closing quote.
+    usize jsonReadString(str json, usize i, String* out) {
+        i += 1;                                  // skip the opening quote
+        while (i < json.len) {
+            u8 c = json.at(i);
+            if (c == (u8)'"') { i += 1; break; } // closing quote ends it
+            // A backslash begins a two-byte escape sequence.
+            if (c == (u8)'\\' && i + 1 < json.len) {
+                u8 e = json.at(i + 1);
+                if (e == (u8)'n') out->pushChar((u8)'\n');
+                else out->pushChar(e);           // \" and \\ map to themselves
+                i += 2;                          // consume the pair
+            } else {
+                out->pushChar(c);
+                i += 1;
+            }
+        }
+        return i;
+    }
+
+    // Advance i past JSON's insignificant whitespace.
+    void jsonSkipSpace(str json, usize* i) {
+        while (*i < json.len) {
+            u8 c = json.at(*i);
+            if (c == (u8)' ' || c == (u8)'\t' || c == (u8)'\n') *i += 1;
+            else break;
+        }
+    }
+
+    // Parse an object into the struct, keyed by field name.
+    bool jsonToServer(str json, Server* out) {
+        usize i = 0;
+        jsonSkipSpace(json, &i);
+        if (i >= json.len || json.at(i) != (u8)'{') return false;
+        i += 1;                                  // past the opening brace
+        while (i < json.len) {
+            jsonSkipSpace(json, &i);
+            // A closing brace means the object is complete.
+            if (i < json.len && json.at(i) == (u8)'}') return true;  // done
+            if (i >= json.len || json.at(i) != (u8)'"') return false;
+            String key = String::withCap(16);    // scratch key, freed below
+            i = jsonReadString(json, i, &key);
+            jsonSkipSpace(json, &i);
+            // A missing colon means malformed input.
+            if (i >= json.len || json.at(i) != (u8)':') { key.free(); return false; }
+            i += 1;                              // consume the colon
+            jsonSkipSpace(json, &i);
+            // Dispatch on the key name, not its position.
+            if (key.asView().equals("name")) {
+                out->name.clear();
+                i = jsonReadString(json, i, &out->name);
+            } else if (i < json.len && json.at(i) == (u8)'"') {
+                String discard = String::new();  // unknown string: read and drop
+                i = jsonReadString(json, i, &discard);
+                discard.free();
+            } else {
+                // Otherwise read a bare token up to ',' or '}'.
+                usize start = i;
+                while (i < json.len && json.at(i) != (u8)',' && json.at(i) != (u8)'}') i += 1;
+                str token = json.slice(start, i).trim();
+                bool ok;
+                i64 n = parseI64(token, &ok);
+                // Assign only the matching key.
+                if (ok && key.asView().equals("port")) out->port = (i32)n;
+                if (token.equals("true") && key.asView().equals("tls")) out->tls = true;
+                if (token.equals("false") && key.asView().equals("tls")) out->tls = false;
+            }
+            key.free();
+            jsonSkipSpace(json, &i);
+            // A comma separates this pair from the next.
+            if (i < json.len && json.at(i) == (u8)',') i += 1;  // next pair
+        }
+        // Ran out of input without a closing brace.
+        return false;                            // no closing brace: malformed
+    }
+
+    void main() {
+        Server s = Server { .name = String::from("db \"primary\""), .port = 5432, .tls = true };
+        String json = jsonFromServer(&s);
+        println("{}", json.asView());
+
+        Server back = Server { .name = String::new(), .port = 0, .tls = false };
+        // Parse it back into a fresh struct with known defaults.
+        bool ok = jsonToServer(json.asView(), &back);
+        println("parsed {} name={} port={} tls={}",
+                ok, back.name.asView(), back.port, back.tls);
+
+        s.name.free(); back.name.free(); json.free();  // replenish the heap
+    }
+
+The serializer is low-tech on purpose: `String` appends, `formatInt` for the number, and the ternary for the boolean. `jsonReadString` is the mirror of `jsonEscape`, and its `else out->pushChar(e)` line is the unescape: after a backslash, the next byte stands for itself, except that `\n` means a newline. The recognizer keys off the *name* of each field, not its position, which is why JSON is forgiving about order and why an unknown key can be skipped without breaking the parse. `String::withCap(16)` gives the scratch key storage once; `key.free()` before every return path avoids leaking it. `Server::name` is an owned `String`, not a `str` view, precisely so the parsed result can outlive the input buffer.
+
+Cost and notes. Both directions are a single pass, O(total bytes), with one allocation for the output `String` and one small scratch `String` per key. The serializer copies the name into the output; the deserializer copies the name into the struct. That double copy is the price of the struct owning its string, and it is the right price when the input buffer may be freed. A real serializer would dispatch over a type at compile time with reflection or a `toStr`-style trait, and a real parser would build a value tree; both are substantially more machinery for the same bytes.
+
+Edge cases and variations. Unknown string keys are read and discarded, so an older parser ignores fields a newer writer added. A missing key leaves the destination field at whatever the caller initialised it to, which is why `back` starts with explicit defaults, not garbage. A key containing an escaped quote is not supported, because keys are assumed simple; a number too large for `i64` fails `parseI64` and leaves `port` unchanged. Trailing text after the closing `}` is never examined, so a strict reader would need a check that `i == json.len`. The extension worth building is arrays: after `[`, loop values separated by commas until `]`, using the same value reader, which turns the subset into something that can carry a list of servers.
+
+42.5 A Fixed-Layout Binary Record
+
+The problem. Text is inspectable but wasteful: an `i32` costs up to eleven bytes as digits and must be parsed on every read, and an `f64` costs more still. When a file is written and read only by machines, you want each record to occupy a known number of bytes at a known offset, so a reader can seek straight to record `i` without scanning the ones before it.
+
+The idea. Define structs whose layout is fixed and knowable, and write their fields one at a time in a chosen byte order rather than dumping the struct's raw memory. Compute the offsets from `@sizeof` and freeze them in a helper, then check the layout assumption at compile time with a `comptime` assertion so that adding a field fails the build instead of silently shifting every record. Here the header is exactly sixteen bytes, a `u32`, two `u16`s, and a `u64`, and each record is exactly sixteen bytes, a `u64` id and an `f64` score. The header is followed immediately by the records, so record `i` starts at `16 + i * 16`.
+
+The implementation.
+
+    import(lib) std::io::fs { fileOpen, fileClose, fileSeek, File, IoError, SEEK_SET };
+    import(lib) std::io::bio { FileReader, FileWriter };
+    import(lib) std::io::ios { println };
+    import(lib) std::text::string { String };
+    import(lib) std::vec { Vec };
+
+    const u32 MAGIC = 0x41524F43u;               // 'CORA' little-endian
+    const u16 VERSION = 1u;
+
+    // Exactly sixteen bytes: 4 + 2 + 2, then the u64 at its aligned offset 8.
+    struct Header {
+        u32 magic;                               // offset 0
+        u16 version;                             // offset 4
+        u16 flags;                               // offset 6
+        u64 count;                               // offset 8
+    }
+
+    // Exactly sixteen bytes: a u64 id, then an f64 score, both 8-aligned.
+    struct Entry {
+        u64 id;                                  // offset 0
+        f64 score;                               // offset 8
+    }
+
+    // Frozen address of record i: header, then sixteen bytes per record.
+    usize entryOffset(u64 i) {
+        return (usize)(16 + i * 16);
+    }
+
+    // Write the 16-byte header followed by n fixed records.
+    bool writeRecords(str path, const Vec<Entry>* rows) {
+        comptime {
+            if (@sizeof(Header) != 16) @compileError("Header must be 16 bytes");
+            if (@sizeof(Entry) != 16) @compileError("Entry must be 16 bytes");
+        }
+
+        Result<File, IoError> fo = fileOpen(path, "w");
+        // Error path: cannot open the file, so report failure.
+        if (fo.isErr()) return false;
+        File f = fo.unwrap();
+        FileWriter w = FileWriter::fromFd(f);
+
+        // Fields are written explicitly, little-endian, never by struct dump.
+        // Header: magic, version, reserved flags, then the record count.
+        w.writeU32Le(MAGIC);
+        w.writeU16Le(VERSION);
+        w.writeU16Le((u16)0);                    // flags reserved for now
+        w.writeU64Le((u64)rows->count());
+
+        // Each record lands at 16 + i*16 because both writes are fixed-width.
+        // Each record is written field by field, little-endian.
+        for (usize i = 0; i < rows->count(); i += 1) {
+            Entry e = rows->at(i);
+            w.writeU64Le(e.id);
+            w.writeF64Le(e.score);
+        }
+        // Flush and close before returning success.
+        fileClose(f);
+        return true;
+    }
+
+    // Read the header, then seek to and load each record.
+    bool readRecords(str path, Vec<Entry>* out) {
+        Result<File, IoError> fo = fileOpen(path, "r");
+        if (fo.isErr()) return false;
+        File f = fo.unwrap();
+        FileReader r = FileReader::fromFd(f);
+
+        // Read the header fields in the order they were written.
+        u32 magic = r.readU32Le();
+        u16 version = r.readU16Le();
+        r.readU16Le();                           // flags: read, not needed here
+        u64 count = r.readU64Le();
+        // A wrong magic or version means this is not our file.
+        if (magic != MAGIC || version != VERSION) { fileClose(f); return false; }
+
+        for (u64 i = 0; i < count; i += 1) {
+            // Jump to the frozen offset, then read the two fields in order.
+            // Seek to the frozen offset instead of reading sequentially.
+            fileSeek(f, (isize)entryOffset(i), SEEK_SET);
+            u64 id = r.readU64Le();
+            f64 score = r.readF64Le();
+            // Append the decoded record to the output vector.
+            out->push(Entry { .id = id, .score = score });
+        }
+        fileClose(f);
+        return true;
+    }
+
+    void main() {
+        Vec<Entry> rows = Vec<Entry>::new();
+        rows.push(Entry { .id = 1, .score = 91.5 });
+        rows.push(Entry { .id = 2, .score = 99.25 });
+        rows.push(Entry { .id = 3, .score = 72.0 });
+
+        String path = String::from("/tmp/coral-records.bin");
+        // Error path: if the write fails, stop.
+        if (!writeRecords(path.asView(), &rows)) { println("write failed"); return; }
+        println("wrote {} entries", rows.count());
+
+        // Read the records back and print them.
+        Vec<Entry> back = Vec<Entry>::new();
+        if (!readRecords(path.asView(), &back)) { println("read failed"); return; }
+        for (usize i = 0; i < back.count(); i += 1) {
+            Entry e = back.at(i);
+            println("id {} score {}", e.id, e.score);
+        }
+    }
+
+The `comptime` block is the keeper of the contract: it runs at build time and refuses to compile if `Header` ever stops being sixteen bytes, so the hard-coded `16` in `entryOffset` cannot silently go stale. `FileWriter` writes each field in little-endian order regardless of the host's order, the explicit choice the chapter on bits made, and `FileReader` reads it back the same way. Seeking to `entryOffset(i)` before each read is redundant when the records are contiguous, but it is what makes the offset part of the format rather than an accident of sequential reading, and it is exactly what an index in 41.8 will exploit.
+
+Cost and notes. Writing is O(records) system-buffered writes; reading is O(records) and each record costs two fixed-width reads. The file is `16 + 16n` bytes and carries no delimiters and no per-field parsing, which is the entire point: a `u64` read is a load, not a `parseU64` over digits. The header's `count` lets a reader allocate exactly the right size up front. The typed readers in `FileReader` discard their `Result` and yield zero on a short read, so the code trusts `count`; a defensive reader would use `readBytes` for the whole record and check it, which the next section's store does.
+
+Edge cases and variations. A truncated file makes `count` larger than the data present; the typed readers then return zeros past the end, producing bogus entries rather than an error, which is why a production reader validates the file size against `count` first. The `magic` and `version` fields are the guard against opening the wrong file or a future format: mismatched magic means "not ours," mismatched version means "written by a different layout." The layout depends on the compiler's padding rules; if you need byte-for-byte control across an unusual compiler you would pack the struct or, better, keep writing fields one at a time as this code does. The variation is to replace the explicit little-endian calls with big-endian ones, which changes nothing in the code's structure and makes the file match a network byte order.
+
+42.6 A CRC32 Checksum
+
+The problem. A file read back from disk may differ from what was written: a bad sector, a truncated write, a bug in the writer. You need a cheap way to notice, so that a reader can refuse corrupted data instead of acting on it. A checksum is a small number computed from the bytes and stored beside them; the reader recomputes it and compares.
+
+The idea. CRC32 treats the bytes as one enormous polynomial over GF(2) and takes the remainder modulo a fixed polynomial. Practically, it is a loop: keep a thirty-two-bit register, XOR in each byte, then shift the register right eight times, conditionally XOR-ing the reflected polynomial `0xEDB88320` whenever the bit shifted out was one. The register starts at all ones and the final value is complemented. CRC32 detects every single-bit error and every burst up to thirty-two bits, which is more than enough for storage; it is not a cryptographic hash and cannot resist a deliberate forgery.
+
+The implementation.
+
+    import(lib) std::io::fs { readFileToString, writeFileFromString, IoError };
+    import(lib) std::io::ios { println };
+    import(lib) std::text::string { String };
+    import(lib) std::fmt::fmt { formatHex };
+
+    // Reflected CRC-32, polynomial 0xEDB88320, one bit per input bit. The
+    // register is threaded through so callers can feed data in pieces.
+    u32 crc32Update(u32 crc, const u8* data, usize len) {
+        u32 c = crc;
+        for (usize i = 0; i < len; i += 1) {
+            // Fold each input byte into the low bits of the register.
+            c ^= (u32)data[i];                   // fold the next byte in
+            // Eight shifts, conditionally XOR-ing the reflected polynomial.
+            for (u8 k = 0; k < 8; k += 1) {
+                if ((c & 1u) != 0) c = (c >> 1) ^ 0xEDB88320u;
+                else c = c >> 1;                 // shift, sometimes xor
+            }
+        }
+        return c;
+    }
+
+    // Whole-buffer CRC: preset all ones, then complement the final register.
+    u32 crc32(str data) {
+        // Preset all ones, then complement the final value.
+        return crc32Update(0xFFFFFFFFu, data.asU8(), data.len) ^ 0xFFFFFFFFu;
+    }
+
+    void main() {
+        // The standard check value: crc32("123456789") == 0xCBF43926.
+        // The nine-byte test string used to sanity-check the CRC.
+        str check = "123456789";
+        println("check {}", formatHex((u64)crc32(check), true).asView());
+
+        String payload = String::from("the quick brown fox");
+        u32 sum = crc32(payload.asView());
+        String record = payload.clone();          // payload plus its trailer
+        // Write the four trailer bytes, least significant first.
+        record.pushByte((u8)sum);                 // checksum, little-endian
+        record.pushByte((u8)(sum >> 8));
+        record.pushByte((u8)(sum >> 16));
+        record.pushByte((u8)(sum >> 24));
+        // Persist payload and trailer as one buffer.
+        writeFileFromString("/tmp/coral-crc.bin", &record);
+
+        // Read the whole record back.
+        Result<String, IoError> rr = readFileToString("/tmp/coral-crc.bin");
+        if (rr.isErr()) return;
+        // Parse guard: fewer than four bytes cannot hold a trailer.
+        String back = rr.unwrap();
+        if (back.len < 4) return;                 // too short to hold a crc
+        // The body is everything except the trailing four bytes.
+        str body = back.asView().slice(0, back.len - 4);
+        u32 stored = (u32)back.at(back.len - 4) |
+                     ((u32)back.at(back.len - 3) << 8) |
+                     ((u32)back.at(back.len - 2) << 16) |
+                     ((u32)back.at(back.len - 1) << 24);
+        // Verification: the recomputed CRC must match the stored one.
+        println("verified {}", stored == crc32(body));
+    }
+
+`crc32Update` is separated from `crc32` so that a record can be checksummed in pieces without concatenating them into one buffer, the log store in 41.7 uses exactly that split to hash a key and a value without joining them. `crc32` is the one-shot form, which is all most callers want. Writing the checksum little-endian after the payload keeps the same byte-order choice as the rest of the chapter; a reader must agree, and the reconstruction in `main` is the agreement written down. The `back.len < 4` guard is the parse guard for a file too short to contain a trailer at all.
+
+Cost and notes. The bitwise form does eight shift-and-branch steps per byte, so checksumming is roughly an order of magnitude more work per byte than reading it. The standard optimisation is a 256-entry table indexed by `(c ^ byte) & 0xFF`, which replaces the eight-step inner loop with one load and one shift; build the table once at startup with this same function, exactly as the popcount table was built in the bits chapter. For a file written and read occasionally, the bitwise version is entirely adequate, and it keeps the polynomial visible in the code. The library also ships `std::crypto::crc::crc32(str)`, which is the table version; this section writes it by hand so you can see the machinery.
+
+Edge cases and variations. CRC32 is a detector of accidental corruption, not a defense against tampering: two different messages can share a checksum, a collision, and an attacker can construct one. For integrity against an adversary you want SHA-256 or HMAC from the crypto appendix, which are slower and larger for the same job. The empty buffer has a well-defined CRC32 (`0x00000000`), because the preset and final complement cancel; that is worth tracing through the function once. Storing the checksum in a different byte order than the reader expects silently makes every verification fail, so the trailer's endianness is part of the format, exactly like the records' endianness. The variation is CRC-64, which extends the same idea to a sixty-four-bit register and a longer polynomial and is used where a four-byte checksum is judged too weak; the library provides `crc64` for it.
+
+42.7 A Log-Structured Append-Only Key-Value Store
+
+The problem. You want to keep a handful of key-value pairs between runs, and update them as the program works. Rewriting a file in place is the obvious approach and the dangerous one: a crash halfway through a rewrite leaves the file half-old and half-new. An append-only store never rewrites, so a crash can only ever damage the last record, and a reader that skips a bad tail loses at most the final write.
+
+The idea. Every write is a record appended to the end of one file. A record is `[u32 keyLen][u32 valLen][key bytes][val bytes][u32 crc]`. Reading is a sequential scan: the *last* record for a given key wins, so an update is just an append, and a delete is an append of an empty value, a tombstone. The CRC over the key and value catches a torn or corrupted record, which the scanner skips. Appending is opened with mode `"a"`, which creates the file if needed and writes at the end, so several writers cannot clobber each other's earlier records, though they can still interleave a record and the store does not pretend otherwise.
+
+The implementation.
+
+    import(lib) std::io::fs { fileOpen, fileClose, deleteFile, File, IoError };
+    import(lib) std::io::bio { FileReader, FileWriter };
+    import(lib) std::io::ios { println };
+    import(lib) std::text::string { String };
+
+    const u32 KV_MAX_FIELD = 255u;               // one stack buffer per field
+
+    // Same reflected CRC-32 as 41.6, threaded so key and value hash in turn.
+    u32 crc32Update(u32 crc, const u8* data, usize len) {
+        u32 c = crc;
+        for (usize i = 0; i < len; i += 1) {
+            c ^= (u32)data[i];
+            for (u8 k = 0; k < 8; k += 1)
+                c = (c & 1u) != 0 ? ((c >> 1) ^ 0xEDB88320u) : (c >> 1);
+        }
+        return c;
+    }
+
+    // Read a 4-byte little-endian u32, or fail at EOF.
+    bool readU32Le(FileReader* r, u32* out) {
+        u8 b[4];
+        if (r->readBytes(b, 4).isErr()) return false;  // clean EOF or error
+        *out = (u32)b[0] | ((u32)b[1] << 8) | ((u32)b[2] << 16) | ((u32)b[3] << 24);
+        return true;
+    }
+
+    // Append one record: lengths, key, value, then a CRC trailer.
+    bool kvPut(str path, str key, str val) {
+        if (key.len > KV_MAX_FIELD || val.len > KV_MAX_FIELD) return false;
+
+        Result<File, IoError> fo = fileOpen(path, "a");   // create + append
+        // Error path: cannot open for append, so report failure.
+        if (fo.isErr()) return false;
+        File f = fo.unwrap();
+        FileWriter w = FileWriter::fromFd(f);
+
+        // CRC the key, then extend it over the value.
+        u32 crc = crc32Update(0xFFFFFFFFu, key.asU8(), key.len);
+        crc = crc32Update(crc, val.asU8(), val.len) ^ 0xFFFFFFFFu;
+
+        w.writeU32Le((u32)key.len);              // lengths first, then payload
+        w.writeU32Le((u32)val.len);
+        w.writeBytes(key.asU8(), key.len);
+        w.writeBytes(val.asU8(), val.len);
+        w.writeU32Le(crc);                       // trailer last
+        fileClose(f);
+        return true;
+    }
+
+    // Scan the log; the last record for `key` wins, and an empty value is
+    // a tombstone meaning the key is deleted.
+    bool kvGet(str path, str key, String* out) {
+        // Mode "r" opens an existing log; a missing file is an error.
+        Result<File, IoError> fo = fileOpen(path, "r");
+        if (fo.isErr()) return false;
+        File f = fo.unwrap();
+        FileReader r = FileReader::fromFd(f);
+
+        bool found = false;
+        // Read records until EOF or a malformed one stops the scan.
+        while (true) {
+            u32 klen = 0;
+            u32 vlen = 0;
+            if (!readU32Le(&r, &klen)) break;             // end of log
+            if (!readU32Le(&r, &vlen)) break;             // truncated record
+            if (klen > KV_MAX_FIELD || vlen > KV_MAX_FIELD) break;  // corrupt
+            // Fixed stack buffers; the length check above bounds them.
+            u8 kbuf[256];
+            u8 vbuf[256];
+            if (r.readBytes(kbuf, (u64)klen).isErr()) break;
+            if (r.readBytes(vbuf, (u64)vlen).isErr()) break;
+            u32 storedCrc = 0;
+            // Read the CRC trailer, if present.
+            if (!readU32Le(&r, &storedCrc)) break;
+
+            // Recompute the CRC over key plus value.
+            u32 crc = crc32Update(0xFFFFFFFFu, kbuf, (usize)klen);
+            crc = crc32Update(crc, vbuf, (usize)vlen) ^ 0xFFFFFFFFu;
+            if (crc != storedCrc) continue;       // skip a corrupt record
+
+            // Only the record for our key matters.
+            str recKey = str::fromParts(kbuf, (usize)klen);
+            if (recKey.equals(key)) {
+                out->clear();
+                out->appendView(str::fromParts(vbuf, (usize)vlen));
+                found = vlen > 0;                 // empty value deletes
+            }
+        }
+        fileClose(f);
+        return found;
+    }
+
+    void main() {
+        // Start from a clean log so the demo is deterministic.
+        String path = String::from("/tmp/coral-kv.log");
+        deleteFile(path.asView());                // start from a clean log
+        kvPut(path.asView(), "alpha", "1");
+        kvPut(path.asView(), "beta", "2");
+        kvPut(path.asView(), "alpha", "3");       // overwrite: last wins
+
+        // Look up two existing keys and one absent key.
+        String v = String::new();
+        if (kvGet(path.asView(), "alpha", &v)) println("alpha = {}", v.asView());
+        if (kvGet(path.asView(), "beta", &v)) println("beta = {}", v.asView());
+        if (kvGet(path.asView(), "gamma", &v)) println("gamma = {}", v.asView());
+        else println("gamma absent");
+    }
+
+The record's shape is fixed enough to scan and self-describing enough to skip: the two lengths come first, so the scanner always knows how many bytes to read for the key and the value, and the CRC trailer comes last so it can be computed over exactly those bytes. `readU32Le` exists because `FileReader`'s typed readers swallow a short read and return zero, which cannot be told apart from a real zero length; the explicit `readBytes` call is what reports a clean end of log. A torn tail is handled by the same guard: an incomplete length or payload read is an error and the scan stops, so a half-written last record is simply ignored rather than mistaken for data.
+
+Cost and notes. `kvPut` is O(key + value) plus the append, and it never reads the existing file, so writes are cheap and its cost does not grow with the store's size. `kvGet` is O(file size): it scans every record because there is no index, which is the price this design pays and the reason the next section exists. Space grows without bound as keys are overwritten, because every old value remains on disk; the cure is compaction, a periodic pass that rewrites only the live records into a fresh file and renames it into place, which is precisely 41.9 applied to the whole store.
+
+Edge cases and variations. A field longer than `KV_MAX_FIELD` is refused rather than truncated, so a caller cannot silently lose data. A corrupt record is skipped mid-scan, which lets a reader recover every record except the damaged one; a torn final record stops the scan, which loses only the last append. The store has no lock, so two processes appending concurrently can interleave records; each record remains internally consistent because each is a single write of a fixed header and payload, but the ordering is undefined, and the honest statement is that this is a single-writer store. The `deleteFile` in `main` gives a deterministic demonstration; a real program would leave the log alone and rely on the scan. The variation is a length-prefixed tombstone flag or a monotonically increasing sequence number per record, so that the newest write wins by number rather than by position, which also lets the store detect a duplicate delivery.
+
+42.8 An In-Memory Index from Key to File Offset
+
+The problem. The log store of 41.7 finds a key by scanning the entire file, which is fine for ten records and hopeless for ten million. Once the store is on disk and the format has a known record layout, the fix is to remember where each key's latest record lives and seek straight to it.
+
+The idea. Scan the file once and build a hash map from each key's text to the byte offset of its latest record. Because later records override earlier ones, a plain `insert` per record leaves the map holding the newest offset for each key. A lookup then hashes the query key, gets the offset, seeks there, and reads exactly one record. The map's keys are `str` views into the in-memory copy of the file, so that copy must stay alive for the map's lifetime, the same rule as 41.3, and the reason this section reads the whole file into a `String` first and holds it in `main`.
+
+The implementation.
+
+    import(lib) std::io::fs { readFileToString, fileOpen, fileClose, fileSeek,
+                               File, IoError, SEEK_SET };
+    import(lib) std::io::bio { FileReader };
+    import(lib) std::io::ios { println };
+    import(lib) std::text::string { String };
+    import(lib) std::collections::hashmap { HashMap };
+    import(lib) std::option { Option };
+
+    // The same djb2 hash as 41.3; eqView must match it.
+    usize hashView(str s) {
+        usize h = 5381;
+        for (usize i = 0; i < s.len; i += 1) h = h * 33 + (usize)s.at(i);
+        return h;
+    }
+
+    bool eqView(str a, str b) { return a.equals(b); }
+
+    // One pass over the in-memory log; each key maps to the offset of its
+    // newest record. Later inserts overwrite earlier ones, so last wins.
+    void buildIndex(str log, HashMap<str, usize>* index) {
+        usize off = 0;
+        // Parse guard: stop unless a full 8-byte header remains.
+        while (off + 8 <= log.len) {
+            // Read keyLen then valLen, both little-endian.
+            u32 klen = (u32)log.at(off) | ((u32)log.at(off + 1) << 8) |
+                       ((u32)log.at(off + 2) << 16) | ((u32)log.at(off + 3) << 24);
+            u32 vlen = (u32)log.at(off + 4) | ((u32)log.at(off + 5) << 8) |
+                       ((u32)log.at(off + 6) << 16) | ((u32)log.at(off + 7) << 24);
+            // Record size: two lengths, payloads, then the CRC trailer.
+            usize recLen = 8 + (usize)klen + (usize)vlen + 4;  // + crc trailer
+            // A record that runs past the end is a torn tail: stop.
+            if (off + recLen > log.len) break;               // truncated tail
+            // The key is a view into the log buffer.
+            str key = log.slice(off + 8, off + 8 + (usize)klen);
+            // A repeated key overwrites, so the last offset wins.
+            index->insert(key, off);                         // view into log
+            off += recLen;
+        }
+    }
+
+    // Seek straight to the indexed record and read only that one.
+    bool indexedGet(str path, str key, HashMap<str, usize>* index, String* out) {
+        // Absent key: never written, so fail.
+        Option<usize> slot = index->get(key);
+        if (slot.isNone()) return false;                     // never written
+        usize off = slot.unwrap();
+
+        Result<File, IoError> fo = fileOpen(path, "r");
+        if (fo.isErr()) return false;
+        File f = fo.unwrap();
+        FileReader r = FileReader::fromFd(f);
+        fileSeek(f, (isize)off, SEEK_SET);                   // skip everything before
+
+        // Read the two length prefixes from the indexed record.
+        u8 hb[8];
+        if (r.readBytes(hb, 8).isErr()) { fileClose(f); return false; }
+        u32 klen = (u32)hb[0] | ((u32)hb[1] << 8) | ((u32)hb[2] << 16) | ((u32)hb[3] << 24);
+        u32 vlen = (u32)hb[4] | ((u32)hb[5] << 8) | ((u32)hb[6] << 16) | ((u32)hb[7] << 24);
+        if (klen > 255u || vlen > 255u) { fileClose(f); return false; }
+        u8 kbuf[256];
+        u8 vbuf[256];
+        // Read the payloads; a short read fails the lookup.
+        if (r.readBytes(kbuf, (u64)klen).isErr() || r.readBytes(vbuf, (u64)vlen).isErr()) {
+            fileClose(f);
+            return false;
+        }
+        out->clear();
+        out->appendView(str::fromParts(vbuf, (usize)vlen));
+        fileClose(f);
+        return true;
+    }
+
+    void main() {
+        String path = String::from("/tmp/coral-kv.log");
+        Result<String, IoError> rr = readFileToString(path.asView());
+        if (rr.isErr()) { println("no log yet (run 41.7 first)"); return; }
+        String log = rr.unwrap();                // owns the bytes the keys view
+
+        // Build the index once, then use it for lookups.
+        HashMap<str, usize> index = HashMap<str, usize>::new(hashView, eqView);
+        buildIndex(log.asView(), &index);
+        println("indexed {} keys", index.count());
+
+        String v = String::new();
+        if (indexedGet(path.asView(), "alpha", &index, &v))
+            println("alpha = {}", v.asView());
+        else
+            println("alpha absent");
+    }
+
+`buildIndex` reads the two lengths straight out of the buffer, computes the record's total length, and advances `off` by exactly that much; this is why a self-describing record layout pays off, because the scanner never has to parse a key to find where the next record starts. Storing the offset of each record, not a copy of its value, keeps the index small: an entry is a key view plus one integer. `indexedGet` is the whole payoff: one hash lookup, one `fileSeek`, and one record read, independent of how many records the file holds.
+
+Cost and notes. Building the index is one O(file size) pass, done once at startup; each lookup is O(1) average plus one seek and one record read. The index holds one entry per distinct key, so its memory is proportional to the number of keys, not the number of records, which is the same trade a database makes between a table and its indexes. A seek is not free on a spinning disk, but it is a bounded one, and the alternative, scanning, is unbounded. This is the smallest version of the in-memory index that sits on top of an append-only log in every log-structured store, from LevelDB to Bitcask.
+
+Edge cases and variations. The index is a snapshot of the file at build time; an append after the build is invisible until the index is updated, so a real store updates the map on every write and rebuilds it only after a restart or compaction. The keys are views into `log`, so freeing `log` before the index is finished leaves the map pointing at freed bytes. Offsets become stale if the file is compacted or rewritten in place, which is another reason compaction writes a new file and swaps it in. A key present in the map but with a corrupted record at its offset will fail the length and CRC checks in a correct reader; `indexedGet` here checks the length bounds but leaves the CRC to the reader, so adding the trailer check is the natural hardening. The variation is to store a small per-key value alongside the offset, a length and a CRC, so a lookup can validate the record without reading it, trading memory for one fewer decision.
+
+42.9 Atomic Writes with a Temp File and Rename
+
+The problem. A program rewrites a file that another program, or a later run of the same program, may read. A crash midway through the write leaves a half-written file, and a reader that opens it sees a truncated, invalid document. You want the swap from old contents to new contents to look instantaneous, so that a reader sees either the complete old file or the complete new one and never anything between.
+
+The idea. Write the new contents to a temporary file, and once it is fully written and closed, rename it over the target. On POSIX, `rename` within one filesystem is atomic: the name now refers to the new file and any reader either sees the old name's file or the new one. The temporary must live in the same directory as the target, because the atomicity is a property of a single filesystem and a rename across filesystems fails. If anything goes wrong before the rename, the temporary is unlinked so no debris is left behind, and the target is untouched.
+
+The implementation.
+
+    import(lib) std::io::fs { writeFileFromString, renameFile, deleteFile, IoError };
+    import(lib) std::io::ios { println };
+    import(lib) std::text::string { String };
+
+    // Write `data` to `target` by writing a sibling temp file and renaming
+    // it over the target. On return the target is entirely old or entirely
+    // new; on failure the target is exactly as it was.
+    bool atomicWrite(str target, const String* data) {
+        // Copy the target path so a suffix can be appended.
+        String tmp = String::from(target);
+        tmp.appendView(".tmp");                  // sibling => same filesystem
+
+        // Write the complete contents to the temporary file.
+        Result<bool, IoError> wr = writeFileFromString(tmp.asView(), data);
+        if (wr.isErr()) {
+            deleteFile(tmp.asView());            // leave nothing behind
+            // Free the temp path string before returning.
+            tmp.free();
+            return false;
+        }
+
+        // Swap the temp into place; rename is atomic on one filesystem.
+        Result<bool, IoError> rn = renameFile(tmp.asView(), target);
+        if (rn.isErr()) {
+            deleteFile(tmp.asView());            // and keep the old target
+            // Free the temp path string before returning.
+            tmp.free();
+            return false;
+        }
+        tmp.free();
+        return true;
+    }
+
+    void main() {
+        String path = String::from("/tmp/coral-state.txt");
+        String first = String::from("generation 1\n");
+        String second = String::from("generation 2\n");
+
+        // Publish the first contents, then replace them with the second.
+        if (atomicWrite(path.asView(), &first)) println("published 1");
+        if (atomicWrite(path.asView(), &second)) println("published 2");
+    }
+
+The construction of `tmp` by appending `".tmp"` to the target's own path is the whole trick: `"/tmp/coral-state.txt"` becomes `"/tmp/coral-state.txt.tmp"`, in the same directory and therefore on the same filesystem. `writeFileFromString` opens the temp with mode `"w"`, truncating it and writing the full buffer, and closes it before returning, so by the time `renameFile` runs the bytes are in the file. The two failure paths both unlink the temp and leave the target alone, which is what makes the operation all-or-nothing from the reader's point of view.
+
+Cost and notes. The write costs one file's worth of bytes plus a rename, so roughly double the data movement of an in-place overwrite, the new bytes are written in full before the old file is replaced. That is the price of the guarantee, and it is a good trade for small state files, where the doubled write is trivial. It also means the operation needs free space for two copies of the file at once, which a nearly full disk will discover the hard way.
+
+Edge cases and variations. This code does not call `fsync`, and `std::io::fs` does not expose one, so the write is atomic with respect to *other processes seeing the file*, but on a sudden power loss the new contents may not have reached stable storage and the rename may not be durable, the honest statement is that this guarantees a consistent view, not persistence across a crash. For durability you would flush the temp file and its directory to disk before and after the rename, which needs a syscall the thin filesystem module does not provide; the limits are real and worth stating rather than wishing away. The fixed `".tmp"` suffix assumes a single writer, because two writers racing on the same temp file would corrupt each other; a production version would generate a unique name and rely on the same atomic rename. A rename across a mount point fails with `EXDEV`, which is why the temp is a sibling, not a file in `/tmp` on a different filesystem. And `renameFile` overwrites the target atomically only when it is a regular file; renaming over a directory fails. The variation is to keep the previous version as a backup, rename the old target aside before swapping in the new one, trading the clean single-file guarantee for a recoverable previous generation.
+
+Exercises
+
+1. Comprehension. In 41.3 the hash map holds `str` views into the config buffer. Explain exactly what goes wrong if the buffer is freed before the map, and why 41.4 avoided the problem by making `Server::name` an owned `String` instead of a view.
+
+2. CSV. Extend the reader of 41.2 to parse a whole file, not one line, by carrying the "inside quotes" state across `\n`. Which piece of the line-based parser becomes a variable that outlives the loop, and what does that do to the assumption that each returned `str` views a single line?
+
+3. Config. Change `parseConfig` to store the parsed `u64` values in a `HashMap<str, u64>` at load time, and compare the cost of a lookup before and after. When would you prefer each representation, and what happens to a malformed value in the eager version?
+
+4. JSON. Add a JSON array of integers to the serializer, using the same value reader. Then harden `jsonToServer` so that trailing text after the closing `}` makes it return false, and explain which extra check that requires.
+
+5. Binary layout. Add a second record type to 41.5 and compute its offset expression from `@sizeof`. Then add a `comptime` assertion that the two record sizes sum with the header to a value you expect, and describe what build error you get when it is wrong.
+
+6. CRC. Build the 256-entry CRC table from `crc32Update` at program start, rewrite `crc32` to use it, and confirm both versions agree on `"123456789"`. Explain why the table version does one lookup per byte while the bitwise version does eight iterations.
+
+7. Log store. Add a `kvDelete` that appends a tombstone, and a `kvCompact` that rewrites only the live records into a new file and renames it over the old one using the technique from 41.9. What state must survive the compaction, and why must the rename be atomic for a concurrent reader?
+
+8. Index. The index of 41.8 is a snapshot. Make `kvPut` update the in-memory index after a successful append, and name the two places the offset for a key can change. What is the failure mode if the process dies after the append but before the index is updated?
+
+9. Atomicity. List every way the "atomic write" of 41.9 can still lose data on a power failure, given that the module has no `fsync`, and for each say whether the fix belongs in the filesystem module, in an application-level journal, or in a different storage design.
+

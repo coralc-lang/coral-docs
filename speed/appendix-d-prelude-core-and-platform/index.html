@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Appendix D · Prelude, Core, and Platform (speed edition)." />
+  <meta name="robots" content="index, follow" />
+  <title>Appendix D · Prelude, Core, and Platform | Coral Speed Edition</title>
+  <link rel="canonical" href="https://coralc-lang.github.io/coral-docs/speed/appendix-d-prelude-core-and-platform/index.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Appendix D · Prelude, Core, and Platform | Coral Speed Edition" />
+  <meta property="og:description" content="Appendix D · Prelude, Core, and Platform (speed edition)." />
+  <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/speed/appendix-d-prelude-core-and-platform/index.html" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="stylesheet" href="../../textbook/book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../speed/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">speed edition</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../../speed/index.html">Speed contents</a><a href="../../textbook/index.html">Lengthy edition</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Speed Edition · Reference</p>
+      <h1>Appendix D · Prelude, Core, and Platform</h1>
+      
+      <p>Appendix D, Prelude, Core, and Platform</p>
+<p>This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A, A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.</p>
+<hr />
+<p>This document catalogues every <code>pub</code> export of the Coral standard library and the core/platform support modules it builds on. It is generated from the actual source tree under <code>lib/</code> and reflects the current dialect.</p>
+<ul><li><strong>Sources of truth:</strong> <code>lib/core/**</code>, <code>lib/platform/**</code>, and the per-target <code>lib/std/x86_64/&lt;target&gt;/**</code> trees. The primary target documented here is <strong><code>x86_64/linux</code></strong>; <code>lib/std/x86_64/windows/**</code> mirrors it with platform differences (noted where relevant).</li><li><strong>Top-level manifest:</strong> <code>lib/std/lib.crl</code> re-exports the submodules; the per-target manifest is <code>lib/std/x86_64/linux/lib.crl</code>.</li><li><strong>Signature syntax:</strong> <code>RetType name(params)</code>. Tuple <em>types</em> are spelled <code>struct(T, T)</code> (never <code>(T, T)</code>). Generics are <code>&lt;T&gt;</code>, <code>&lt;T, U&gt;</code>, <code>&lt;T, usize N&gt;</code>, or <code>&lt;comptime N&gt;</code>; there are no generic bounds and no trait composition.</li><li><strong>Visibility:</strong> the dialect has no per-method <code>pub</code>; every member declared in a <code>pub struct</code>/<code>pub variant</code>/<code>pub enum</code>/<code>pub extend</code> is public. Members named with a leading <code>_</code> are internal helpers, listed here for completeness but not intended for direct use.</li><li><strong><code>@drop</code>:</strong> <code>@drop</code> is an inbuilt trait. Types that own heap memory provide an <code>extend &lt;T&gt; : @drop { void drop() }</code> block wiring their <code>dispose()</code> into the language's automatic cleanup.</li></ul>
+<hr />
+<section><h2 id="0-prelude-and-module-layout">0. Prelude and module layout</h2></section>
+<h3 id="prelude">Prelude</h3>
+<p>The following are merged into every translation unit automatically:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">std::io::ios          // print / println / eprint / eprintln / readLine / ...
+std::text::string     // String
+std::option           // Option&lt;T&gt;
+std::result           // Result&lt;T, E&gt;
+std::vec              // Vec&lt;T&gt;
+std::collections::arr // Arr&lt;T, N&gt;
+core::str             // `str` methods</code></pre>
+<h3 id="module-tree-lib-std-lib-crl">Module tree (<code>lib/std/lib.crl</code>)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">pub mod collections = import collections;
+pub mod concurrent  = import concurrent;
+pub mod crypto      = import crypto;
+pub mod data        = import data;
+pub mod fmt         = import fmt;
+pub mod io          = import io;
+pub mod math        = import math;
+pub mod memory      = import memory;
+pub mod parser      = import parser;
+pub mod text        = import text;
+
+pub mod option    = import data::option;
+pub mod result    = import data::result;
+pub mod time      = import time;
+pub mod duration  = import duration;
+pub mod vec       = import collections::vec;
+pub mod arr       = import collections::arr;
+pub mod mman      = import memory::mman;
+pub mod allocator = import memory::allocators;</code></pre>
+<h3 id="per-target-manifest-lib-std-x86-64-linux">Per-target manifest (<code>lib/std/x86_64/linux/lib.crl</code>)</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">pub mod memory    = import memory;
+pub mod mman      = import memory::mman;
+pub mod allocator = import memory::allocators;
+pub mod io        = import io;
+pub mod concurrent = import concurrent;
+pub mod crypto    = import crypto;
+pub mod math      = import math;
+pub mod vec       = import collections::vec;
+pub mod option    = import data::option;
+pub mod result    = import data::result;
+pub mod time      = import time;
+pub mod duration  = import duration;
+pub mod intrinsics = import memory::intrinsics;</code></pre>
+<p>Submodule manifests: ``` collections/lib.crl : arr vec bitset cache deque hashmap iter linkedlist map</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">                  priorityqueue queue ringbuf set sort tree trie unordered_map</code></pre>
+<p>text/lib.crl        : ascii crlb regex string strutil uri utf8 data/lib.crl        : option result math/lib.crl        : complex math matrix random vector io/lib.crl          : bio cmd env fios fs ios log net path process temp term memory/lib.crl      : mman allocators intrinsics pool shared_ptr smart_ptr memory/allocators/lib.crl : allocator tlsf mimalloc concurrent/lib.crl  : async mutex rwlock semaphore signal thread threadpool crypto/lib.crl      : aes base64 bloom crc hash hex hmac sha256 parser/lib.crl      : csv ini json toml uuid xml fmt/lib.crl         : fmt misc/lib.crl        : erased cast testing/lib.crl     : test core/lib.crl        : cchar limits char_util platform/lib.crl    : libc win32 ```</p>
+<blockquote><p><strong>Known inconsistencies in the manifests (not fixed here):</strong> - <code>text/lib.crl</code> declares <code>pub mod crlb = import crlb;</code>, but no <code>text/crlb.crl</code> exists, this import is dangling. - <code>parser/crlb.crl</code> exists but is <strong>not</strong> re-exported by <code>parser/lib.crl</code>. - <code>std/lib.crl</code> does <strong>not</strong> re-export <code>misc</code> or <code>testing</code>; import those paths directly.</p></blockquote>
+<hr />
+<section><h2 id="core">core</h2></section>
+<h3 id="1-core-cchar-c-character-type">1. <code>core::cchar</code>, C character type</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct cchar = flag (arch)
+{
+    x86_64 =&gt; { i8 },
+    else   =&gt; { u8 }
+}</code></pre>
+<p>A <code>cchar</code> is a <code>char</code>-like C character whose signedness depends on the target architecture (signed <code>i8</code> on x86_64, unsigned <code>u8</code> elsewhere).</p>
+<h3 id="2-core-limits-integer-and-float-limits">2. <code>core::limits</code>, Integer and float limits</h3>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub const INT64_MIN = -9223372036854775808;
+pub const INT64_MAX =  9223372036854775807;
+pub const INT32_MIN = -2147483648;
+pub const INT32_MAX =  2147483647;
+pub const INT16_MIN = -32768;
+pub const INT16_MAX =  32767;
+pub const INT8_MIN  = -128;
+pub const INT8_MAX  =  127;
+pub const U64_MAX = 18446744073709551615u;
+pub const U32_MAX = 4294967295u;
+pub const U16_MAX = 65535u;
+pub const U8_MAX  = 255u;
+pub const F64_MAX = 1.7976931348623157e+308;
+pub const F64_MIN = 2.2250738585072014e-308;
+pub const F32_MAX = 3.40282347e+38;
+pub const F32_MIN = 1.17549435e-38;</code></pre>
+<h3 id="3-core-char-util-byte-and-character-clas">3. <code>core::char_util</code>, Byte and character classification</h3>
+<p>All <code>u8</code>-taking predicates operate on a single byte; the <code>char*</code> variants operate on a Coral <code>char</code> (Unicode scalar value).</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// byte predicates / transforms (u8)
+pub bool isDigit(u8 c)
+pub bool isAlpha(u8 c)
+pub bool isAlnum(u8 c)
+pub bool isLower(u8 c)
+pub bool isUpper(u8 c)
+pub u8   toLower(u8 c)
+pub u8   toUpper(u8 c)
+pub bool isSpace(u8 c)
+pub bool isPrint(u8 c)
+pub bool isControl(u8 c)
+pub bool isHexDigit(u8 c)
+pub u8   digitValue(u8 c)
+pub bool isAscii(u8 c)
+pub bool isWhitespace(u8 c)   // alias of isSpace
+pub bool isNewline(u8 c)
+pub bool isPunctuation(u8 c)
+pub bool isSymbol(u8 c)
+
+// UTF-8 helpers
+pub u32  utf8Width(u32 c)
+pub u32  encodeUtf8(u32 c, u8* buf)
+pub struct(u32, u32) decodeUtf8(const u8* buf)   // returns (codepoint, length)
+pub u32  toUtf8(u32 c, u8* buf)
+pub u32  fromUtf8(const u8* buf)
+pub u32  toStr(u8 c, u8* buf)
+
+// byte comparisons
+pub u8   toAscii(u8 c)
+pub bool u8Eq(u8 a, u8 b)
+pub bool u8EqLower(u8 a, u8 b)
+pub i32  u8Cmp(u8 a, u8 b)
+
+// char (Unicode) variants
+pub bool charIsValid(char c)
+pub bool charIsAscii(char c)
+pub bool charIsDigit(char c)
+pub bool charIsAlpha(char c)
+pub bool charIsAlnum(char c)
+pub bool charIsUpper(char c)
+pub bool charIsLower(char c)
+pub bool charIsSpace(char c)
+pub bool charIsControl(char c)
+pub bool charIsPrint(char c)
+pub char charToUpper(char c)
+pub char charToLower(char c)
+pub u32  charToU32(char c)
+pub char charFromU32(u32 v)
+pub bool charTryFromU32(u32 v, char* out)
+pub u32  charEncodeUtf8(char c, u8* buf)
+pub char charDecodeUtf8(const u8* buf, usize len, usize* consumed)
+
+// constants
+pub u8 const newline        = &#x27;\n&#x27;;
+pub u8 const tab            = &#x27;\t&#x27;;
+pub u8 const space          = &#x27; &#x27;;
+pub u8 const nullu8         = &#x27;\0&#x27;;
+pub u8 const carriageReturn = &#x27;\r&#x27;;</code></pre>
+<h3 id="4-core-str-methods-on-the-builtin-str">4. <code>core::str</code>, Methods on the builtin <code>str</code></h3>
+<p><code>str</code> is a builtin view type: ``<code>coral struct str { const u8* ptr; usize len; } </code>`<code> Extended (imports </code>platform::libc<code> and </code>std::text::string`):</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend str
+{
+    static str fromCstr(const cchar::cchar* cstr)
+    static str fromParts(const u8* ptr, usize len)
+    static str empty()
+
+    String       asString()
+    const u8*    asU8()
+    u8           at(usize idx)
+    bool         isEmpty()
+    bool         equals(str other)
+    i32          compare(str other)
+    bool         startsWith(str prefix)
+    bool         endsWith(str suffix)
+    bool         containsView(str needle)
+    bool         containsByte(u8 c)
+    usize        findByte(u8 c)
+    usize        rfindByte(u8 c)
+    usize        findView(str needle)
+    str          slice(usize start, usize end)
+    str          trimStart()
+    str          trimEnd()
+    str          trim()
+    bool         isAsciiDigit()
+    bool         isAsciiAlpha()
+    bool         isAsciiAlnum()
+    bool         nextCodepoint(usize* idx, char* out)
+    usize        codepointCount()
+}</code></pre>
+<hr />
+<section><h2 id="platform">platform</h2></section>
+<h3 id="5-platform-libc-libc-pthread-posix-exter">5. <code>platform::libc</code>, Libc / pthread / POSIX externs</h3>
+<p>All declarations are <code>pub extern</code>. Grouped by area.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// stdio / errno
+i32*  __errno_location()
+i64   read(i32 fd, cchar* buf, u64 count)
+i64   write(i32 fd, const cchar* buf, u64 count)
+i32   getcchar()
+i32   putcchar(i32 c)
+i32   fflush(rawptr stream)
+i32   getchar()
+i32   printf(const cchar* fmt, ...)
+i32   snprintf(cchar* buf, u64 size, const cchar* fmt, ...)
+i32   vsnprintf(cchar* buf, u64 size, const cchar* fmt, ...)
+i32   puts(const cchar* s)
+
+// string / memory
+u64   strlen(const cchar* s)
+i32   strcmp(const cchar* a, const cchar* b)
+cchar* strcpy(cchar* dst, const cchar* src)
+i32   memcmp(const rawptr a, const rawptr b, u64 n)
+rawptr malloc(u64 size)
+void   free(rawptr ptr)
+rawptr realloc(rawptr ptr, u64 newSize)
+
+// files / dirs / fs
+rawptr mmap(rawptr addr, u64 length, i32 prot, i32 flags, i32 fd, i64 offset)
+i32   open(const cchar* path, i32 flags, i32 mode)
+i32   close(i32 fd)
+i32   stat(const cchar* path, rawptr buf)
+i32   mkdir(const cchar* path, i32 mode)
+i32   chdir(const cchar* path)
+i32   rmdir(const cchar* path)
+i32   unlink(const cchar* path)
+i32   rename(const cchar* old, const cchar* newName)
+i32   access(const cchar* path, i32 mode)
+rawptr opendir(const cchar* path)
+rawptr readdir(rawptr dir)
+i32   closedir(rawptr dir)
+i64   lseek(i32 fd, i64 offset, i32 whence)
+i32   mkstemp(cchar* templateStr)
+cchar* mkdtemp(cchar* templateStr)
+f64   strtod(const cchar* nptr, cchar** endptr)
+i64   readlink(const cchar* path, cchar* buf, u64 bufsize)
+rawptr fopen(const cchar* path, const cchar* mode)
+i32   fclose(rawptr stream)
+u64   fread(rawptr ptr, u64 size, u64 count, rawptr stream)
+u64   fwrite(const rawptr ptr, u64 size, u64 count, rawptr stream)
+i32   feof(rawptr stream)
+i32   ferror(rawptr stream)
+
+// regex
+i32   regcomp(rawptr preg, const cchar* pattern, i32 cflags)
+i32   regexec(const rawptr preg, const cchar* string, u64 nmatch, rawptr pmatch, i32 eflags)
+void  regfree(rawptr preg)
+u64   regerror(i32 errcode, const rawptr preg, cchar* errbuf, u64 errbufSize)
+
+// process / signals / time
+i32   fork()
+i32   execvp(const cchar* file, const cchar** argv)
+i32   execvpe(const cchar* file, const cchar** argv, const cchar** envp)
+i32   waitpid(i32 pid, i32* status, i32 options)
+i32   poll(rawptr fds, u64 nfds, i32 timeout)
+void  _exit(i32 code)
+i32   pipe(i32* fds)
+i32   dup2(i32 oldfd, i32 newfd)
+i32   system(const cchar* cmd)
+rawptr signal(i32 signum, rawptr handler)
+i32   kill(i32 pid, i32 sig)
+i32   raise(i32 sig)
+i32   sched_yield()
+i32   gettimeofday(rawptr tv, rawptr tz)
+u64   time(rawptr t)
+i64   clock_gettime(i32 clockId, rawptr tp)
+i32   nanosleep(const rawptr req, rawptr rem)
+
+// environment / tty
+cchar* getenv(const cchar* name)
+i32   setenv(const cchar* name, const cchar* value, i32 overwrite)
+i32   unsetenv(const cchar* name)
+cchar** environ;
+i32   isatty(i32 fd)
+
+// ucontext (used by std::concurrent::async)
+i32   getcontext(rawptr uc)
+void  makecontext(rawptr uc, void() fn, i32 argc)
+i32   swapcontext(rawptr ocp, rawptr ucp)
+
+// pthreads
+i32   pthread_create(rawptr* thread, const rawptr attr, rawptr(rawptr) start, rawptr arg)
+i32   pthread_join(rawptr thread, rawptr* retval)
+void  pthread_exit(rawptr retval)
+rawptr pthread_self()
+i32   pthread_mutex_init(rawptr mutex, const rawptr attr)
+i32   pthread_mutex_destroy(rawptr mutex)
+i32   pthread_mutex_lock(rawptr mutex)
+i32   pthread_mutex_unlock(rawptr mutex)
+i32   pthread_mutex_trylock(rawptr mutex)
+i32   pthread_mutexattr_init(rawptr attr)
+i32   pthread_mutexattr_destroy(rawptr attr)
+i32   pthread_mutexattr_settype(rawptr attr, i32 type)
+i32   pthread_cond_init(rawptr cond, const rawptr attr)
+i32   pthread_cond_destroy(rawptr cond)
+i32   pthread_cond_wait(rawptr cond, rawptr mutex)
+i32   pthread_cond_signal(rawptr cond)
+i32   pthread_cond_broadcast(rawptr cond)
+i32   pthread_cond_timedwait(rawptr cond, rawptr mutex, rawptr abstime)
+i32   pthread_rwlock_init(rawptr lock, const rawptr attr)
+i32   pthread_rwlock_destroy(rawptr lock)
+i32   pthread_rwlock_rdlock(rawptr lock)
+i32   pthread_rwlock_wrlock(rawptr lock)
+i32   pthread_rwlock_unlock(rawptr lock)
+i32   pthread_rwlock_tryrdlock(rawptr lock)
+i32   pthread_rwlock_trywrlock(rawptr lock)
+i32   sem_init(rawptr sem, i32 pshared, u32 value)
+i32   sem_destroy(rawptr sem)
+i32   sem_wait(rawptr sem)
+i32   sem_trywait(rawptr sem)
+i32   sem_post(rawptr sem)
+i32   sem_getvalue(rawptr sem, i32* sval)
+
+// sockets
+i32   socket(i32 domain, i32 type, i32 protocol)
+i32   connect(i32 fd, const rawptr addr, i32 addrlen)
+i32   bind(i32 fd, const rawptr addr, i32 addrlen)
+i32   listen(i32 fd, i32 backlog)
+i32   accept(i32 fd, rawptr addr, i32* addrlen)
+i32   setsockopt(i32 fd, i32 level, i32 optname, const u8* optval, i32 optlen)
+i64   send(i32 fd, const u8* buf, u64 len, i32 flags)
+i64   recv(i32 fd, u8* buf, u64 len, i32 flags)
+i64   sendto(i32 fd, const u8* buf, u64 len, i32 flags, const rawptr dstAddr, i32 addrLen)
+i64   recvfrom(i32 fd, u8* buf, u64 len, i32 flags, rawptr srcAddr, i32* addrLen)
+u32   htonl(u32 hostlong)
+u16   htons(u16 hostshort)</code></pre>
+<h3 id="6-platform-win32-win32-winsock-crt-exter">6. <code>platform::win32</code>, Win32 / Winsock / CRT externs</h3>
+<p>All <code>pub extern</code>. This is the Windows counterpart of <code>platform::libc</code>.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// console / handles / files
+rawptr GetStdHandle(u32 nStdHandle)
+bool   ReadFile(rawptr hFile, cchar* lpBuffer, u32 nNumberOfBytesToRead, u32* lpNumberOfBytesRead, rawptr lpOverlapped)
+bool   WriteFile(rawptr hFile, const cchar* lpBuffer, u32 nNumberOfBytesToWrite, u32* lpNumberOfBytesWritten, rawptr lpOverlapped)
+void   ExitProcess(u32 uExitCode)
+rawptr CreateFileA(const cchar* lpFileName, u32 dwDesiredAccess, u32 dwShareMode, rawptr lpSecurityAttributes, u32 dwCreationDisposition, u32 dwFlagsAndAttributes, rawptr hTemplateFile)
+bool   CloseHandle(rawptr hObject)
+bool   DeleteFileA(const cchar* lpFileName)
+bool   RemoveDirectoryA(const cchar* lpPathName)
+bool   CreateDirectoryA(const cchar* lpPathName, rawptr lpSecurityAttributes)
+bool   MoveFileA(const cchar* lpExistingFileName, const cchar* lpNewFileName)
+u32    GetFileAttributesA(const cchar* lpFileName)
+
+// virtual memory / mapping / heap
+rawptr VirtualAlloc(rawptr lpAddress, u64 dwSize, u32 flAllocationType, u32 flProtect)
+bool   VirtualFree(rawptr lpAddress, u64 dwSize, u32 dwFreeType)
+rawptr CreateFileMappingA(rawptr hFile, rawptr lpAttributes, u32 flProtect, u32 dwMaximumSizeHigh, u32 dwMaximumSizeLow, const cchar* lpName)
+rawptr MapViewOfFile(rawptr hFileMappingObject, u32 dwDesiredAccess, u32 dwFileOffsetHigh, u32 dwFileOffsetLow, u64 dwNumberOfBytesToMap)
+bool   UnmapViewOfFile(rawptr lpBaseAddress)
+rawptr GetProcessHeap()
+rawptr HeapAlloc(rawptr hHeap, u32 dwFlags, u64 dwBytes)
+bool   HeapFree(rawptr hHeap, u32 dwFlags, rawptr lpMem)
+rawptr HeapReAlloc(rawptr hHeap, u32 dwFlags, rawptr lpMem, u64 dwBytes)
+
+// threads / sync primitives
+rawptr CreateThread(rawptr lpThreadAttributes, u64 dwStackSize, u32(rawptr) lpStartAddress, rawptr lpParameter, u32 dwCreationFlags, u32* lpThreadId)
+u32    WaitForSingleObject(rawptr hHandle, u32 dwMilliseconds)
+bool   TerminateThread(rawptr hThread, u32 dwExitCode)
+bool   GetExitCodeThread(rawptr hThread, u32* lpExitCode)
+rawptr CreateMutexA(rawptr lpMutexAttributes, bool bInitialOwner, const cchar* lpName)
+bool   ReleaseMutex(rawptr hMutex)
+rawptr CreateSemaphoreA(rawptr lpSemaphoreAttributes, i32 lInitialCount, i32 lMaximumCount, const cchar* lpName)
+bool   ReleaseSemaphore(rawptr hSemaphore, i32 lReleaseCount, i32* lpPreviousCount)
+rawptr CreateEventA(rawptr lpEventAttributes, bool bManualReset, bool bInitialState, const cchar* lpName)
+bool   SetEvent(rawptr hEvent)
+bool   ResetEvent(rawptr hEvent)
+void   InitCriticalSection(rawptr lpCriticalSection)
+void   DeleteCriticalSection(rawptr lpCriticalSection)
+void   EnterCriticalSection(rawptr lpCriticalSection)
+void   LeaveCriticalSection(rawptr lpCriticalSection)
+bool   TryEnterCriticalSection(rawptr lpCriticalSection)
+void   InitializeSRWLock(rawptr srwlock)
+void   AcquireSRWLockExclusive(rawptr srwlock)
+void   ReleaseSRWLockExclusive(rawptr srwlock)
+void   AcquireSRWLockShared(rawptr srwlock)
+void   ReleaseSRWLockShared(rawptr srwlock)
+bool   TryAcquireSRWLockExclusive(rawptr srwlock)
+bool   TryAcquireSRWLockShared(rawptr srwlock)
+void   InitializeConditionVariable(rawptr cond)
+bool   SleepConditionVariableCS(rawptr cond, rawptr critsec, u32 dwMilliseconds)
+void   WakeConditionVariable(rawptr cond)
+void   WakeAllConditionVariable(rawptr cond)
+
+// processes / fibers
+rawptr OpenProcess(u32 dwDesiredAccess, bool bInheritHandle, u32 dwProcessId)
+bool   TerminateProcess(rawptr hProcess, u32 uExitCode)
+bool   GetExitCodeProcess(rawptr hProcess, u32* lpExitCode)
+rawptr GetCurrentProcess()
+u32    GetCurrentProcessId()
+u32    GetCurrentThreadId()
+void   ExitThread(u32 dwExitCode)
+u32    ResumeThread(rawptr hThread)
+u32    SuspendThread(rawptr hThread)
+bool   DuplicateHandle(rawptr hSourceProcessHandle, rawptr hSourceHandle, rawptr hTargetProcessHandle, rawptr* lpTargetHandle, u32 dwDesiredAccess, bool bInheritHandle, u32 dwOptions)
+u32    WaitForMultipleObjects(u32 nCount, const rawptr* lpHandles, bool bWaitAll, u32 dwMilliseconds)
+bool   SwitchToThread()
+bool   SetThreadPriority(rawptr hThread, i32 nPriority)
+i32    GetThreadPriority(rawptr hThread)
+rawptr CreateFiber(u64 dwStackSize, u32(rawptr) lpStartAddress, rawptr lpParameter)
+void   SwitchToFiber(rawptr lpFiber)
+void   DeleteFiber(rawptr lpFiber)
+rawptr ConvertThreadToFiber(rawptr lpParameter)
+bool   CreatePipe(rawptr* hReadPipe, rawptr* hWritePipe, rawptr lpPipeAttributes, u32 nSize)
+bool   CreateProcessA(const cchar* lpApplicationName, cchar* lpCommandLine, rawptr lpProcessAttributes, rawptr lpThreadAttributes, bool bInheritHandles, u32 dwCreationFlags, rawptr lpEnvironment, const cchar* lpCurrentDirectory, rawptr lpStartupInfo, rawptr lpProcessInformation)
+bool   SetHandleInformation(rawptr hObject, u32 dwMask, u32 dwFlags)
+bool   PeekNamedPipe(rawptr hNamedPipe, rawptr lpBuffer, u32 nBufferSize, u32* lpBytesRead, u32* lpTotalBytesAvail, u32* lpBytesLeftThisMessage)
+
+// file positioning / enumeration
+u32    SetFilePointerA(rawptr hFile, i32 lDistanceToMove, i32* lpDistanceToMoveHigh, u32 dwMoveMethod)
+bool   GetFileAttributesExA(const cchar* lpFileName, u32 fInfoLevelId, rawptr lpFileInformation)
+rawptr FindFirstFileA(const cchar* lpFileName, rawptr lpFindFileData)
+bool   FindNextFileA(rawptr hFindFile, rawptr lpFindFileData)
+bool   FindClose(rawptr hFindFile)
+u32    GetFileSize(rawptr hFile, u32* lpFileSizeHigh)
+bool   GetFileSizeEx(rawptr hFile, i64* lpFileSize)
+bool   FlushFileBuffers(rawptr hFile)
+u32    GetFileType(rawptr hFile)
+bool   GetFileInformationByHandle(rawptr hFile, rawptr lpFileInformation)
+u32    GetFullPathNameA(const cchar* lpFileName, u32 nBufferLength, cchar* lpBuffer, cchar** lpFilePart)
+u32    GetCurrentDirectoryA(u32 nBufferLength, cchar* lpBuffer)
+bool   SetCurrentDirectoryA(const cchar* lpPathName)
+bool   CopyFileA(const cchar* lpExistingFileName, const cchar* lpNewFileName, bool bFailIfExists)
+bool   LockFile(rawptr hFile, u32 dwReserved, u32 nNumberOfBytesToLockLow, u32 nNumberOfBytesToLockHigh)
+bool   UnlockFile(rawptr hFile, u32 dwReserved, u32 nNumberOfBytesToUnlockLow, u32 nNumberOfBytesToUnlockHigh)
+u32    GetTempPathA(u32 nBufferLength, cchar* lpBuffer)
+u32    GetTempFileNameA(const cchar* lpPathName, const cchar* lpPrefixString, u32 uUnique, cchar* lpTempFileName)
+
+// errors / debug
+u32    GetLastError()
+void   SetLastError(u32 dwErrCode)
+u32    FormatMessageA(u32 dwFlags, rawptr lpSource, u32 dwMessageId, u32 dwLanguageId, cchar* lpBuffer, u32 nSize, rawptr Arguments)
+void   OutputDebugStringA(const cchar* lpOutputString)
+bool   IsDebuggerPresent()
+
+// console
+bool   ReadConsoleA(rawptr hConsoleInput, rawptr lpBuffer, u32 nNumberOfCharsToRead, u32* lpNumberOfCharsRead, rawptr pReserved)
+bool   WriteConsoleA(rawptr hConsoleOutput, const cchar* lpBuffer, u32 nNumberOfCharsToWrite, u32* lpNumberOfCharsWritten, rawptr lpReserved)
+bool   SetConsoleTextAttribute(rawptr hConsoleOutput, u16 wAttributes)
+bool   GetConsoleScreenBufferInfo(rawptr hConsoleOutput, rawptr lpConsoleScreenBufferInfo)
+bool   SetConsoleTitleA(const cchar* lpConsoleTitle)
+u32    GetConsoleTitleA(cchar* lpConsoleTitle, u32 nSize)
+bool   AllocConsole()
+
+// memory protection / globals / modules
+bool   VirtualProtect(rawptr lpAddress, u64 dwSize, u32 flNewProtect, u32* lpflOldProtect)
+u64    VirtualQuery(rawptr lpAddress, rawptr lpBuffer, u64 dwLength)
+rawptr GlobalAlloc(u32 uFlags, u64 dwBytes)
+rawptr GlobalFree(rawptr hMem)
+rawptr GlobalLock(rawptr hMem)
+bool   GlobalUnlock(rawptr hMem)
+rawptr LoadLibraryA(const cchar* lpLibFileName)
+bool   FreeLibrary(rawptr hLibModule)
+rawptr GetProcAddress(rawptr hModule, const cchar* lpProcName)
+rawptr GetModuleHandleA(const cchar* lpModuleName)
+u32    GetModuleFileNameA(rawptr hModule, cchar* lpFilename, u32 nSize)
+
+// time / environment
+bool   QueryPerformanceCounter(i64* lpPerformanceCount)
+bool   QueryPerformanceFrequency(i64* lpFrequency)
+void   GetLocalTime(rawptr lpSystemTime)
+void   GetSystemTime(rawptr lpSystemTime)
+void   GetSystemTimeAsFileTime(rawptr lpSystemTimeAsFileTime)
+u32    GetTickCount()
+u64    GetTickCount64()
+void   Sleep(u32 dwMilliseconds)
+bool   FileTimeToSystemTime(const rawptr lpFileTime, rawptr lpSystemTime)
+bool   SystemTimeToFileTime(const rawptr lpSystemTime, rawptr lpFileTime)
+cchar* GetEnvironmentVariableA(const cchar* lpName, cchar* lpBuffer, u32 nSize)
+bool   SetEnvironmentVariableA(const cchar* lpName, const cchar* lpValue)
+cchar* GetEnvironmentStringsA()
+bool   FreeEnvironmentStringsA(cchar* lpEnvBlock)
+cchar* GetCommandLineA()
+bool   GetConsoleMode(rawptr hConsoleHandle, u32* lpMode)
+bool   SetConsoleMode(rawptr hConsoleHandle, u32 dwMode)
+
+// Winsock
+i32    WSAStartup(u16 wVersionRequired, rawptr lpWSAData)
+i32    WSACleanup()
+rawptr socket(i32 af, i32 type, i32 protocol)
+i32    bind(rawptr s, const rawptr name, i32 namelen)
+i32    listen(rawptr s, i32 backlog)
+rawptr accept(rawptr s, rawptr addr, i32* addrlen)
+i32    connect(rawptr s, const rawptr name, i32 namelen)
+i32    send(rawptr s, const cchar* buf, i32 len, i32 flags)
+i32    recv(rawptr s, cchar* buf, i32 len, i32 flags)
+i32    closesocket(rawptr s)
+i32    setsockopt(rawptr s, i32 level, i32 optname, const cchar* optval, i32 optlen)
+i32    getsockopt(rawptr s, i32 level, i32 optname, cchar* optval, i32* optlen)
+i64    recvfrom(rawptr s, cchar* buf, u64 len, i32 flags, rawptr srcAddr, i32* addrLen)
+i64    sendto(rawptr s, const cchar* buf, u64 len, i32 flags, const rawptr dstAddr, i32 addrLen)
+u32    htonl(u32 val)
+u16    htons(u16 hostshort)
+u32    ntohl(u32 val)
+u16    ntohs(u16 val)
+i32    shutdown(rawptr s, i32 how)
+i32    ioctlsocket(rawptr s, i32 cmd, u32* argp)
+i32    WSAGetLastError()
+void   WSASetLastError(i32 iError)
+u32    inet_addr(const cchar* cp)
+i32    BCryptGenRandom(rawptr pbBuffer, u32 cbBuffer, u32 dwFlags)
+
+// libm
+f64    sin(f64 x)  cos(f64 x)  tan(f64 x)  sqrt(f64 x)  pow(f64 x, f64 y)
+f64    floor(f64 x) ceil(f64 x) fabs(f64 x) asin(f64 x) acos(f64 x) atan(f64 x)
+f64    atan2(f64 y, f64 x) sinh(f64 x) cosh(f64 x) tanh(f64 x) cbrt(f64 x)
+f64    exp(f64 x) log(f64 x) log2(f64 x) log10(f64 x) round(f64 x)
+f64    fmod(f64 x, f64 y) hypot(f64 x, f64 y) erf(f64 x) erfc(f64 x)
+f64    tgamma(f64 x) lgamma(f64 x)</code></pre>
+      <nav class="chapter-nav"><a href="../../speed/appendix-b-built-in-functions/index.html">← Previous</a><a href="../../speed/appendix-e-collections/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

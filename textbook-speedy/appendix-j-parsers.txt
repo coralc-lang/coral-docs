@@ -1,0 +1,261 @@
+Appendix J, Parsers
+
+This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A, A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.
+
+---
+
+## std::parser
+
+### 75. `std::parser::csv`, `CsvReader`
+
+```coral
+pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+
+pub struct CsvReader
+{
+    const u8* data;
+    usize len;
+    usize pos;
+    usize line;
+    bool  error;
+    str   errMsg;
+    u8    delim;
+
+    static CsvReader new(str input)
+    bool eof()
+    Result<bool, ParseError> readRow(Vec<String>* fields)
+    // helpers: void fail(str msg); ParseError err(); bool _readField(String* out)
+}
+```
+
+### 76. `std::parser::ini`, `IniFile` / `IniSection`
+
+```coral
+pub struct IniSection
+{
+    HashMap<String, String> entries;
+
+    static IniSection new()
+    void dispose()
+    Option<String> get(str key)
+    void set(str key, str value)
+}
+
+pub struct IniFile
+{
+    Vec<IniSection> sections;
+    Vec<String>     names;
+
+    static IniFile new()
+    void dispose()
+    void parse(str input)                  // lenient; cannot fail
+    Option<IniSection*> section(str name)
+    Option<String> get(str section, str key)
+}
+
+pub extend IniSection : @drop { void drop(); }
+pub extend IniFile    : @drop { void drop(); }
+```
+
+### 77. `std::parser::json`, `JsonValue`
+
+```coral
+pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum JsonType { Null, Bool, I64, F64, String, Array, Object }
+
+pub struct JsonValue
+{
+    JsonType type;
+    bool  boolVal;
+    i64   i64Val;
+    f64   f64Val;
+    String strVal;
+    Vec<JsonValue> arrVal;
+    Vec<JsonPair>  objVal;
+
+    static JsonValue nullVal()
+    static JsonValue boolVal(bool b)
+    static JsonValue i64Val(i64 n)
+    static JsonValue f64Val(f64 n)
+    static JsonValue stringVal(String s)
+    static JsonValue arrayVal()
+    static JsonValue objectVal()
+    void dispose()
+}
+
+pub struct JsonPair { String key; JsonValue value; }
+
+pub Result<JsonValue, ParseError> parseJson(str input)
+pub String serialize(JsonValue* v)
+pub extend JsonValue : @drop { void drop(); }
+```
+
+### 78. `std::parser::toml`, `TomlDoc`
+
+```coral
+pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum TomlValueType { String, Integer, Float, Bool, Array, Table }
+
+pub struct TomlValue
+{
+    TomlValueType type;
+    String strVal;
+    i64    intVal;
+    f64    floatVal;
+    bool   boolVal;
+    Vec<TomlValue> arrVal;
+    Vec<TomlPair>  tableVal;
+
+    static TomlValue stringVal(str s)
+    static TomlValue intVal(i64 n)
+    static TomlValue floatVal(f64 n)
+    static TomlValue boolVal(bool b)
+    static TomlValue arrayVal()
+    static TomlValue tableVal()
+    void dispose()
+}
+
+pub struct TomlPair { String key; TomlValue value; }
+
+pub struct TomlDoc
+{
+    Vec<TomlPair> root;
+    static TomlDoc new()
+    void dispose()
+    Option<TomlValue*> get(str key)
+    Option<TomlValue*> getIn(str table, str key)
+}
+
+pub Result<TomlDoc, ParseError> parseToml(str input)
+pub extend TomlValue : @drop { void drop(); }
+pub extend TomlDoc   : @drop { void drop(); }
+```
+
+### 79. `std::parser::uuid`, `Uuid`
+
+```coral
+pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+
+pub struct Uuid
+{
+    u8 bytes[16];
+    static Uuid zero()
+    static Uuid v4()
+    static Result<Uuid, ParseError> fromString(str s)
+    String toString()
+    String toHex()
+    bool eq(Uuid other)
+    bool isNil()
+}
+pub String uuidV4()
+pub Result<Uuid, ParseError> parseUuid(str s)
+```
+
+### 80. `std::parser::xml`, `XmlNode`
+
+```coral
+pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum XmlNodeType { Element, Text, Comment, CData }
+
+pub struct XmlAttribute
+{
+    String name;
+    String value;
+    void dispose()
+}
+
+pub struct XmlNode
+{
+    XmlNodeType type;
+    String tag;
+    String text;
+    Vec<XmlAttribute> attrs;
+    Vec<XmlNode>      children;
+
+    static XmlNode element(str tag)
+    static XmlNode text(str content)
+    void dispose()
+    bool hasAttr(str name)
+    Option<str> getAttr(str name)
+    Option<XmlNode*> firstChild(str tagName)
+}
+
+pub Result<XmlNode, ParseError> parseXml(str input)
+pub String serializeXml(XmlNode* node)
+pub extend XmlNode : @drop { void drop(); }
+```
+
+### 81. `std::parser::crlb`, Coral build-manifest parser
+> Exists at `parser/crlb.crl` but is **not** re-exported by `parser/lib.crl`;
+> import it directly.
+
+```coral
+pub variant ParseError
+{
+    Syntax   { str msg; u32 line; u32 col; },
+    Semantic { str msg; }
+}
+pub enum CrbKind { Int, Bool, Str, List }
+
+pub struct CrbValue
+{
+    CrbKind kind;
+    i64    intVal;
+    bool   boolVal;
+    String strVal;
+    Vec<CrbValue> listVal;
+
+    static CrbValue intVal(i64 n)
+    static CrbValue boolVal(bool b)
+    static CrbValue stringVal(str s)
+    static CrbValue listVal()
+    void dispose()
+}
+
+pub struct CrbEntry { String key; CrbValue value; }
+
+pub struct CrbBuild
+{
+    String name;
+    String extends;          // empty if no extends clause
+    Vec<CrbEntry> entries;
+    Option<CrbValue*> get(str key)
+    void dispose()
+}
+
+pub struct CrbManifest
+{
+    Vec<CrbEntry> top;       // schema / strict / other top-level keys
+    Vec<CrbBuild> builds;
+
+    static CrbManifest new()
+    Option<CrbValue*> get(str key)
+    Option<CrbBuild*> findBuild(str name)
+    void dispose()
+}
+
+pub Result<CrbManifest, ParseError> parseCrlb(str input)
+pub extend CrbValue    : @drop
+pub extend CrbBuild    : @drop
+pub extend CrbManifest : @drop
+```

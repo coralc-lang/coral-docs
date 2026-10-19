@@ -1,0 +1,338 @@
+Appendix A
+
+A Tour of the Standard Library
+
+The standard library is where a language stops being a syntax and starts being a tool. This appendix is a guided tour of everything Coral ships with: what each module is for, where it lives, and a short example of the most useful parts. It is a map, not a reference. You will still want to read a module's source when you need the last detail, but a good map is what turns a large library from a wall of names into a place you can navigate.
+
+A few conventions apply throughout the tour. Import lines are written the way the library itself writes them, using the `import(lib)` form to reach a library module rather than a project module. Module paths follow the layout in A.1. And whenever this appendix says "the source is the reference," it means it: every example here comes from reading the actual files under the library tree, and when you need more than what is shown, that tree is the truth.
+
+A.1 How the Library Is Organised
+
+The library sits in a directory tree whose top level is the *core*, the *platform*, and the *std* umbrella:
+
+    lib/
+    ├── core/            str, cchar, char_util, limits, the absolute floor
+    ├── platform/        libc.crl, win32.crl, the operating-system bindings
+    └── std/             the standard library umbrella
+        ├── lib.crl      re-exports the portable names (std::vec, std::option, ...)
+        ├── misc/        cast, erased
+        ├── testing/     a tiny test harness
+        └── x86_64/
+            ├── linux/   the Linux implementation of every std module
+            └── windows/ the Windows implementation
+
+That last split is the important structural idea, so let me explain it more plainly. The library is written so that portable code imports *neutral* names (`std::vec`, `std::mman`, `std::text::string`) while the machinery underneath is chosen by the target platform. The root `std/lib.crl` is the neutral surface; `std/x86_64/linux/lib.crl` and its Windows sibling implement it. When a program imports `std::vec`, it gets the `Vec<T>` that is correct for wherever it is building, and the source that uses `Vec<T>` never mentions a platform at all. Today the two platforms differ in how much they provide. That is why, when you go looking for a module, you look under `std/x86_64/<platform>/`.
+
+The neutral re-exports in the root `std/lib.crl` are the names worth memorising:
+
+    std::collections    the whole collections group
+    std::text           strings, Unicode, regex, URI
+    std::io             files, processes, environment, terminals, net
+    std::fmt            low-level formatting helpers
+    std::math           math functions, random, geometry
+    std::memory         allocators, pools, smart pointers, intrinsics
+    std::crypto         hashes, ciphers, encodings
+    std::concurrent     threads, locks, thread pools, async
+    std::parser         JSON, CSV, INI, TOML, UUID, XML
+    std::data           option, result
+    std::time           clocks, sleeps, timestamps
+    std::duration       spans of time
+
+plus a handful of convenient shortcuts so that the most common types do not need the long path:
+
+    std::option         -> data::option
+    std::result         -> data::result
+    std::vec            -> collections::vec
+    std::arr            -> collections::arr
+    std::mman           -> memory::mman
+    std::allocator      -> memory::allocators
+    std::intrinsics     -> memory::intrinsics
+
+So `import(lib) std::vec { Vec };` and `import(lib) std::collections::vec { Vec };` name the same type, and the library itself uses both spellings freely.
+
+One warning before the tour, because it will save you a confusing afternoon. The module `std/x86_64/linux/text/lib.crl` re-exports a `crlb` submodule: the Coral build-file parser, the very parser that reads `coral.crlb` in Chapter21. It is real, but it belongs to the build system's own world; a normal program never imports it. Do not reach for it expecting general-purpose configuration parsing. For that, use TOML, INI, or JSON.
+
+A.2 The Foundation: core and platform
+
+Everything rests on `core`, which is deliberately tiny.
+
+`core::str` is the `str` type you have used all book: the immutable string *view*, a pointer plus a length into bytes someone else owns. Its methods are the ones the chapters have already shown, and a few more:
+
+    str::fromCstr(cstr)      wrap a C string
+    str::fromParts(ptr, len) build a view from raw bytes
+    str::empty()             the empty view
+    s.at(i), s.isEmpty(), s.equals(other), s.compare(other)
+    s.startsWith(p), s.endsWith(sfx), s.containsView(n), s.containsByte(b)
+    s.findView(n), s.findByte(b), s.rfindByte(b)
+    s.slice(start, end), s.trim(), s.trimStart(), s.trimEnd()
+    s.isAsciiDigit(), s.isAsciiAlpha(), s.isAsciiAlnum()
+    s.nextCodepoint(&idx, &out), s.codepointCount()
+    s.asString(), s.asU8()
+
+`core::char_util` is the working toolkit for `u8` and `char`: classification (`isDigit`, `isAlpha`, `isAlnum`, `isSpace`, `isPrint`, `isControl`, `isHexDigit`, `isAscii`), conversion (`toLower`, `toUpper`, `digitValue`), UTF-8 (`utf8Width`, `encodeUtf8`, `decodeUtf8`, `toUtf8`, `fromUtf8`), and the `char` helpers (`charIsValid`, `charIsDigit`, `charToUpper`, `charEncodeUtf8`, `charDecodeUtf8`). It also defines named byte constants, `newline`, `tab`, `space`, `nullu8`, `carriageReturn`, so you need not litter your code with `'\n'`.
+
+`core::cchar` defines `cchar`, the character type that matches what C calls `char` on this target. Because `char` signedness differs between ABIs, `cchar` is declared as a flagged distinct type that is `i8` on x86_64 and `u8` elsewhere, the kind of detail that silently corrupts strings when it is wrong. Postpone that problem by using `cchar` whenever you hand text to a C function, such as the `snprintf` behind `fmt`.
+
+`core::limits` is the integer and float boundary table: `INT64_MIN`, `INT64_MAX`, `INT32_MIN`, `INT32_MAX`, `INT16_*`, `INT8_*`, `U64_MAX` down to `U8_MAX`, and `F64_MAX`/`F64_MIN`/`F32_MAX`/`F32_MIN`. When you need a sentinel, take it from here rather than counting nines by hand.
+
+`platform::libc` is the raw door to the C library: `memcpy`, `memcmp`, `strlen`, `snprintf`, `strtod`, `malloc` and friends, `poll`, `gettimeofday`, `time`, `clock_gettime`, `nanosleep`, `pthread_*`, and hundreds more, declared as `extern`. You will rarely call it directly, since the std modules wrap the interesting parts, but it is the reason Coral can interoperate with C without a separate binding layer. On Windows, `platform::win32` plays the same role.
+
+A.3 Collections
+
+The `std::collections` group is the largest single family in the library, and the one you will reach for most. The workhorse is `Vec<T>`.
+
+`Vec<T>` is a growable array: a `data` pointer, a `len`, and a `cap`.
+
+    import(lib) std::vec { Vec };
+
+    Vec<i32> v = Vec<i32>::new();
+    v.push(10);
+    v.push(20);
+    v.push(30);
+
+    println("count = {}", v.count());
+    println("back  = {}", v.back());
+
+Its methods divide into a few families. Sizing and capacity: `new()`, `withCap(n)`, `reserve(n)`, `reserveExact(n)`, `shrinkToFit()`, `count()`, `isEmpty()`, `clear()`. Reading: `at(i)`, `atPtr(i)`, `atConst(i)`, `ptr()`, `constPtr()`, `front()`, `back()`, `contains(x)`. Writing: `push(x)`, `pop()`, `set(i, x)`, `insert(i, x)`, `removeAt(i)`, `removeRange(start, end)`, `fill(x)`, `reverse()`. Searching and sorting: `isSortedBy(less)`, `sortBy(less)`, `binarySearchBy(key, cmp)`. And `dispose()` frees the buffer, which the `@drop` extension calls for you when the vector goes out of scope.
+
+`Arr<T, N>` is the fixed-size sibling, an array whose length is part of its type. It never allocates and never grows; it has `at`, `set`, `atPtr`, `front`, `back`, `fill`, `copyTo`, `copyFrom`, and `isEmpty`. Reach for `Arr` when the size is known at compile time and you want the allocation to disappear.
+
+For key-value storage there are two structures, and choosing between them is a real decision.
+
+`Map<K, V>` is a balanced binary search tree, ordered by a comparator you supply. It requires only that you can compare two keys.
+
+    import(lib) std::collections::map { Map };
+
+    i32 cmpI32(i32 a, i32 b) { return a - b; }
+
+    Map<i32, str> ages = Map<i32, str>::new(cmpI32);
+    ages.insert(7, "seven");
+    ages.insert(3, "three");
+
+    ages.each(emit);
+    Option<str> got = ages.get(7);
+
+`insert` returns a `Result<V, CollectionError>` (the value back, or an allocation failure), `get` returns an `Option<V>`, `getPtr` returns an `Option<V*>` so you can mutate in place, and there are `contains`, `remove`, `clear`, `count`, `isEmpty`, and `each`. The `each` callback receives `(K, V)` in sorted key order, which is often the reason to pick `Map` in the first place: iterate it and the keys come out ordered.
+
+`HashMap<K, V>` is the hash-table alternative: faster when you do not need ordering. It needs both a hash function and an equality function, because Coral does not guess them for you.
+
+    import(lib) std::collections::hashmap { HashMap };
+
+    usize hashInt(i32 x) { return (usize)x; }
+    bool eqInt(i32 a, i32 b) { return a == b; }
+
+    HashMap<i32, i32> counts = HashMap<i32, i32>::new(hashInt, eqInt);
+    counts.insert(1, 100);
+    counts.insert(2, 200);
+
+The shape of the API matches `Map`, `insert`, `get`, `getPtr`, `contains`, `remove`, `clear`, with one pleasant difference: `HashMap` also has `keys()`, `values()`, and `eachEntry`, so you can walk the keys and values directly. (`Map` has none of these; its ordered `each` is the traversal.) It grows by doubling at a load factor of one half and resolves collisions by linear probing, so probe chains stay short.
+
+`UnorderedMap<K, V>` is the same idea as `HashMap` but constructed with a single hash-plus-equality pair; use whichever the surrounding code already uses. `Set<T>` is `HashMap` with no values, membership only, built from a hash and an equality function, with `insert`, `contains`, `remove`, `toVec`, `each`, `union`, `intersection`, `difference`, `isSubset`, and `isSuperset`. Those last five make set algebra a one-liner.
+
+The remaining collections each solve a focused problem. `Queue<T>` is a FIFO with `enqueue`, `dequeue`, and `peek` (plus `pushBack`/`popFront` spellings of the same operations). `Deque<T>` is a double-ended queue with `pushFront`/`pushBack`/`popFront`/`popBack`/`front`/`back`/`at`/`set`. `RingBuf<T>` is a fixed-capacity circular buffer whose distinguishing behaviour is deliberate: when it is full, `push` overwrites the oldest element rather than failing, which is exactly what a log tail or a rolling window wants. `PriorityQueue<T>` is a binary heap ordered by a *less* comparison, with `push`, `pop` (always the smallest), `peek`, and `clear`.
+
+    import(lib) std::collections::{ringbuf, priorityqueue};
+
+    bool lessI32(i32 a, i32 b) { return a < b; }
+
+    PriorityQueue<i32> pq = PriorityQueue<i32>::new(lessI32);
+    pq.push(5); pq.push(1); pq.push(3);
+    println("min = {}", pq.pop());   // 1
+
+`LinkedList<T>` is a doubly linked list with `pushFront`, `pushBack`, `popFront`, `popBack`, `front`, `back`, `insertAfter`, and `remove`. `Tree<T>` is an n-ary tree with a root and child nodes; it offers `setRoot`, `addChild`, `childCount`, `childAt`, `removeChild`, `preOrder`, `postOrder`, `depth`, and `size`, with a separate `TreeNode<T>` for the nodes. `Trie` is a byte-indexed prefix tree, it stores keys only, no payloads, and answers `insert`, `contains`, `startsWith`, `remove`, `size`, and `each` over all stored keys; use it for autocomplete and prefix lookup, not for a dictionary with values.
+
+Two small structures round out the group. `Bitset` is a fixed-width bit array built with `Bitset::new(numBits)` and offering `set`, `clear`, `toggle`, `test`, `setAll`, `clearAll`, `countOnes`, `countZeros`, `hasAny`, `none`, `all`, and the bitwise `and`, `or`, `xor`, `not`. `Cache<K, V>` is a bounded LRU cache constructed as `Cache<K, V>::new(max, hashFn, eqFn)`: `insert` past the limit evicts the least-recently-used entry, `get` marks an entry as recently used, and `resize` changes the bound. A cache with a hit-count guarantee, in about a hundred lines.
+
+Finally, `std::collections::iter` turns the tedious loops into named operations over a `const Vec<T>*`: `map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `hasAny`, `all`, `countIf`, `take`, `skip`, `slice`, `zip` (returning `Vec<Pair<T, U>>`), `unique`, `flatten`, `enumerate`, `sum`, `average`, `minBy`, and `maxBy`. And `std::collections::sort` holds the standalone sorters: `sortI32`, `sortusize`, `sortF64`, `sortBy(less)`, `reverse`, the `isSorted*` predicates, and `binarySearchI32`, `binarySearchusize`, `binarySearchBy`.
+
+    import(lib) std::collections::iter { map, filter, sum };
+
+    Vec<i32> nums = Vec<i32>::new();
+    nums.push(1); nums.push(2); nums.push(3); nums.push(4);
+
+    Vec<i32> doubled = map(&nums, dblI32);
+    Vec<i32> evens   = filter(&nums, isEvenI32);
+    println("sum = {}", sum(&nums));
+
+Everything that allocates has a `dispose`, and everything that has a `dispose` also has an `@drop` extension, so the compiler frees it at end of scope. The rule from Chapter16 holds here too: let values own their memory, and let `@drop` do the cleanup.
+
+A.4 Text, Unicode, and Formatting
+
+Chapter17 covered much of this, so here is the map rather than the re-teaching. The `std::text` group contains `string`, `strutil`, `ascii`, `utf8`, `regex`, `uri` (and the build-system `crlb`).
+
+`String` is the owned, growable counterpart to `str`. Construct it with `String::new()`, `String::withCap(cap)`, `String::from(view)`, or `String::fromCstr(cstr)`. Grow it with `pushChar`, `pushByte`, `pushCodepoint`, `pushView`, `pushStr`, `pushCstr`, `pushRepeat`, `appendView`, and `insertView`. Inspect it with `asView`, `asCstr`, `asU8`, `at`, `isEmpty`, `equals`, `equalsView`, `compare`, `findChar`, `rfindChar`, `findView`, `startsWith`, `endsWith`, `containsView`, `substr`, `countChar`, and `codepointCount`. Transform it in place with `toUpper`, `toLower`, `reverse`, `trim`, `trimStart`, `trimEnd`, `truncate`, `replaceAll`, `padLeft`, and `padRight`. Split it with `splitByte(delim)` into a `Vec<str>`, and join with the static `String::join(sep, parts)`. `clone` duplicates; `free` releases; `@drop` calls `free`.
+
+`strutil` is the free-function layer over `str`. It gives you `split(view, delim, out, maxParts)` (writing into a caller-provided array) and `splitVec(view, delim)` (returning a `Vec<str>`), `trim`/`trimLeft`/`trimRight`, `startsWith`/`endsWith`/`contains`, `indexOf`/`indexOfChar`/`lastIndexOf` (each returning an `isize`, negative for "not found"), `replace`, `join`/`joinVec`, `substr`, and `equalsIgnoreCase`.
+
+`ascii` classifies and converts single bytes, `isAscii`, `isAsciiDigit`, `isAsciiAlpha`, `isAsciiAlnum`, `isAsciiHex`, `isAsciiSpace`, `toAsciiLower`, `toAsciiUpper`, `asciiDigitVal`, `asciiHexVal`, and also carries a small UTF-8 toolkit: `utf8ByteCount`, `utf8Decode`, `utf8Encode`, `utf16ToUtf8`, `utf8CountChars`, `utf8IsValid`. `utf8` is the fuller codepoint library: `encodeCodepoint`, `decodeCodepoint`, `codepointLen`, `countCodepoints`, `isValid`, `toLower`/`toUpper` (producing a `String`), `nextChar`, and `encodeChar`.
+
+Formatting splits between low-level helpers and the print family. The `std::fmt::fmt` module offers `formatInt(i64, radix, upper)`, `formatUint(u64, radix, upper)`, `formatFloat(f64, precision)`, `formatHex`, `formatHexUpper`, `formatBin`, `formatChar`, `padLeft`, `padRight`, `repeat`, `join`, and `joinVec`. One warning, and it is a real one: the function `fmt::format(str f, ...)` is currently a **stub**. It does not interpolate arguments. It walks the format string and simply *deletes* every `{}` it finds, returning the literal text with the placeholders removed. Do not use it expecting `printf`-style substitution. For real, formatted output, use the `std::io::ios` print family, which does interpolate.
+
+    import(lib) std::io::ios { println, eprintln, print, vaprint };
+    import(lib) std::io::ios { spaces, repeat as rep, hex, bin, fixed };
+
+    println("name = {}, age = {}", "ada", 36);
+    println("hex {} bin {}", hex(255), bin(5));
+    println("pi ~ {:.3}", fixed(3.14159, 3));
+
+`println` and `print` write to stdout, `eprintln` and `eprint` to stderr, all taking a compile-time format string first with `{}` placeholders (`{{` and `}}` escape literal braces, `{..}` spreads a collection, and specifiers choose a rendering). `vaprint` is the value-only variant: no format string, every argument rendered in sequence. The manipulators `spaces(n)`, `repeat(ch, n)`, `hex(v)`, `bin(v)`, and `fixed(v, precision)` are values you drop into a format list to control a particular field. This is the pair of modules to keep straight: `ios` prints; `fmt` builds strings, and its variadic `format` is not finished.
+
+For pattern work, `std::text::regex` wraps POSIX regular expressions with `compile`, along with matching and search entry points, and `regexFlags(extended, icase, nosub)` to set behaviour; a `Regex` is freed via its `@drop`. For URLs, `std::text::uri` gives you a `Uri` struct whose fields are `scheme`, `userInfo`, `host`, `port`, `path`, `query`, and `fragment` (with `hasPort`), parsed by `Uri::parse(input)`. Hover over these in an editor and the resolved types are exactly these fields, which is one of the quiet conveniences of having the language server be the compiler.
+
+A.5 I/O
+
+`std::io` covers files, processes, the environment, terminals, and networking. The most-used entry point is `ios`, which holds not only the print family but also the readers and parsers:
+
+    print/println/eprint/eprintln   formatted output
+    vaprint                         value-only output
+    flush()                         flush buffered output
+    readChar()                      one byte from stdin
+    readLine(&String)               a line into an owned String
+    read(&out), readVal<T>()        typed input
+    parseI64(view, &ok), parseU64(view, &ok), parseF64(view, &ok)
+
+The `parse*` trio is worth internalising: each takes a `bool*` out-parameter that reports success, so you get a value and a validity flag in one call rather than a sentinel you might mistake for data.
+
+    import(lib) std::io::ios { readLine, parseI64 };
+    import(lib) std::text::string { String };
+
+    String line = String::new();
+    if (readLine(&line)) {
+        bool ok = false;
+        i64 n = parseI64(line.asView(), &ok);
+        if (ok) println("read number {}", n);
+    }
+
+`std::io::fs` is the filesystem layer, built on a `File` handle and a rich `IoError` variant. Open with `fileOpen(path, mode)` returning `Result<File, IoError>`; read with `fileRead`, write with `fileWrite`, seek with `fileSeek`, and close with `fileClose`. The convenience layer is what you will usually want: `readFileToString(path)` returns `Result<String, IoError>`, `writeFileFromString(path, data)` writes one, and `fileExists`, `statPath`, `getFileType`, `createDir`, `createDirRecursive`, `removeDir`, `deleteFile`, `renameFile`, and `canAccess` cover the rest. Directory walking uses `openDir`, `readDirEntry(&Dirent)`, and `closeDir`. `std::io::path` then manipulates path strings without touching the disk: `join`, `normalize`, `absolute`, `isAbsolute`, `parent`, `filename`, `stem`, `extension`, `hasExtension`, and `changeExtension`.
+
+    import(lib) std::io::fs { readFileToString };
+    import(lib) std::io::path { join };
+
+    String file = String::new();
+    Result<String, IoError> r = readFileToString(join("config", "app.txt").asView(), &file);
+
+For running other programs, `std::io::process` gives you `spawn(cmd, args)` returning a `Process`, `waitFor` returning a `ProcessResult`, and the streaming `writeStdin`, `readStdout`, `readStderr`. When you want the simple case, run and collect the exit code, `run(cmd, args)` returns `Result<i32, IoError>`. `exit(code)` ends the program. `std::io::env` handles the environment with `get(name)` returning `Option<String>`, `getInto(name, &out)`, `set`, `unset`, and `all(&Vec<String>)`. `std::io::cmd` provides an `ArgParser` for command-line arguments, and `commandLine()` returns the program name. `std::io::term` writes ANSI escapes, colours, `cursorUp`/`cursorDown`/`cursorPos`, `clearScreen`, `clearLine`, cursor save/restore and show/hide, the raw material of a terminal UI without a UI library. `std::io::log` offers a `Logger` and a `LogLevel` variant. `std::io::temp` provides `TempFile` and `TempDir`, both self-deleting via `@drop`. `std::io::net` does TCP (`tcpConnect`, `tcpListen`, `tcpAccept`, `tcpSend`, `tcpRecv`, `tcpClose`) and UDP (`udpSocket`, `udpBind`, `udpSendTo`, `udpRecvFrom`, `udpClose`). `std::io::fios` and `std::io::bio` are the raw and buffered file layers beneath `fs`, and `bio` also exposes byte-order helpers `bswapU16`, `bswapU32`, `bswapU64`.
+
+A.6 Parsing
+
+`std::parser` turns text into structures. Each parser shares a shape: a `ParseError` variant, a value type, and a `parse*` function returning `Result<..., ParseError>`.
+
+JSON is the most developed. `parseJson(input)` returns `Result<JsonValue, ParseError>`, and `serialize(&value)` writes one back out. `JsonValue` is a struct with a `JsonType` tag, `Null`, `Bool`, `I64`, `F64`, `String`, `Array`, `Object`, and the corresponding payload fields: `boolVal`, `i64Val`, `f64Val`, `strVal`, a `Vec<JsonValue> arrVal`, and a `Vec<JsonPair> objVal`, plus constructors like `JsonValue::i64Val(n)`, `stringVal(s)`, `arrayVal()`, and `objectVal()`.
+
+    import(lib) std::parser::json { parseJson, serialize, JsonValue, JsonType };
+
+    Result<JsonValue, ParseError> r = parseJson(text);
+    if (r.isOk()) {
+        JsonValue v = r.unwrap();
+        switch (v.type) {
+            JsonType::I64 => println("int {}", v.i64Val),
+            JsonType::String => println("str {}", v.strVal.asView()),
+            else => println("other"),
+        }
+    }
+
+This is a genuine correction to an old habit: JSON here is a tagged struct plus an enum, not a recursive variant. You switch on `v.type` and read the matching field; you do not pattern-match nested variants.
+
+The rest of the group follows the same rhythm. `std::parser::csv` provides a `CsvReader` for delimited records. `std::parser::ini` provides `IniFile` and `IniSection` with lookup and iteration methods, and its own string hashing helpers for the common `HashMap<String, String>` case. `std::parser::toml` gives `parseToml` → `Result<TomlDoc, ParseError>`, where `TomlDoc` holds `TomlPair`s and each value is a `TomlValue` tagged by `TomlValueType`. `std::parser::xml` gives `parseXml` and `serializeXml` over an `XmlNode` tree with `XmlAttribute`s and an `XmlNodeType` tag. And `std::parser::uuid` offers `uuidV4()` to generate a random UUID and `parseUuid(s)` → `Result<Uuid, ParseError>` to read one back.
+
+A.7 Math, Randomness, and Geometry
+
+`std::math::math` is a direct binding to the C math library: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`, `sqrt`, `cbrt`, `pow`, `exp`, `log`, `log2`, `log10`, `floor`, `ceil`, `round`, `fabs`, `fmod`, `hypot`, `erf`, `erfc`, `tgamma`, `lgamma`. On top of those it adds constants, `pi`, `e`, `tau`, `srt2` (and the functions `piF`, `eF`, `sqrt2F`), plus angles (`degToRad`, `radToDeg`), clamping (`clampI64`, `clampU64`, `clampF64`), interpolation (`lerp`, `invLerp`, `mapRange`, `add`, `sub`, `mul`, `div`), min/max (`minI64`, `maxI64`, `minU64`, `maxU64`, `minF64`, `maxF64`), `absI64`, `absF64`, `signI64`, `signF64`, `truncF`, `isFinite`, and `isNan`.
+
+`std::math::random` provides both stateless and seeded generators. The free functions `nextU64`, `nextU32`, `nextRange(lo, hi)`, and `nextF64` use a shared source; `XorShift32` and `Pcg32` are structs you instantiate when you want a generator you control and can seed reproducibly.
+
+`std::math::vector` and `std::math::matrix` are small linear-algebra libraries: `Vec2`, `Vec3`, `Vec4` with vector operations, and `Mat2`, `Mat3`, `Mat4` with matrix operations; `std::math::complex` defines a `Complex` type. They are the building blocks for graphics and simulation rather than a full numerical package.
+
+A.8 Time and Duration
+
+Two modules handle time. `std::time` is the clock: it tells you what time it is and puts the current thread to sleep. `std::duration` is a span of time you can add, subtract, scale, and compare. Both were ported from the old `core/time` and `core/duration` modules, and the public surface is the same on every platform -- only the machinery underneath differs. The Linux build issues raw syscalls (`clock_gettime`, `gettimeofday`, `nanosleep`, `time`); the Windows build calls the Win32 intrinsics (`QueryPerformanceCounter`, `GetSystemTimeAsFileTime`, `Sleep`).
+
+`std::time` defines two plain value structs, `Timespec { i64 sec; i64 nsec; }` and `Timeval { i64 sec; i64 usec; }`, plus the functions that fill them:
+
+    import(lib) std::time { Timespec, nowMonotonic, sleepMs, subTimespec, timespecToF64 };
+
+    Timespec t0 = nowMonotonic();   // monotonic clock, never jumps backward
+    sleepMs(10u);
+    Timespec t1 = nowMonotonic();
+    f64 elapsed = timespecToF64(subTimespec(t1, t0));
+
+`nowMonotonic()` is the clock to use for measuring elapsed time; `nowRealtime()` is wall-clock and can move when the system time is adjusted. `nowTimeval()` reads the higher-resolution wall clock, `unixSeconds()` the coarse one, `addTimespec` and `subTimespec` do carry-correct arithmetic, and `timespecToF64` and `timevalToF64` convert to floating-point seconds. `sleepMs(u64)` and `sleepTimespec(Timespec)` block the current thread; a signal can wake them early, and they do not retry the remainder.
+
+`std::duration` wraps that arithmetic in a type. A `Duration` is a signed span stored as `(sec, nsec)` and always normalized so `0 <= nsec < 1_000_000_000`:
+
+    import(lib) std::duration { Duration, seconds, millis };
+
+    Duration timeout = seconds(2).add(millis(500));
+    if (timeout.gt(seconds(1))) { /* ... */ }
+    println(timeout.asMillis());   // 2500
+
+Construct with `Duration::fromSecs`, `fromMillis`, `fromMicros`, `fromNanos`, or `fromF64`, or with the free functions `seconds`, `millis`, `micros`, `nanos`. Read back with `asSecs`, `asMillis`, `asMicros`, `asNanos`, `asF64`. Compare with `eq`, `lt`, `gt`, `le`, `ge`; combine with `add`, `sub`, `mul`, `div`; and convert to a `Timespec` for sleeping with `toTimespec()`, or just call `sleep()`. Arithmetic saturates at the `i64` limits instead of wrapping, so a `Duration` that overflows becomes the largest representable span rather than a surprise negative one.
+
+There is no calendar here. No year, month, or day; no timezone handling. `Duration` and `Timespec` measure and delay. Turning an epoch second into a date is your job, or a library's, but not the standard library's.
+
+A.9 Memory
+
+`std::memory` is where the abstract collections meet the actual heap. The neutral names you will use most are the generic allocation functions in `std::mman`: `alloc<T>(count)`, `dealloc<T>(ptr)`, `realloc<T>(ptr, newCount)`, plus `copy<T>`, `move<T>`, `zero<T>`, and `equal<T>` for element-wise operations. These are what `Vec`, `HashMap`, and the rest call internally, and they are what you call when you write a container yourself. `std::mman` also defines the `Allocator` struct and a small zoo of allocations strategies: `FixedBufferAllocator` (allocate into a fixed block), `StackFallbackAllocator`, `ArenaAllocator` (allocate freely, free everything at once), `PoolAllocator` (fixed-size slots), `ScopeAlloc`, `LoggingAllocator` (wraps another allocator and records usage), and the built-in `libcAllocator`, `miAllocator`, `cAllocator`, `pageAllocator`, plus `pageSize`. `std::allocator` is the same module reached by its short name.
+
+Above that sits higher-level memory management. `std::memory::allocators` holds the named allocator implementations, a general `Allocator`, `tlsf` (a two-level segregated fit allocator in `std::memory::allocators::tlsf`), and `MiAlloc` in `std::memory::allocators::mimalloc`. `std::memory::pool` gives a typed `Pool<T>` for recycling fixed-size objects. `std::memory::shared_ptr` and `std::memory::smart_ptr` provide `SharedPtr<T>` (reference-counted) and `SmartPtr<T>` (unique ownership), each with an `@drop` extension so ownership is freed automatically. `std::intrinsics` (the short name for `std::memory::intrinsics`) exposes the rawest operations: `memcpy`, `memmove`, `memset`, `memcmp`, `mmap`, and `munmap`, the last two mapping pages directly from the operating system when you need memory outside the normal heap.
+
+Start with `alloc<T>` and the collections. Reach for the allocator structs only when you have a specific performance or lifetime problem they solve; the whole point of `@drop` and the owning types is that most programs never need to touch this layer by hand.
+
+A.10 Cryptography and Hashing
+
+`std::crypto` covers the common primitives. `sha256` offers a streaming `Sha256` struct and a one-shot `hash(data, len, digest)`. `hmac` provides `HmacSha256` and the one-shot `hmacSha256(key, keyLen, msg, msgLen, outDigest)`. `aes` provides `Aes256` and `Aes128`. For encodings, `base64` gives `encodeB64`, `encodeToString`, and `decode`; `hex` gives `encodeHx`, `encodeToString`, `decode`, and `isValid` for hex strings. `crc` provides `crc32` and `crc64`, `hash` provides fast non-cryptographic hashes, `fnv1a`, `fnv1aStr`, `mur./mvmur3`, `wyhash`, `wyhashStr`, and `hashCombine` for folding one hash into another, and `bloom` provides a `Bloom` filter.
+
+    import(lib) std::crypto::sha256 { hash };
+
+    u8 digest[32];
+    hash((const u8*)C"hello", 5, digest);
+
+A word of caution that belongs in any introduction: these are building blocks, not a vetted security product. For anything protecting real assets, treat the library as the raw material and get the scheme reviewed. But for checksums, cache keys, content addressing, and honest hashing, they are exactly right.
+
+A.11 Concurrency
+
+`std::concurrent` is the threading group. `std::concurrent::thread` defines the `Thread` handle, with `threadCreate(fn, arg)` returning `Result<Thread, ThreadError>`, `threadJoin`, `threadExit`, `threadCurrent`, a `ConditionVar`, and the atomics `AtomicU64` and `AtomicU32`. `mutex`, `rwlock`, and `semaphore` provide a `Mutex`, a `RwLock`, and a `Semaphore`. `threadpool` provides a `ThreadPool`. `signal` exposes the POSIX signal numbers and helpers `handle`, `ignore`, `defaultHandler`, `sendSig`, and `raiseSig`. And `async` is the largest piece: a `Future` type, `init()` to bring up the runtime, `spawn(fn, arg)` and `await(f)` for tasks, `sleep(ms)`, `run()`, `runOnce()`, `poolRun(pool, fn, arg)`, a fiber stack size `defaultFiberStackSize`, and an `AsyncChannel` for message passing between tasks. As with memory, the layers above, thread pool, async, are the ones to use once you have a reason; a plain `threadCreate` plus a `Mutex` covers more than people expect.
+
+A.12 Testing
+
+The library ships a small test harness in `std::testing::test` (a separate module rather than part of the `std` umbrella): `_testBegin(name)`, `_testEnd()`, `_testFail(msg)`, the assertions `assertEq`, `assertEqStr`, `assertTrue`, `assertFalse`, `assertNull`, `assertNotNull`, and the summary helpers `testSummary()` and `testAllPassed()`, with a `TestResult` type. It is intentionally minimal, no fixtures, no mocking, no discovery framework, which is the right size for unit tests of the library itself and for small programs. If your needs outgrow it, the parser and process modules are enough to build whatever harness you prefer. (These modules are present in the tree but not yet wired into the umbrella `std` module, so check how your build exposes them before importing.)
+
+A.13 Miscellaneous
+
+`std::misc::erased` defines an `Erased` type that wraps a `rawptr` (`wrap(value)` boxes a pointer), and `std::misc::cast::cast<T>(Erased val)` turns one back into a typed value. Together they let a value pass through code that does not know its type and come out the other side knowing it again, the escape hatch for the rare case where generics and variants are not enough. Like `testing`, these live outside the umbrella and should be used sparingly.
+
+A.14 What Is Not There
+
+A tour is as much about edges as about the middle, so here are a few boundaries worth knowing before you go looking for something that is not there.
+
+There is no calendar. `std::time` gives you clocks and `std::duration` gives you spans, but nothing in the library turns an epoch second into a year, month, and day, and nothing knows about timezones or daylight-saving rules. If you need a human-readable date, compute it yourself from `unixSeconds()`, or reach for `platform::libc`'s C time functions (`localtime`, `gmtime`, `strftime`) and accept the C-shaped interface.
+
+Formatting also stops short of what the name suggests. `std::fmt::format` is a stub: it deletes `{}` placeholders and substitutes nothing. Use the `std::io::ios` print family for real formatted output.
+
+And a few whole categories are simply absent. There is no HTTP client, no serialization framework beyond the parsers, no Unicode collation or locale-aware case mapping, and no rich-text or date-formatting layer. The library is deep where systems work lives, memory, I/O, concurrency, parsing, crypto, and thin where a third-party package would do the job better. When you find a gap, that is the intended shape, not a missing piece.
+
+A.15 Exercises
+
+1. Organisation. Name the three top-level groups under `lib/` and say what each is responsible for. Then explain, in your own words, why `std/x86_64/linux/lib.crl` exists separately from the root `std/lib.crl`.
+
+2. Shortcuts. A program writes `import(lib) std::vec { Vec };`. Trace that name through the root `std/lib.crl` to the file that actually defines `Vec<T>`. Then write the equivalent import using the long `std::collections` path.
+
+3. Vec. Create a `Vec<i32>`, push five values, remove one in the middle, reverse it, and print the result. Then sort it with `sortBy` and confirm with `isSortedBy`. Which call frees the buffer, and who calls it?
+
+4. Map versus HashMap. You need to count how many times each word appears in a document. Which structure do you choose, what functions must you supply, and why? Then say what changes if you also need the words printed in alphabetical order.
+
+5. HashMap. Write the `hashStr(str)` and `eqStr(str, str)` functions needed to build a `HashMap<str, i32>`, then use it to count occurrences of three words. (Hint: the INI parser's own helpers are a good model.)
+
+6. Specialised containers. For each of these needs, name the container and its key method: (a) a fixed window of the last 100 log lines that discards the oldest, (b) always retrieving the smallest pending item first, (c) autocomplete for a set of prefixes, (d) membership testing for a large set of integers, (e) a bounded most-recently-used cache.
+
+7. Text and formatting. Sort these three into "owned" and "view": `str`, `String`, `Vec<str>`. Then explain why `fmt::format` should not be used for formatted output right now, and what to use instead.
+
+8. I/O. Write a program that reads every line from standard input, parses each line as an `i64`, and prints the running total, skipping lines that are not numbers. Which functions from `ios` do you use, and how do you detect a non-number?
+
+9. Parsing. Given a JSON document containing an object with a number field and a string field, write the switch that extracts both. Why is the switch over `JsonType` necessary rather than reading the fields directly?
+
+10. Allocation. Rank `alloc<T>`, `ArenaAllocator`, and `Pool<T>` by how much control they give you over when memory is freed, and give one scenario where each is the right choice.
+
+11. Cross-check the map. Pick three modules from this appendix, open their source files, and list one public function or method that this tour did not mention. This is not a trick, the tour is deliberately incomplete, and the exercise is to practise going to the source.
+
+12. Extend. The library has no `std::time`. Using only `platform::libc`, write a small `stopwatch` helper that samples `clock_gettime` twice and returns the elapsed nanoseconds. Explain why a monotonic clock is the right choice for measuring durations, whereas `time` is the right choice for recording a date.

@@ -1,0 +1,622 @@
+Chapter22
+
+Attributes and Compile-Time Metaprogramming
+
+Talking to the Compiler in Its Own Language
+
+You have probably seen `#[[packed]]` in someone else's code and nodded, as though you knew exactly what it did. You have seen `#[[inline]]` sitting above a three-line function and assumed it made the function faster, without ever being sure. And you have probably written a comment like `// aligned to sixteen bytes` and quietly hoped the next reader, or the compiler, would take the hint. That vague nod is worth clearing up, because those little bracketed notes are one of the two channels through which a Coral programmer talks directly to the compiler, and unlike a comment, the compiler actually reads them.
+
+Here is the difference in one sentence. A comment is a note to the next human, and the compiler throws it away during the very first phase. An attribute is a note to the compiler itself: a machine-readable instruction about how an item should be laid out in memory, generated as code, checked for safety, or scheduled on the hardware. When you write
+
+    #[[inline]]
+    i32 add(i32 a, i32 b) {
+        return a + b;
+    }
+
+you have not written a comment that says "please inline me" and hoped for the best. You have handed the compiler a directive. It may still decline, more on that below, but it cannot pretend it did not read you, and it cannot let a typo in that directive pass silently.
+
+Hold on, let me explain that "cannot let a typo pass silently" part more plainly, because it is the whole reason attributes exist instead of mere conventions. Suppose you write `#[[inlne]]` above that function. A comment engine would shrug and move on, and you would walk away believing you had optimised something. An attribute engine reads the name, does not recognise it, and tells you: unknown attribute `inlne`, did you mean `#[[inline]]`? The difference between "silently ignored" and "reported with a suggestion" is the difference between a false belief about your program and a one-line fix. That promise, that the compiler never silently drops an instruction, runs through this entire chapter.
+
+Simply put, a `//` comment is a note you leave for the cleaning staff; the compiler sweeps it away before anyone who matters reads the file. An attribute is a note you leave on the desk of the person doing the work, who will either act on it or tell you it could not understand it, but will never pretend not to have seen it.
+
+The syntax is a bracketed list, written on the line above (or above the field, or above the statement) it modifies:
+
+    #[[name]]
+    #[[name(arg1, arg2, ...)]]
+    #[[one, two]]
+    #[[one]] #[[two]]
+
+The double brackets `#[[ ... ]]` are not decoration. They exist so the lexer can tell an attribute apart from an ordinary index expression `a[i]` without ever guessing. A single bracket is an index; a double bracket is an annotation. That one lexical rule means a parser never has to look ahead and wonder whether some `[inline]` on a line is a subscript of something.
+
+This chapter has two jobs, and they are the two halves of its title. The first job is to catalogue the attributes, all of them, sorted by what they do, each one introduced with a situation that calls for it, so you finish knowing not just the names but the moments you would reach for each. The second job is to explain the idea underneath them: that a small, fixed set of well-chosen compiler directives, combined with the comptime machinery of Chapter7, gives a language the metaprogramming power of macros without a separate macro language to learn. Coral would rather hand you a directive than a preprocessor, and the rest of this chapter shows you what that buys.
+
+22.1 The Bracket Forms
+
+There are two shapes of attribute, and how they combine is worth stating precisely before the catalogue, because everything else leans on it.
+
+A single-name attribute is written `#[[name]]`. It applies to whatever comes next: a declaration, a statement, a field, or a file. A name-only attribute carries no arguments because its meaning is the whole of it. `#[[packed]]` means packed, full stop; there is nothing to configure.
+
+An attribute with arguments is written `#[[name(arg1, arg2, ...)]]`. The arguments are a small list of literals, a string, a number, a name, sometimes a list of names. Which ones are legal depends on the attribute: `#[[deprecated("use connect_v2 instead")]]` takes a string, `#[[align(16)]]` takes a number, `#[[generate(Drop, Eq, Debug)]]` takes a comma-separated list of capability names, and `#[[cfg(target_os = linux)]]` takes a predicate.
+
+Several attributes can be attached to the same item, and there are two spellings for that. You may list them inside one pair of brackets separated by commas:
+
+    #[[packed, generate(Eq, Debug)]]
+
+or chain separate bracket groups:
+
+    #[[packed]]
+    #[[generate(Eq, Debug)]]
+
+Both mean the same thing, and the compiler reads them left to right. The comma form reads best when the attributes belong to one topic, say, everything about layout, or everything about derivation. The chained form reads best when each line is a separate statement of intent and you want to see them stack. Choose whichever tells the story more clearly; there is no performance or semantic difference between them. You may even mix the two, which is handy when one attribute has a long argument list:
+
+    #[[cfg(target_os = linux), inline]]
+    void flushCache();
+
+One rule applies across all of this: attributes must be compatible. Two attributes that pull in opposite directions cannot sit on the same declaration, and the compiler will not quietly pick a winner. The canonical example is `#[[packed]]` and `#[[reorder]]`, which we meet in the very next section. An incompatible pair is a diagnostic, not a coin flip, and the compiler would rather stop and ask than guess which of your two contradictory sentences you meant.
+
+There is a slightly different rule for file-level attributes, because a file is not an item you can point at. A file attribute such as `#[[no_drop_all]]` must appear before the first declaration in the file. It is the one place in the grammar where an attribute is not attached to the thing directly beneath it, and that is worth remembering the first time you see it at the top of a standard-library file.
+
+22.2 Layout: Telling the Compiler What the Bytes Look Like
+
+Some of the most important attributes are about memory, about the exact sequence of bytes a value occupies. Most of the time you should not care. The compiler is free to insert padding between fields, to leave gaps so each field lands on a convenient boundary, and generally to arrange bytes however is fastest to access. That freedom is a good thing, and it is the default. But the moment your bytes have to match a world outside your program, a network packet, an on-disk record, a register map, a C struct, the freedom becomes a hazard, and you need attributes that take it away. Four of them do.
+
+`#[[packed]]` is the one you have seen. It removes the padding the compiler would otherwise insert and pins the fields in the exact order you declared them, so the struct's size is simply the sum of its fields and its bytes lie exactly where you wrote them. Reach for it whenever the byte layout is a contract specified by someone else:
+
+    #[[packed]]
+    struct PacketHeader {
+        u8  version;
+        u8  flags;
+        u16 length;
+        u32 checksum;
+    }
+
+Do the arithmetic and you can see what the attribute bought you. Without `#[[packed]]`, the compiler might insert two bytes of padding after `flags` so that `length` starts on a two-byte boundary, and two more after `length` so that `checksum` starts on a four-byte boundary; the struct would be twelve bytes instead of eight, and every field after the first would sit at the wrong offset. Write that struct to a socket and the receiving machine reads `version` and `flags` correctly and then reads nonsense for `length`, because it is looking at a padding byte. With `#[[packed]]`, the eight declared bytes are the eight bytes on the wire.
+
+The everyday mistake is to build a struct for a file format, forget `#[[packed]]`, and then wonder why the first two fields read correctly while everything after them is nonsense. The early fields work because they happen to land on their natural offsets; the first field that needed padding is the first one that breaks. When a format's bytes are fixed by someone else, pack the struct and stop guessing.
+
+The trade-off is access cost. An unaligned field can be cheaper to skip than to read on some architectures, and packing removes the alignment that made access cheap. So the rule is to pack exactly the structs whose bytes are a public contract and to leave everything else to the compiler.
+
+Let me spell out "public contract," because it is doing a lot of work in that sentence. A struct's layout is a contract when some code outside your program depends on it, code that is not Coral, that you cannot change, and that was written against a fixed byte layout. A C library expecting a header, a file format from the 1980s, a protocol defined in an RFC. Those bytes are promised. For a struct that never leaves your program, nobody promised anything, and the compiler's freedom to rearrange is free performance you should keep.
+
+An analogy: imagine a moving box. A box packed for shipping has everything in a fixed, agreed order so the receiver can unpack it by the label; that box is `#[[packed]]`. A box packed for your own garage can be rearranged any way that fits; that box is `#[[reorder]]`. You may pick one, but you cannot promise both that the order is fixed and that the order is free.
+
+A longer, real example makes the point concrete. The header at the start of a TGA image file is a fixed sequence of little fields, and getting a single offset wrong makes every image load as garbage:
+
+    #[[packed]]
+    struct TgaHeader {
+        u8  idLength;
+        u8  colorMapType;
+        u8  imageType;
+        u16 colorMapOrigin;
+        u16 colorMapLength;
+        u8  colorMapDepth;
+        u16 xOrigin;
+        u16 yOrigin;
+        u16 width;
+        u16 height;
+    }
+
+You can read that declaration against the file-format specification line by line, and the attribute is what makes the declaration and the specification the same thing. Without it, `colorMapOrigin` would probably still land correctly, but a later two-byte field would not, and the bug would show up as a corrupted image rather than a compiler error.
+
+`#[[reorder]]` is the mirror image, and this is where the incompatibility lives. It grants the compiler explicit permission to permute your fields to get the most efficient layout. It can move a `u8` next to another `u8`, group the pointers together, and pack a private in-memory struct tighter than declaration order allows. That is a fine optimisation for a type nobody outside your program can see. It is exactly wrong for anything crossing a boundary, because after reordering the field order is unspecified and the byte layout is no longer what you wrote.
+
+    #[[reorder]]
+    struct Particle {
+        f32  x;
+        f32  y;
+        f32  vx;
+        f32  vy;
+        u8   kind;
+        bool alive;
+    }
+
+Nobody serialises a `Particle`; it lives and dies inside one loop. Letting the compiler shuffle `kind` and `alive` into the padding after the four floats costs nothing and may make the struct smaller and the loop faster. And now you can see why `packed` and `reorder` cannot coexist. Packed says "the order is mine and it is fixed." Reorder says "the order is yours, do what you like." Asking for both is a contradiction, and the compiler reports it as a conflicting-attribute error rather than choosing one for you.
+
+`#[[nonull]]` is the third layout-family attribute, and its job is to remove a check. Ordinarily a pointer may be the null address, and the compiler must be ready for that: a dereference has to be guarded, a comparison against null is meaningful, and optimisations that assume the pointer points at something are forbidden. `#[[nonull]]` is a promise that a pointer field or variable is never null. With the promise in hand, the compiler can drop the guard and optimise as though the address is real. Put it on a field that a container guarantees:
+
+    struct LinkedList {
+        #[[nonull]] Node* head;   // past the first insert, head is never null
+        usize len;
+    }
+
+and on a variable the moment you have established it points somewhere:
+
+    #[[nonull]]
+    Device* dev = findDevice("gpu0");
+    dev->reset();
+
+Be careful with this one: a false `#[[nonull]]` promise is undefined behaviour, exactly as a false promise in a language running a linter would be. Use it where you have just checked the pointer or where an invariant guarantees it. Put no attribute at all where the pointer might legitimately be null, and let the compiler keep its guard. The attribute is an assertion, and an assertion you cannot back up is worse than no assertion.
+
+`#[[align(N)]]` forces a minimum alignment on a type or a variable, in bytes. You reach for it when the hardware or an algorithm insists on a boundary: SIMD code that wants its vectors aligned to sixteen or thirty-two bytes, a DMA buffer the device requires to start on a page boundary, an atomic that must not straddle a cache line. Here is a small vector type and a buffer, both aligned:
+
+    #[[align(16)]]
+    struct Vec4f {
+        f32 x;
+        f32 y;
+        f32 z;
+        f32 w;
+    }
+
+    #[[align(64)]]
+    f32 accumulator[16];   // one full cache line, aligned
+
+Alignment can only be raised, never lowered, and it must be a power of two. `#[[align(3)]]` is a mistake, and the compiler will tell you so rather than quietly rounding it, because a promise about alignment is a promise to the hardware, and the hardware is unforgiving.
+
+So the layout family in one breath: `packed` and `reorder` are opposite answers to "who decides field order," `nonull` is a promise that lets the compiler delete a null check, and `align(N)` pins a value to a boundary the hardware demanded. All four are about bytes, and all four are absent from most declarations, which is exactly right. A layout attribute should be rare enough that seeing one makes a reader stop and ask why.
+
+22.3 Code Generation and Optimisation Hints
+
+A second family of attributes is advice to the backend. These do not change what your program means, the result is the same with or without them, they change how the compiler chooses to compile it. They are the performance surface of the language, and the surface is deliberately small, because a hint that is hard to reason about is a hint that will be misused.
+
+`#[[inline]]` is the gentle request. It hints that a function should be inlined at its call sites: its body spliced into the caller instead of being called, removing the call overhead and letting the optimiser see through the boundary. The compiler may decline when inlining the function would bloat the caller or when it has a better idea. A function that is small, called in a hot loop, and not recursive is a natural candidate:
+
+    #[[inline]]
+    i32 square(i32 x) { return x * x; }
+
+`#[[inline_always]]` is the command, and it exists because compilers are sometimes wrong. Occasionally you have a one-line accessor in the hottest loop in your program and the compiler's cost model declines to inline it, and the call overhead is the whole bottleneck. `inline_always` overrides the model and insists:
+
+    #[[inline_always]]
+    u32 maskFor(u32 bit) { return 1u << bit; }
+
+Use it rarely and with evidence. A function marked `inline_always` that is large, or that is called in a thousand places, will be copied into every one of them and make your binary, and your instruction cache, suffer. An accessor is the classic right use; a hundred-line function is the classic mistake. If you find yourself reaching for it often, the honest reading is that the compiler's cost model is probably right and you have not measured.
+
+`#[[vectorise]]` asks the compiler to turn a loop's scalar operations into packed SIMD operations that work on several elements at once. It can go on a whole function, or on a single loop inside a function, which is the more surgical form:
+
+    #[[vectorise]]
+    void addArrays(const f32[] a, const f32[] b, f32[] out) {
+        for (usize i = 0; i < a.len; i += 1) {
+            out[i] = a[i] + b[i];
+        }
+    }
+
+    void mix(f32[] a, f32[] b) {
+        // ... scalar setup ...
+        #[[vectorise]]
+        for (usize i = 0; i < a.len; i += 1) {
+            a[i] = a[i] * b[i];
+        }
+        // ... other work ...
+    }
+
+Attaching it to one loop is useful when the surrounding function does scalar work that would not vectorise anyway: you point the compiler at the part that can, and leave the rest alone. Vectorisation only works when the loop's iterations are independent; if each iteration reads what the previous one wrote, the compiler cannot pack them and will tell you so rather than produce wrong results. It is a request, not a promise, and its payoff depends on the target having the vector instructions to use.
+
+`#[[hot]]` and `#[[cold]]` are about code layout. A processor fetches instructions in blocks, and it is faster when the instructions it is likely to run next are physically near each other. `#[[hot]]` tells the compiler a function or branch is executed often, so it should be placed where the fetch is cheap, and its internals optimised for speed. `#[[cold]]` says the opposite: this path is rare, an error handler, an assertion failure, a log on a condition that almost never fires, so put it out of the way and optimise for size. The classic pair is a fast path and its error path:
+
+    #[[hot]]
+    Result<Order, str> submit(Order o) {
+        if (!validate(o)) {
+            return reportBadOrder(o);   // the #[[cold]] function below
+        }
+        return process(o);
+    }
+
+    #[[cold]]
+    Result<Order, str> reportBadOrder(Order o) {
+        logBadOrder(o);
+        return Error::Err { .error = "invalid order" };
+    }
+
+Marking the error path cold is what keeps it from crowding the hot path out of the instruction cache, which is where the real speedup comes from, not from the error path itself being faster. The error path almost never runs, so its own speed barely matters; what matters is that it does not sit between the processor and the code that does run.
+
+`#[[noalias]]` is a promise about pointers. When a function takes two pointer parameters, the compiler must assume they might point at the same memory, so a write through one could change what the other sees, and many reorderings are forbidden. `#[[noalias]]` on a pointer parameter asserts that it does not alias any other pointer the function receives, which unlocks those reorderings and can be a large win in a numeric inner loop:
+
+    #[[noalias]]
+    void scale(f32[] out, const f32[] in, f32 k) {
+        for (usize i = 0; i < out.len; i += 1) {
+            out[i] = in[i] * k;
+        }
+    }
+
+It is a promise, like `nonull`, and a false one is undefined behaviour. You may assert it only when you genuinely know the two buffers do not overlap, when one is freshly allocated, or the API contract says so, or the types make it impossible. When in doubt, leave it off and let the compiler keep its conservative assumption.
+
+`#[[noreturn]]` tells the compiler a function never returns normally: it exits the program, or loops forever, or transfers control somewhere the type system cannot describe. The knowledge improves the analysis of every call site, because code after the call is unreachable and need not be generated:
+
+    #[[noreturn]]
+    void fatal(str message) {
+        eprintln("fatal: {}", message);
+        exit(1);
+    }
+
+Without the attribute, a function that always calls `exit` still appears to return to the caller, and the compiler has to keep generating code for whatever follows. With it, the analysis knows the flow stops, and it can also check that a `#[[noreturn]]` function really does diverge, if it might return, that is a lie the compiler catches.
+
+`#[[no_mangle]]` keeps a function's source symbol name intact rather than letting the compiler mangle it with type information. You need it at any boundary where something outside Coral finds a function by its name: a C library calling back into you, an exported function in a shared object, an entry symbol:
+
+    #[[no_mangle]]
+    pub extern("C") i32 coral_entry(i32 argc, cchar** argv) {
+        return runMain(argc, argv);
+    }
+
+Without `#[[no_mangle]]`, the linker looks for `coral_entry` and finds `coral_entry_i32_...`, and the link fails with a symbol the reader cannot explain. The attribute is how you tell the compiler "this name is not yours to rewrite; something else already knows it."
+
+`#[[section("...")]]` places a function, variable, or piece of data in a named section of the output binary. This is for the moments when the loader, not the program, decides where something lives: a constructor table that runs at startup, data that must sit in read-only memory, a boot function that has to land at a particular address:
+
+    #[[section(".init_array")]]
+    void registerDrivers() { drivers.addAll(BUILTIN_DRIVERS); }
+
+    #[[section(".rodata")]]
+    const u8 MAGIC[8] = { 'C', 'O', 'R', 'A', 'L', 0, 0, 0 };
+
+The section name is a string because it is a name the linker understands, not a Coral identifier; getting it wrong is a link-time problem, not a compiler error, which is precisely why the attribute takes an opaque string.
+
+`#[[used]]` keeps a symbol even if the compiler believes nothing references it. Ordinarily an unreferenced function or variable is dead code and may be removed; but a symbol placed in a section that the runtime scans, or named so that external code will call it, is referenced by something the compiler cannot see. `#[[used]]` says so:
+
+    #[[used]]
+    #[[section(".init_array")]]
+    void earlyInit() { ... }
+
+The two go together so often that seeing one is a hint the other is near. A driver registrar placed in `.init_array` is called by the loader, not by any line of Coral, so without `#[[used]]` the compiler would look at it, see no call site, and quietly delete it, and the driver would silently never register.
+
+`#[[weak]]` gives a symbol weak linkage, which means a strong definition elsewhere in the link can override it. This is how a library provides a default implementation that a program is free to replace, a default allocator, a default panic handler, a platform hook, without forcing the program to keep it:
+
+    #[[weak]]
+    void platformLog(str message) {
+        eprintln("{}", message);
+    }
+
+A program that defines its own `platformLog` with a strong symbol wins, and the linker uses it; a program that does not gets the weak default. The pattern is the language-level version of "here is a reasonable default, override me if you know better," and it is how a platform layer stays optional.
+
+22.4 The Drop Attributes: Opting Out of RAII
+
+Now to a pair of attributes that change a program's behaviour rather than its performance, and which are the reason to understand the drop system before using them. Chapter11 develops ownership and RAII in full; here is the one-paragraph version you need. Coral can implement the `@drop` trait, which drives automatic RAII: when a value whose type implements `@drop` goes out of scope, the compiler inserts the destructor call for you, once, on every exit path, with no call site at all. That is what most code wants.
+
+But automatic cleanup has a cost, the compiler must track every local and generate unwind calls, and some code would rather pay for memory by hand. The standard library is the canonical example: it manages its own memory with explicit `free` calls and does not want the compiler generating destructor calls it would then have to undo. So there are two attributes that turn the automatic behaviour off, at two different scopes.
+
+`#[[no_drop_all]]` is a file-level attribute, and it is unique among attributes in that it does not modify a declaration. It appears once, before the first declaration in the file, and it disables drop-trait auto-RAII for the entire file:
+
+    #[[no_drop_all]]
+
+    pub struct Arr<T, N> { ... }
+
+Every file under the standard library and the compiler's own sources carries it; an ordinary user file omits it and gets automatic RAII for any local whose type implements `@drop`. The attribute is what lets the two worlds coexist in one program: library code opts out, application code opts in by default. The opt-out rides on each declaration, not just on the file, so when a library file is merged into a user's build unit it keeps its setting. That is a subtle piece of engineering with a plain payoff: you never accidentally get RAII back into a library file that declined it.
+
+`#[[no_drop]]` is the scoped version, and it is the one you will actually use. On a variable declaration it excludes that one variable from auto-RAII; on a block it excludes every local inside the block, nested blocks included:
+
+    #[[no_drop]]
+    String keep = String::from("I manage my own lifetime");
+
+    #[[no_drop]]
+    {
+        File f = File::open("tmp");
+        // f is not closed automatically at the end of this block
+    }
+
+It is the escape hatch for a single value whose lifetime you want to manage by hand without turning RAII off for the whole file. Used with a `defer` block it says something clear: this allocation's lifetime is not the variable's lifetime, and here is where it ends. Used carelessly it says something dangerous: "I will remember to free this," and humans do not always remember. A value that opts out of RAII is a value whose cleanup is now a manual obligation, and obligations accumulate. Use `#[[no_drop]]` where nothing else will do, and let RAII handle everything that has no reason to complain.
+
+A worked example, because the honest use is narrower than the syntax suggests:
+
+    void processInChunks(File* f) {
+        #[[no_drop]]
+        u8* buffer = alloc<u8>(65536);       // manual lifetime
+
+        defer {
+            dealloc<u8>(buffer);
+        }
+
+        while (true) {
+            usize n = readChunk(f, buffer, 65536);
+            if (n == 0) break;
+            handle(buffer, n);
+        }
+    }
+
+The buffer carries `#[[no_drop]]` because its lifetime is managed by the `defer` block rather than by RAII on the variable. The attribute turns the compiler's automatic behaviour off for exactly this value, and the `defer` is the manual promise to clean up. Together they say clearly: this allocation's lifetime is not the variable's lifetime. A buffer that lives exactly as long as its variable should have no attribute at all and be freed by RAII; only a value whose lifetime crosses scopes, or is tied to a different scope, is a candidate for this pair.
+
+22.5 Const and Control-Flow Attributes
+
+Three attributes are about how a function promises to behave and how control may flow. They read as small, and they matter more than they look, because each of them replaces a convention with something the compiler enforces.
+
+`#[[const]]` marks a method or function as const, meaning it may not mutate its parameters and, for a method, may not mutate `self`. It is equivalent to the trailing `const` on a signature, and both spellings are accepted:
+
+    #[[const]]
+    i32 peek() { return self.top; }
+
+    // identical meaning
+    i32 peek() const { return self.top; }
+
+Choose one spelling and be consistent; the point is that the promise is enforced either way. A const method that assigns to `self` or to a parameter is an error, the const-qualification family, E1001, and the error lands at the assignment, where you can see it happen, rather than at a caller's surprise. Const is worth writing because it is a promise a reader can trust and the compiler checks, and a reader who sees `const` on `peek` does not have to read the body to know it will not change anything.
+
+`#[[condassign]]` is a permission, not a command. It allows an assignment `=` at the top level of the condition of the following `if`, `while`, `for`, or `switch`:
+
+    #[[condassign]]
+    while (line = nextLine(file)) {
+        process(line);
+    }
+
+Ordinarily an assignment inside a condition is reported, because `=` where `==` was intended is one of the oldest bugs in C, and it is exactly the bug that a read-and-test loop deliberately courts. The attribute says "yes, I meant the assignment": the loop reads a line and stops when the read returns nothing. The trade is the right one, the error still fires when the `=` was a typo, and the attribute is the small ceremony that says it was not. Notice that the attribute applies to the *next statement's* condition, not to the loop body, which is why it is written immediately above the `while`.
+
+`#[[fallthrough]]` marks an intentional fallthrough in a switch. Coral's cases do not fall through by default; to share the tail of one case with the next you either list both patterns on one arm, or you opt into fallthrough:
+
+    switch (mode) {
+        Mode::Initialize => {
+            setup();
+            #[[fallthrough]]
+        }
+        Mode::Run => {
+            run();
+        }
+        else => {},
+    }
+
+The attribute on the last statement of the Initialize arm tells the compiler "yes, I meant to continue into Run," and it tells the reader the same thing. Without it, the compiler warns that the case falls through, because a case that falls through by accident is almost always a bug. With it, you have recorded the intent, and a reader sees it too. Putting `#[[fallthrough]]` on the very last arm of a switch, where there is nothing left to fall into, is itself an error (E0610), because that is always a leftover from copying an arm rather than an intent. Notice also that when two cases genuinely share a body, listing both patterns joined by `|` on one arm is almost always clearer than a fallthrough, and the attribute is reserved for the rarer case where one case does its own work *and then* continues.
+
+22.6 Extending and Sealing
+
+Two attributes govern whether a type may be grown by later code, and they connect straight back to the trait and extend machinery of Chapter6. `#[[extend]]` permits extend blocks for a type and `#[[no_extend]]` forbids them.
+
+The ordinary case needs no attribute at all: a type is open, and anyone who can see it may write an extend block adding methods. That is the default. Writing `#[[extend]]` explicitly is usually redundant, it exists mostly for symmetry, and to make an opening explicit where a reader might otherwise expect a closure:
+
+    #[[extend]]
+    struct Logger {
+        i32 level;
+    }
+
+`#[[no_extend]]` is the interesting half. A type marked no_extend cannot have methods added by a later extend block:
+
+    #[[no_extend]]
+    struct Sealed {
+        i32 hidden;
+    }
+
+This is how a library seals a type so that its behaviour is exactly the methods it ships. A sealed type is a promise that its interface is closed: no third party can add a method that changes the meaning of an operation, no caller can bolt on a conversion that the author never intended, and the set of things you can do with the type is the set the author chose. Sealing is a strong statement, and it is a useful one for a type whose invariants must not be circumvented, an opaque handle, a state machine whose transitions are fixed, a security token. It is the rare, deliberate choice, and making it require an annotation is the right default, because most types want to be open and sealing should be a decision, not something that happens to you.
+
+22.7 Generate: Boilerplate That Writes Itself
+
+The most powerful attribute in the catalogue is the one that writes code for you. `#[[generate(...)]]` takes a list of derived capabilities and produces the trait implementations and boilerplate for them, written correctly from the type's field list:
+
+    #[[generate(Drop, Eq, Debug, Clone)]]
+    struct Player {
+        str name;
+        i32 score;
+    }
+
+The arguments name capabilities that have a mechanical implementation for a type. `Drop` frees the fields. `Eq` compares them field by field. `Debug` formats them as a readable structure that names each field. `Clone` copies them. `Ord` compares them in declaration order. Each is generated from the field list, so adding a field later is handled in exactly one place, the declaration, and the generated implementations stay in sync with it.
+
+Why does this matter so much? Because these implementations are the kind of repetitive code that hides bugs. A hand-written `Eq` that forgets to compare one field is a real and common error; a hand-written `Debug` that prints `score` where `name` should go is the kind of thing that wastes an afternoon. The generator cannot forget a field, because it reads the fields, and it cannot confuse them, because it has their names. If you have ever debugged a struct-equality failure only to discover that a new field was never added to the comparison, you already know the bug this erases.
+
+The generator is Coral's answer to a question that arises in every language: how do you get boilerplate without a macro system? The answer is a fixed, compiler-known set of derivable capabilities rather than a general template. A general macro language can write anything, including code no reader can follow; a fixed list of derives writes exactly the things that are always mechanical, and nothing else. The cost is that you cannot invent a new derive; the benefit is that every derive is one a reader has seen before, and the generated code is as predictable as if it had been written out.
+
+Not every derived capability suits every type, and the attribute will not stop you from asking for something wrong. `Drop` on a type with no owned resources is a no-op. `Clone` on a type wrapping a file handle would copy the handle, which is almost always wrong, the new value and the old one would both think they own the same file. `Eq` on a type containing a floating-point field compares floats for exact equality, which Chapter2 warned you against. The generator is a tool, not a policy; using it well means picking the capabilities the type actually has, not the ones that are convenient to type.
+
+Why this matters: `#[[generate]]` is what keeps a struct's behaviour from drifting away from its fields. Every time you add a field, the generated `Eq`, `Debug`, and `Clone` already know about it, the one place that could forget is the one place you just edited. A common mistake is to derive `Clone` on a type that owns a resource, such as a file handle, and end up with two values that both think they own the same thing. Derive only what the type genuinely has.
+
+22.8 Tooling, Platform, and the Entry Point
+
+The final family configures how a program is built, tested, and started, rather than how it runs on a particular data structure. These attributes connect the source to the build system of Chapter21, and each one is a seam where your code meets something outside it.
+
+`#[[deprecated("...")]]` marks an item as deprecated, and a use-site warning names the replacement. It is how a library retires an API without breaking its users:
+
+    #[[deprecated("use connect_v2(host, port) instead")]
+    pub Socket connect(str host) {
+        return connect_v2(host, 80);
+    }
+
+Call it and the compiler warns, E0805, pointing at the call site and quoting the replacement. It costs one line and it turns a silent breaking change into a guided migration. The parentheses and the string are why the attribute form supports arguments at all: the value of the diagnostic is not "this is deprecated" but "here is what to use instead," and that has to live somewhere.
+
+`#[[threadlocal]]` gives a static variable thread-local storage, so each thread sees its own copy. The canonical use is per-thread state that must not be shared: an error code, a scratch buffer, a random-number seed:
+
+    #[[threadlocal]]
+    static ErrorCode lastError = ErrorCode::Ok;
+
+Every thread has its own `lastError`, and one thread's failure does not corrupt another's. Without the attribute, the static is shared, and two threads writing it race, the classic bug where an error set on one thread is read as success on another.
+
+`#[[test]]` and `#[[bench]]` mark functions the test and benchmark runners should discover. They are how a function opts into being run by `coralc test` and `coralc bench`:
+
+    #[[test]]
+    void testAddition() {
+        @assert(square(3) == 9);
+    }
+
+    #[[bench]]
+    void benchHash() {
+        // the runner times this function
+    }
+
+No separate registration list, no test framework to configure; the attribute is the registration. A file full of `#[[test]]` functions is a test suite, and the runner finds them the same way the compiler finds any declaration.
+
+`#[[cfg(...)]]` guards an item with a compile-time condition, so platform-specific code can live next to portable code and only the code for the current target is compiled:
+
+    #[[cfg(target_os = linux)]]
+    void openSerial(str path) { /* termios setup */ }
+
+    #[[cfg(target_os = windows)]]
+    void openSerial(str path) { /* COM port setup */ }
+
+    #[[cfg(target_os = linux, feature = "tls")]]
+    void startTls(Socket* s) { ... }
+
+The condition is evaluated when the build is configured, and a declaration whose condition is false is simply not part of the program, as though it had not been written. This is the single-source-tree-many-platforms mechanism at the item level, the same idea as the standard library's `std`-versus-`platform` split, applied from inside a file. It also means the two `openSerial` definitions never collide: on any one target, exactly one of them exists.
+
+`#[[link("...")]]` names a library the program should link against. Where an `extern` declaration says "this function exists somewhere," the link attribute says where to find it:
+
+    #[[link("m")]
+    pub extern f64 sqrt(f64 x);
+
+The name in the string is passed to the linker, so `#[[link("m")]]` links the math library just as a C programmer's `-lm` would. It is a build-system instruction living next to the declaration that needs it, so the declaration and its dependency cannot drift apart.
+
+`#[[simd]]` marks a type or operation as intended for SIMD, single-instruction-multiple-data, processing, telling the compiler it may use the widest vector instructions the target offers. It pairs naturally with `#[[vectorise]]`: `simd` says what the data is for, `vectorise` says how a loop over it should be generated:
+
+    #[[simd]]
+    struct Vec4f {
+        f32 x; f32 y; f32 z; f32 w;
+    }
+
+    #[[simd]]
+    Vec4f add(Vec4f a, Vec4f b) {
+        return Vec4f {
+            .x = a.x + b.x, .y = a.y + b.y,
+            .z = a.z + b.z, .w = a.w + b.w,
+        };
+    }
+
+`#[[entry]]` names the function the program starts at, for the cases where `main` is not the entry point. A bare-metal program, an operating-system kernel, a freestanding binary that the bootloader jumps into, none of these have an operating system to call `main`, and the entry function takes the form the hardware or runtime actually uses:
+
+    #[[entry]]
+    #[[section(".text.boot")]
+    void _start() {
+        initialiseHardware();
+        kmain();
+        // never returns
+    }
+
+On a hosted target `main` is still the entry and `#[[entry]]` is unnecessary; on a freestanding target it is how you tell the compiler which function the image begins at. Like the file-level attributes earlier, it is a case where the attribute carries information that is not visible in the declaration itself.
+
+The platform and tooling attributes share a shape: each connects your source to something outside it, a platform, a build feature, a library, a test runner, a linker. They are the seams where the language meets its environment, and reading a file's top, where they cluster, tells you what world that file expects to run in.
+
+22.9 Unknown, Duplicate, and Conflicting Attributes
+
+Attributes are instructions, and an instruction that is misspelled, repeated, or contradictory must never be quietly dropped. Three diagnostics keep that promise, and the first is the one you are most likely to meet.
+
+An attribute the compiler does not recognise is reported as E0806, with a nearest-name suggestion in the style of a spell checker:
+
+    #[[inlne]]
+    // warning E0806: unknown attribute `inlne`; did you mean `#[[inline]]`?
+
+The suggestion matters more than it seems. An attribute typo that was silently ignored is the worst possible outcome, because the programmer walks away believing an optimisation happened that did not. That is not just a missed speedup; it is a false belief about the program. Reporting the unknown name and suggesting the close match turns a silent no-op into a one-line fix, and the fix is often achieved by pressing the key the suggestion names.
+
+A duplicate attribute on the same item is reported as E0807. Writing `#[[packed]] #[[packed]]`, or two spellings of the same policy, is almost always a copy-paste artefact, and the compiler says so rather than emitting the same instruction twice.
+
+A conflicting pair is a separate error. `#[[packed]]` with `#[[reorder]]`, or `#[[align(4)]]` with `#[[align(8)]]`, are instructions that cannot both be true, and the compiler refuses to choose a winner. The family exists because an annotation is a statement of intent, and the compiler's job is to make sure the intent is legible, to you now and to the next reader. An annotation that cannot be honoured is worse than no annotation, because it teaches a reader something false.
+
+One name is deliberately absent from the whole catalogue, and it is worth saying why. There is no `#[[pub]]`. Visibility is not an annotation in Coral; `pub` is a keyword, written as part of the declaration, and it is the one and only way to make an item visible outside its module (Chapter14). A `#[[pub]]` attribute would be a second spelling of a thing that already has one, and a language with two ways to say the same thing has two ways to disagree with itself. So `pub` stayed a keyword, and the attribute list stayed honest.
+
+Simply put, an attribute is a sentence you say to the compiler, and the compiler is required either to act on it or to tell you it could not. That is why a misspelling is reported rather than ignored: silence would let you walk away believing something was configured that never was.
+
+22.10 A Worked Example: A Network Packet
+
+An attribute-heavy declaration shows how the pieces combine, and the network packet is the classic because it needs several at once. A packet header must have a fixed wire layout, be printable for debugging, and be comparable so tests can check a parsed header against an expected one:
+
+    #[[packed]]
+    #[[generate(Debug, Eq)]]
+    pub struct PacketHeader {
+        u16 magic;
+        u8  version;
+        u8  flags;
+        u32 sequence;
+        u32 length;
+    }
+
+Three attributes, three jobs, none of them written by hand. `#[[packed]]` guarantees the wire layout, so the struct's bytes match the protocol exactly and it can be written to a socket without any transformation; the fields land at the offsets the protocol specifies, and the struct is exactly twelve bytes. `#[[generate(Debug)]]` writes a formatter that names each field, so a log line shows `sequence` and `length` rather than a row of raw bytes. `#[[generate(Eq)]]` writes a field-by-field comparison, so a test can compare a parsed header to an expected one and get a meaningful `true` or `false`.
+
+The packed attribute is the one with consequences beyond convenience, because the header crosses a boundary and its layout is therefore a contract. A reader seeing `#[[packed]]` knows immediately why the struct looks the way it does and knows it must not be reordered, the attribute tells the reader as much as the compiler, and that dual role is the best argument for attributes over implicit conventions. If instead the struct is private and in-memory, the same declaration might carry `#[[reorder]]` and no `packed`, and the reader would know the opposite: nobody promised these bytes anything.
+
+22.11 A Second Worked Example: A Bare-Metal Boot File
+
+The second worked example lives at the opposite end of the machine from a network packet: a firmware entry file, where almost every attribute in the platform section appears at once. The file below takes over before any operating system exists, so it decides its own entry point, its own memory placement, and its own defaults:
+
+    #[[no_drop_all]]
+
+    #[[entry]]
+    #[[section(".text.boot")]]
+    #[[noreturn]]
+    #[[no_mangle]]
+    void _start() {
+        clearBss();
+        initUart();
+        kmain();
+        for (;;) {}
+    }
+
+    #[[packed]]
+    #[[align(16)]]
+    struct BootInfo {
+        u32 magic;
+        u16 version;
+        u64 loadAddr;
+    }
+
+    #[[weak]]
+    void platformLog(str message) {
+        uartWrite(message);
+    }
+
+Read the attributes one at a time. `#[[no_drop_all]]` turns off automatic RAII for the whole file, which is right for firmware that manages a fixed pool of static memory and has no allocator to unwind. `#[[entry]]` names `_start` as the point the image begins at, since there is no `main` for a bootloader to call. `#[[section(".text.boot")]]` places it in the section the bootloader jumps to. `#[[noreturn]]` tells the compiler that `_start` never returns, so nothing after the call to it needs code. `#[[no_mangle]]` keeps the symbol name `_start` intact so the linker and the hardware reset vector can find it. On `BootInfo`, `#[[packed]]` fixes the layout the bootloader writes, and `#[[align(16)]]` promises the alignment the bootloader provides. `#[[weak]]` on `platformLog` gives a default logger that a larger firmware image can override with a strong symbol.
+
+That is eight attributes in one small file, and every one of them is doing a job you could not express in the declaration alone. This is the density you should expect in code that touches the hardware: the more your program depends on things outside itself, the more of the compiler's assumptions you have to correct explicitly.
+
+22.12 The Metaprogramming Bargain
+
+Step back now, because the catalogue is only half the chapter. The other half is the idea that the catalogue is built on, and it is a trade you should understand even when you are not writing attributes.
+
+Most languages that want metaprogramming, the ability to write code that writes or transforms code, grow a macro system. C has the preprocessor, whose textual substitution is powerful and famously hard to debug. Other languages have hygienic macro systems with their own syntax, their own scoping rules, and their own error messages; learning the language is learning two languages, the one you write and the one that writes it. A general macro language can express anything, which is also its problem: it can express code that no reader can follow, and its errors are about macro expansion rather than about your program.
+
+Coral made a different bargain. Instead of a general macro system, it offers two things that together cover the ground macros are usually reached for, and nothing more. The first is the fixed attribute set you have just read: a small, closed list of directives, each of which a reader can be expected to know. The second is comptime from Chapter7: ordinary Coral code, evaluated during the build, that can compute values, select type parameters, and, through `@compileError`, reject an instantiation it cannot support. A comptime block is not a separate language; it is the language you already know, run early.
+
+What does this buy, and what does it cost? It buys legibility. When you see `#[[packed]]`, you know exactly what the compiler was told, because the list of things it could have been told is short and public. When you see a comptime block, you are reading Coral, not a macro dialect. It buys error quality too: a mistake in a comptime block is reported with a code and a location, like any other mistake, rather than as a wall of expansion output.
+
+What it costs is reach. There is no way to write a new attribute, no way to invent a derive, no macro that generates a hundred kinds of boilerplate the compiler was not told about. You cannot write `#[[myCleverThing]]` and have the compiler honour it. If you find yourself wanting a macro, the honest reading is that your problem is not one the fixed attribute set anticipated, and the answer is usually comptime, general Coral that runs early, rather than a new directive. And when even comptime will not do, the answer is the compiler's own contributors, who add an attribute deliberately rather than letting every program grow its own private dialect.
+
+The bargain is the same restraint the rest of Coral makes. A preprocessor is a second language; Coral gives you a closed vocabulary you can learn in an afternoon and a way to run ordinary code early. The cost is that you cannot always make the compiler do something new. The benefit is that every Coral program speaks the same dialect, and a reader can understand all of it.
+
+22.13 The Full Catalogue
+
+Here is the whole set in one place, sorted by target. Everything in this table is real and honoured; nothing on it is a planned slot.
+
+    Attribute                 Target                  What it does
+    ------------------------  ----------------------  ------------------------------------------
+    #[[packed]]               struct, union, field     remove padding; pin declaration order
+    #[[reorder]]              struct                   let the compiler permute fields for density
+    #[[nonull]]               pointer field, var       promise the pointer is never null
+    #[[align(N)]]             type, var                force a minimum alignment of N bytes
+    #[[inline]]               function                 hint that calls should be inlined
+    #[[inline_always]]        function                 force inlining even against the cost model
+    #[[vectorise]]            function, loop           generate packed SIMD operations
+    #[[simd]]                 type, function           mark data/ops as SIMD-intended
+    #[[hot]]                  function, branch         place and optimise for frequent execution
+    #[[cold]]                 function, branch         place and optimise for rare execution
+    #[[noalias]]              pointer parameter        assert the pointer aliases nothing else
+    #[[noreturn]]             function                 promise the function never returns
+    #[[no_mangle]]            function                 keep the source symbol name for the linker
+    #[[section("name")]]      function, data           emit into a named output section
+    #[[used]]                 function, data           keep the symbol even if unreferenced
+    #[[weak]]                 function, data           weak linkage; allow a strong override
+    #[[no_drop_all]]          file (before decls)      disable RAII for the whole file
+    #[[no_drop]]              variable, block          exclude a local (or a block) from RAII
+    #[[const]]                function, method         forbid mutation of params and self
+    #[[condassign]]           next statement           permit `=` in the next condition
+    #[[fallthrough]]          statement in a switch    mark an intended fallthrough
+    #[[extend]]               type                     permit extend blocks (the default)
+    #[[no_extend]]            type                     seal the type against extend blocks
+    #[[generate(...)]]        type (usually struct)    derive Drop, Eq, Debug, Clone, Ord, ...
+    #[[deprecated("msg")]]    any item                 warn at each use, naming the replacement
+    #[[threadlocal]]          static variable          give the static per-thread storage
+    #[[test]]                 function                 register with the test runner
+    #[[bench]]                function                 register with the benchmark runner
+    #[[cfg(...)]]             any item                 compile only when the condition holds
+    #[[link("lib")]]          extern declaration       name a library to link against
+    #[[entry]]                function                 name a program entry other than main
+
+And the forms, which apply to every row above:
+
+    #[[a]]                 one attribute
+    #[[a, b]]              several in one group
+    #[[a]] #[[b]]          several as chained groups
+    #[[a(arg)]]            one with arguments
+    #[[a, b(arg)]]         a group mixing both
+
+Chainable where compatible; `packed` and `reorder` are the canonical incompatible pair. Everything else composes, and the compiler reports a contradiction rather than resolving it silently. The one deliberate absence is `#[[pub]]`, which does not exist because `pub` is a keyword.
+
+22.14 Exercises
+
+1. Comprehension. Explain to a friend who has only used comments why an attribute is not a comment. Give one thing the compiler can do with `#[[packed]]` that it can never do with `// packed`.
+
+2. Comprehension. `#[[packed]]` and `#[[reorder]]` are mutually exclusive. Describe a struct where each is correct and the other is a bug, and say what the compiler would tell you if you wrote both.
+
+3. Implementation. Write a `#[[packed]]` struct for a three-byte protocol record: one type byte, one length byte, and one value byte. Assert its size is three, then remove the attribute and predict the new size on a target that aligns four-byte fields.
+
+4. Layout. Declare an `#[[align(32)]]` buffer for SIMD and a `#[[nonull]]` pointer field in a container whose invariant guarantees it points somewhere. For the pointer, write one paragraph on what could go wrong if the invariant were ever broken.
+
+5. Codegen. Mark a tiny accessor `#[[inline_always]]` and a large error handler `#[[cold]]`. Explain the reasoning for each, and name one cost of choosing wrong.
+
+6. Vectorisation. Write a loop that `#[[vectorise]]` can vectorise and one it cannot, and explain what makes the difference. What does the compiler do when it declines?
+
+7. Drop. Write a function that allocates a buffer with `#[[no_drop]]` and frees it with `defer`. Then rewrite it to use RAII and say which version a reader would prefer for this case.
+
+8. Sealing. Declare a `#[[no_extend]]` opaque handle with a private field and one public accessor. Why would a library seal such a type, and what does the caller lose?
+
+9. Derives. Put `#[[generate(Eq, Debug, Clone)]]` on a struct with four fields, add a fifth field, and confirm the derived implementations still agree with the fields. Name one capability you deliberately did not derive and why.
+
+10. Tooling. Mark a function `#[[deprecated]]`, call it, and write down the warning you expect. Then mark two versions of a platform function with `#[[cfg(target_os = ...)]]` and explain what each build sees.
+
+11. Meta. Coral uses a fixed attribute set plus comptime rather than a macro system. Argue for and against. Name one thing a macro system could do that this combination cannot, and one class of bug the fixed set prevents.
+
+12. Design. You are writing a plugin loader. Using only the attributes in this chapter, describe how you would place each plugin's registration in a section, keep it from being stripped, let a program override a default implementation, and set the entry point.

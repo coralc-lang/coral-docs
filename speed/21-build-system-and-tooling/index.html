@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="From One File to a Project" />
+  <meta name="robots" content="index, follow" />
+  <title>Chapter 21 · The Build System and Tooling | Coral Speed Edition</title>
+  <link rel="canonical" href="https://coralc-lang.github.io/coral-docs/speed/21-build-system-and-tooling/index.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Chapter 21 · The Build System and Tooling | Coral Speed Edition" />
+  <meta property="og:description" content="From One File to a Project" />
+  <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/speed/21-build-system-and-tooling/index.html" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="stylesheet" href="../../textbook/book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../speed/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">speed edition</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../../speed/index.html">Speed contents</a><a href="../../textbook/index.html">Lengthy edition</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Speed Edition · Chapter 21</p>
+      <h1>The Build System and Tooling</h1>
+      <p class="lead">From One File to a Project</p>
+      <p>Everything in this book so far has been about a single source file. Real programs are many files, and many files need something that decides what compiles in what order, what depends on what, what has changed since last time, and what the final artifact is called. That something is the build system, and in Coral it is small enough to learn in an afternoon because it was designed to be.</p>
+<p>Here is the picture that makes the rest of the chapter obvious. Think of a large city. Buildings go up, but nobody builds them by hand without a plan. There is a planning office with a map of the city: which lots exist, which roads connect them, what may be built where. When a new lot appears, it is added to the map; when a lot is empty, it is taken off. The builders then work from the map, in order, and they never have to wander the whole city to find out what is there. And one more thing: the planning office keeps a record of what has already been built and what has changed, so a small alteration does not force the whole city to be rebuilt.</p>
+<p>Coral's build system is that planning office, and it is astonishingly small. The compiler <code>coralc</code>, the build file <code>coral.crlb</code>, and the generated module map are the whole apparatus. There is no separate linker driver to learn and no makefile dialect to memorise. This chapter walks through creating a project, explains each field of the build file, runs the compiler, and reads the module map that ties it all together. Then it turns to the part of <code>coralc</code> that does not build anything at all, the language server that makes an editor feel like it understands your code, because a modern language's tooling is not an afterthought bolted on later; it is the same compiler, wearing a different hat.</p>
+<p>It ends where the previous chapter ended: the module system and the build system are two faces of one mechanism. After this chapter they should read as a single design.</p>
+<section><h2 id="s21-1">Naming</h2></section>
+<p>A few names are worth fixing before we use them.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Coral           the language, extension .crl
+Coral Build     the build file, extension .crlb
+coralc          the compiler and the builder, one executable
+modules.map     the generated module table
+.coral/         the per-project cache and generated files</code></pre>
+<p>One binary plays every role. <code>coralc</code> compiles a single file when given a file, builds a project when run inside one, and, as we will see, serves an editor when run with a flag. No separate tool handles each job, which is the first reason the learning curve is short.</p>
+<section><h2 id="s21-2">Creating a Project</h2></section>
+<p>The fast path is <code>coralc init</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">$ coralc init myproject
+$ cd myproject</code></pre>
+<p>This scaffolds a working project:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">myproject/
+├── coral.crlb          # the build file
+├── .gitignore          # ensures **/.coral/ is ignored
+├── .coral/             # cache and generated files
+└── src/
+    └── lib.crl         # a hello-world main, so `coralc run` works</code></pre>
+<p><code>init</code> refuses to overwrite an existing <code>coral.crlb</code>, and it appends <code>**/.coral/</code> to <code>.gitignore</code> if that pattern is not already there, creating the file if it is absent. The generated project runs immediately:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">$ coralc run
+Hello, World!</code></pre>
+<p>That is the whole ceremony. From here you add files under <code>src/</code>, and the build system finds them.</p>
+<section><h2 id="s21-3">The Build File</h2></section>
+<p>The build file is <code>coral.crlb</code>. It is declarative, not Coral source, but a small, purpose-built configuration language, and it describes the project rather than performing steps. Here is a complete example:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">build &quot;myproject&quot; {
+    root       = &quot;.&quot;
+    entry      = &quot;src&quot;
+    target     = &quot;native-x86_64&quot;
+    opt        = &quot;debug&quot;
+    output     = &quot;build/myproject&quot;
+    module_map = &quot;.coral/modules.map&quot;
+    cache_dir  = &quot;.coral/cache&quot;
+
+    flags = [&quot;--strict&quot;]
+
+    modules = [&quot;src&quot;, &quot;src/log&quot;, &quot;src/text&quot;]
+    skip    = [&quot;vendor&quot;, &quot;target&quot;]
+}</code></pre>
+<p>The fields mean what they say. <code>root</code> is the directory the other paths are relative to. <code>entry</code> names the module that contains <code>main</code>, the executable's root. <code>target</code> selects the backend: <code>native-x86_64</code>, <code>native-arm64</code>, <code>wasm32</code>, or <code>bytecode</code>. <code>opt</code> is the optimisation profile, one of <code>debug</code>, <code>release</code>, or <code>size</code>. <code>output</code> is where the binary lands. <code>module_map</code> and <code>cache_dir</code> place the generated table and the cache.</p>
+<p>Simply put, the build file is a description of the map, not a set of directions. It says which folders are part of the project and where the front door is; it does not say "compile this, then that," because the compiler works the order out from the imports.</p>
+<p>The two list fields matter most day to day, and they are the heart of the design. <code>modules</code> is the required list of which folders are build modules. Only folders listed here are scanned, so a <code>vendor</code> tree sitting in the project does not slow the build or pollute the module table, a stray <code>lib.crl</code> in a scratch directory stays invisible because nobody listed it. <code>skip</code> excludes subfolders during any scan. Between them you control exactly what the build sees.</p>
+<p>An analogy: <code>modules</code> is the guest list at a party. Only the names on it get in, so a neighbour who happens to walk by, a stray <code>lib.crl</code> in a scratch folder, does not become a guest. The price of a guest list is keeping it up to date, and that is exactly the chore <code>coralc map</code> does for you.</p>
+<p>Hold on, why an explicit list instead of just walking every folder that happens to contain a <code>lib.crl</code>? Because a build graph that can change by accident is a build graph that cannot be trusted. If dropping a <code>lib.crl</code> into a folder silently made it part of the build, then a backup directory, a vendored copy, or a half-finished experiment would join the project without anyone deciding it should. The explicit list makes the build graph something a person wrote down. And if maintaining the list by hand sounds tedious, it is, which is exactly why <code>coralc map</code>, in 20.6, exists to keep it fresh for you.</p>
+<p>A build block may also carry per-module overrides, so one module can build differently from its siblings:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">override &quot;src/parser&quot; {
+    opt   = &quot;release&quot;
+    flags = [&quot;--no-inline&quot;]
+}</code></pre>
+<p>Override blocks merge their fields over the base build, with the child winning. This is how a hot parser gets release optimisation while the rest of the project stays in debug with symbols, a common and useful split.</p>
+<section><h2 id="s21-4">Aliases</h2></section>
+<p>Module imports use short names, and aliases are how those short names are defined. A module's folder often has a long, prefixed name; an alias gives it a name that source code actually writes:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">alias lexer  = &quot;compiler/coral-lexer/lib.crl&quot;;
+alias parser = &quot;compiler/coral-parser/lib.crl&quot;;
+alias common = &quot;compiler/coral-common/lib.crl&quot;;</code></pre>
+<p>With these in the build file, source writes:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import lexer::table { TokenTable };
+import common::token { Token };</code></pre>
+<p>and not:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import coral-lexer::table { TokenTable };
+import coral-common::token { Token };</code></pre>
+<p>The builder applies aliases when it writes the module map, so the compiler only ever sees the short names. An alias must point at a folder that is in <code>modules</code>, and an alias name must not collide with another alias or with a bare folder name. Getting either wrong is a build error caught by <code>coralc doctor</code>, described below.</p>
+<section><h2 id="s21-5">Tasks</h2></section>
+<p>A task is a named unit of work with an optional command to run and optional dependencies to satisfy first.</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">task &quot;run&quot; {
+    after = [&quot;build&quot;];
+    exec  = &quot;build/myproject&quot;;
+}
+
+task &quot;test&quot; {
+    after = [&quot;build&quot;];
+    exec  = &quot;build/myproject --self-test&quot;;
+}</code></pre>
+<p><code>after</code> names tasks that must complete first; the pseudo-task <code>"build"</code> is already satisfied once the project is built. <code>exec</code> names a command to run when the task executes. If <code>exec</code> names a directory, output is redirected into it; otherwise it is printed. Run a task by name:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">$ coralc run            # runs the task &quot;run&quot;, or the output binary
+$ coralc test</code></pre>
+<p>When a task called <code>"run"</code> exists, <code>coralc run</code> executes it; otherwise <code>coralc run</code> builds and launches the output binary directly. <code>coralc NAME</code> runs any task by name. Tasks let you keep the project's entry points, <code>run</code>, <code>test</code>, <code>bench</code>, <code>clean</code>, in the build file rather than in a shell script nobody maintains. A build file with a <code>test</code> task is a project where "how do I run the tests?" has an answer a newcomer finds in five seconds.</p>
+<p>Why this matters: a task turns a project's unwritten rituals into a command anyone can run. The difference between "ask someone how to run the tests" and "run <code>coralc test</code>" is the difference between a project that welcomes newcomers and one that does not.</p>
+<section><h2 id="s21-6">Running the Build</h2></section>
+<p>The build pipeline is a sequence of well-defined steps:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">coralc build
+  1. read coral.crlb
+  2. resolve root, modules, skip, and aliases
+  3. for each module, read its lib.crl surface
+  4. resolve every re-export and register it in the module table
+  5. detect duplicate module identities and aliases pointing nowhere
+  6. write .coral/modules.map
+  7. scan each source file&#x27;s module imports, build the dependency graph
+  8. detect unresolved imports and cycles (with a trace)
+  9. topologically sort the modules
+ 10. for each module in order, hash its inputs; skip if unchanged
+ 11. compile the modules that changed
+ 12. link the entry module into the output</code></pre>
+<p>Step ten is the cache, and it is the step that makes day-to-day work fast. Each module gets a fingerprint computed from its <code>lib.crl</code>, every source file in its folder, and the fingerprints of its dependencies. If the fingerprint is unchanged since the last build, the module is skipped. A dependency changing invalidates its dependents transitively, so the cache is always sound with respect to the source; it is conservative about what changed, never optimistic. When the cache is suspect, <code>coralc build --force</code> ignores it.</p>
+<p>The everyday subcommands:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">coralc init [dir]          scaffold a project
+coralc build               build using the cache
+coralc build --force       ignore the cache
+coralc build --module M    build one module and its dependencies
+coralc build --emit-map    write modules.map and stop
+coralc run                 build, then run
+coralc map                 rescan the tree, refresh modules
+coralc clean               wipe the cache and the build directory
+coralc graph               dump .coral/graph.dot
+coralc doctor              validate the build file, aliases, and cycles
+coralc --serve             run the language server on stdio (LSP)</code></pre>
+<p><code>coralc map</code> is worth calling out. It walks <code>root</code>, finds every folder containing a <code>lib.crl</code>, adds missing folders to <code>modules</code>, removes listed folders that no longer have a surface, refreshes <code>modules.map</code>, and reports the diff:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">$ coralc map
++ added   src/log
+~ updated modules.map  (14 entries, 3 aliases)</code></pre>
+<p>With <code>--dry</code> it prints the diff without writing. This is the command that keeps the modules list honest as a project grows, so that a new folder is one command away from being part of the build rather than a mystery about why a file is not compiling. It is the compromise that makes the explicit list liveable: you decide what is in the build, and a tool makes sure the list matches the tree.</p>
+<p><code>coralc graph</code> writes <code>.coral/graph.dot</code>, a Graphviz description of the module dependency graph, which turns the "what depends on what" question into a picture. <code>coralc doctor</code> validates the build file, checks that every alias points at a real module, and hunts for cycles, printing the same kind of actionable error a build would.</p>
+<section><h2 id="s21-7">The Module Map</h2></section>
+<p>The generated <code>.coral/modules.map</code> is the bridge between the previous chapter's imports and this chapter's build. It is a plain-text table from a module identity to the file that implements it:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral"># coral modules.map v1, generated by `coralc build`, do not edit
+lexer::base     -&gt;  compiler/coral-lexer/base.crl
+lexer::ident    -&gt;  compiler/coral-lexer/ident.crl
+lexer::lexer    -&gt;  compiler/coral-lexer/lexer.crl
+lexer::table    -&gt;  compiler/coral-lexer/table.crl
+parser::expr    -&gt;  compiler/coral-parser/expr.crl
+
+# aliases (from the build file)
+@common::token  -&gt;  compiler/coral-common/token.crl</code></pre>
+<p>When the compiler resolves <code>import lexer::table</code>, it consults this map. The map is text on purpose: it diffs cleanly in source control, it is greppable, reading it needs no parser, and loading it is a one-line scan. It is a build artifact, not a source file; it is regenerated on every build and belongs in <code>.gitignore</code> with the rest of <code>.coral/</code>.</p>
+<p>The elegant thing about this arrangement is what the compiler does <em>not</em> do. It never walks the directory tree looking for modules. The builder walks, once, and writes the map; the compiler reads the map and asks it the single question "where does this name live?" That division is why compiling a single file is fast and why the module graph has one source of truth.</p>
+<p>Simply put, the module map is a phone book. The compiler never walks the neighbourhood knocking on doors; it looks the name up in the book and goes straight to the address. The builder is the only one who walks the streets, and it does so once per build.</p>
+<section><h2 id="s21-8">The Language Server: the Compiler as an Editor Backend</h2></section>
+<p>Now the second hat. <code>coralc</code> carries a language-server mode, and it is one of the nicest things about the toolchain because it is not a separate program that reimplements half a compiler. It is the compiler.</p>
+<p>You launch it with a flag, and the flag is important:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">$ coralc --serve</code></pre>
+<p>It is <code>--serve</code>, a flag, not the <code>serve</code> subcommand. This matters to everyone who writes an editor integration, so say it twice: <code>coralc --serve</code>, never <code>coralc serve</code>. It advertises itself in <code>coralc --help</code> as <code>--serve  run the language server on stdio (LSP)</code>, and that description is exact. The server speaks the Language Server Protocol over standard input and standard output, the plain LSP base protocol, with <code>Content-Length</code> framing, and it uses only the standard library's I/O, no libc, no diverted stdout, so the protocol owns the streams cleanly and nothing but protocol bytes ever reaches stdout.</p>
+<p>Because it is the same compiler, the diagnostics an editor shows are the diagnostics a build would produce. There is no parallel grammar to drift out of sync and no second type checker that disagrees with the first. The server does its own lifecycle, its own document synchronisation, and its own diagnostics. It rejects requests before <code>initialize</code> with <code>-32002</code>, rejects a second <code>initialize</code> with <code>-32600</code>, reports malformed JSON as <code>-32700</code>, and uses UTF-16 code units for diagnostic and hover positions, exactly as the protocol requires. On <code>shutdown</code> it exits zero; without a shutdown it exits one. Closing a document clears that document's markers.</p>
+<p>The feature that surprises people first is the whole-project error report. In a typical editor, the language server only knows about the file you have open, so an error in a file you are not looking at is invisible until you open it. Coral's server does not work that way. When you open any file, it analyzes the build entry and then publishes diagnostics for every file in the import closure, the open buffer, yes, but also every file it transitively imports, and every file that imports it if it is reachable from the entry. Errors in files the open buffer never mentions appear in the Problems panel because the compiler followed the same import graph a build would. Files that stop having problems are cleared on the next report.</p>
+<p>Hover returns real types, not a guess. The compiler sets a resolved type on every identifier expression, and the server renders the declaration under the cursor. That is why hovering a variable shows its actual type, hovering a field shows the field's type, and hovering a function shows its signature. In the compiler's own source, hovering <code>self</code> in a generic type's method shows <code>Arr&lt;T, N&gt;*</code>, hovering <code>data</code> shows <code>T</code>, hovering a local shows its type, and hovering an imported name shows what it resolved to. Structs, fields, locals, generic parameters, <code>self</code>, imports, and even libc bindings all resolve. Go-to-definition uses the same resolution and jumps to the declaration; it already resolves a large fraction of the identifiers in the library's own files.</p>
+<p>The protocol itself is specified in <code>PROTOCOL.md</code>, and that document is normative: it gives the exact wire format, the framing rules, the error codes, the payloads, and the capability matrix. <code>LANGUAGE-SERVER.md</code> is the status companion, what is wired up today, what an editor should expect, and how to test an integration, and it is explicitly not normative, because the wire format changes rarely while the state of the integration changes often. Keeping them separate is deliberate, and it is a good habit for any protocol you specify.</p>
+<p>The honest state of the server today is that diagnostics, hover, and definition work, and a long list of richer features, completion, document symbols, semantic tokens, inlay hints, references, code actions, are planned and tracked in the capability matrix. When a request is not implemented, the server answers <code>-32601</code> (MethodNotFound) rather than ignoring it, and that is precisely correct: an editor that receives <code>-32601</code> hides the affordance and moves on, while an editor left waiting for a reply that never comes looks broken. Rejecting correctly is half the job of a language server.</p>
+<p>Why this matters: because the editor and the build share one compiler, a mistake an editor underlines is the same mistake the build will refuse. You will not get the editor saying "fine" while the build says "no."</p>
+<section><h2 id="s21-9">Editors</h2></section>
+<p>Editor support exists, and it exists in the two places people most often ask for.</p>
+<p>A Zed extension (<code>coral-zed</code>) and a VS Code extension (<code>coral-vscode</code>) exist, plus forks for other editors. They share the same resolution logic for finding the compiler, and they share the same protocol, so a feature that works in one works in the other.</p>
+<p>In Zed, there is nothing to configure. The extension declares its own language server command through <code>language_server_command</code>, it resolves <code>coralc</code> on your <code>PATH</code> and passes <code>--serve</code>, so the server starts automatically for anyone who installs the extension. There is deliberately no <code>settings.json</code> entry to add, because a <code>settings.json</code> snippet would only ever fix one machine; putting the command in the extension means it works for everyone who installs it. The one thing worth turning on by hand is semantic tokens, which Zed defaults to off:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">&quot;languages&quot;: {
+  &quot;Coral&quot;: {
+    &quot;semantic_tokens&quot;: &quot;combined&quot;
+  }
+}</code></pre>
+<p><code>combined</code> layers the compiler's type-aware colouring over tree-sitter's syntax highlighting; <code>full</code> replaces it. Start with <code>combined</code>, so that syntax stays stable while type information is still filling in.</p>
+<p>In VS Code, there is nothing to configure either. The extension activates on <code>.crl</code>, probes for the compiler itself, and shows a <code>coralc not found</code> message when there is none. Commands to set the compiler path or restart the server are available from the command palette if you need them, but the default path just works.</p>
+<p>If you have the compiler installed, feel free to try it out, open a project in Zed or VS Code, and the diagnostics, hover, and go-to-definition should light up without any setup. And if your editor is not one of those two, feel free to port it. That invitation is sincere and the work is genuinely small: the protocol is documented in <code>PROTOCOL.md</code>, and the server is a plain stdio LSP, so a thin client is all you need. Neovim, Pulsar, Helix, Emacs, Sublime, anything that can spawn a child process and speak JSON-RPC over its pipes can talk to <code>coralc --serve</code> in an afternoon. The client's whole job is to launch the process, send <code>initialize</code>, forward the document open/change/close notifications, and display whatever diagnostics and hovers come back. The hard part, understanding Coral, is already done and is the same code that compiles your programs.</p>
+<section><h2 id="s21-10">Diagnostics and Warnings</h2></section>
+<p>The compiler's diagnostics are a first-class part of the tooling, not an extra. Every diagnostic carries an error code, <code>E0103</code> for a Unicode homoglyph that looks like an ASCII letter, <code>E0201</code> for a cyclic type layout of infinite size, <code>E0608</code> for a non-exhaustive switch, and so on through the catalogue <a href="../23-diagnostics-and-the-error-catalogue/index.html">Chapter 23</a> surveys. Codes make a diagnostic searchable, suppressible, and testable. The <code>--strict</code> flag promotes warnings to errors for a release build; unused-variable warnings are always on; and <code>--explain CODE</code> prints a longer explanation of a single code.</p>
+<p>Two warnings deserve early adoption. <code>E0801</code> (unused variable) and <code>E0802</code> (unused import) catch the debris of a refactor: a binding that stopped being read, an import that stopped being used. Both are noise in a build only until the first time they catch a real mistake, after which they are missed in any project that lacks them. Turning them on from the start is cheaper than turning them on later and drowning in a thousand existing warnings. And because the language server uses the same diagnostics, the same codes show up in your editor's Problems panel with the same identity, the code <code>E0608</code> means the same thing whether it came from a build or a hover.</p>
+<section><h2 id="s21-11">A Worked Build</h2></section>
+<p>Put the pieces together for a small program with a library module. The layout:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">myapp/
+├── coral.crlb
+└── src/
+    ├── lib.crl
+    ├── main.crl
+    └── math/
+        ├── lib.crl
+        └── vec2.crl</code></pre>
+<p>The build file lists both modules:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">build &quot;myapp&quot; {
+    root   = &quot;.&quot;
+    entry  = &quot;src&quot;
+    target = &quot;native-x86_64&quot;
+    opt    = &quot;debug&quot;
+    output = &quot;build/myapp&quot;
+    modules = [&quot;src&quot;, &quot;src/math&quot;]
+}</code></pre>
+<p>The math module declares a small vector type and its surface:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// src/math/vec2.crl
+import(lib) std::math::math { sqrt };
+
+pub struct Vec2 { f64 x; f64 y; }
+
+pub Vec2 vec2Add(Vec2 a, Vec2 b) {
+    return Vec2 { .x = a.x + b.x, .y = a.y + b.y };
+}
+
+pub f64 vec2Length(Vec2 v) {
+    return sqrt(v.x * v.x + v.y * v.y);
+}
+
+// src/math/lib.crl
+pub mod vec2 = import vec2;</code></pre>
+<p>The entry imports it through the module identity:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// src/main.crl
+import(lib) std::io::ios { println };
+import math::vec2 { Vec2, vec2Add, vec2Length };
+
+void main() {
+    Vec2 a = Vec2 { .x = 3.0, .y = 4.0 };
+    Vec2 b = Vec2 { .x = 1.0, .y = 2.0 };
+    Vec2 c = vec2Add(a, b);
+    println(&quot;sum = ({}, {}), length = {}&quot;, c.x, c.y, vec2Length(c));
+}
+
+// src/lib.crl
+pub mod main = import main;</code></pre>
+<p>Build and run:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">$ coralc build
+$ coralc run
+sum = (4, 6), length = 7.211102550927978</code></pre>
+<p>Change <code>vec2.crl</code> and rebuild; only the math module and its dependent main module recompile. Add a folder under <code>src/</code> and <code>coralc map</code> absorbs it. The build file stays a dozen lines no matter how large the program grows, because it describes the shape of the tree rather than listing commands. That is the design goal, and it is why the module system and the build system were built together: the import lines in the source are the dependency graph, and the build system's job is to read that graph rather than to have it written out twice. And because the language server reads the very same graph, opening any file in the editor tells you about a mistake anywhere in that graph, the tooling and the build are one story, told two ways.</p>
+<section><h2 id="s21-12">Exercises</h2></section>
+<section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>What is the difference between the <code>modules</code> list and the <code>skip</code> list? Give a project layout where both are necessary, and explain what a stray <code>lib.crl</code> in a scratch folder does under each.</li><li><span class="ex-label">Comprehension</span>Why is <code>modules.map</code> plain text rather than a binary or JSON format? Name three properties the text form preserves and one it gives up.</li><li><span class="ex-label">Implementation</span>Run <code>coralc init</code>, add a second module with a <code>lib.crl</code>, run <code>coralc map</code>, and confirm the new module appears in <code>modules.map</code>. Then run <code>coralc run</code> and confirm it still builds.</li><li><span class="ex-label">Build</span>Write a <code>coral.crlb</code> with a release build for a hot module and a debug build for the rest. Which field does the override set, and which value wins when the base and the override disagree?</li><li><span class="ex-label">Tasks</span>Add a task <code>"lint"</code> that builds and then runs the output with a <code>--check</code> flag, and a task <code>"clean"</code> that wipes the build directory. Show both task blocks. Then explain how you would invoke each.</li><li><span class="ex-label">Caching</span>You edit a comment in a file that no other file imports. What recompiles on the next build? What recompiles if you edit a file whose module another module imports? Why is the cache described as "conservative, never optimistic"?</li><li><span class="ex-label">Aliases</span>A module folder is named <code>coral-lexer</code>. Write the alias line that lets source files write <code>import lexer::table</code>, and explain what the builder does with it when it writes the module map. What happens at build time if the alias points at a folder not in <code>modules</code>?</li><li>Language server. Launch <code>coralc --serve</code> by hand and describe the two things you must type to get a valid session started. Why must it be <code>--serve</code> and not <code>serve</code>, and what does the server do with a request that arrives before <code>initialize</code>?</li><li>Whole project. Open a file whose import closure includes a file with an error you did not write. Where does the error appear, and why is that different from a server that only understands the open buffer? What clears the marker once the file is fixed?</li><li><span class="ex-label">Editors</span>Point an editor at <code>coralc --serve</code> and hover a variable, a field, and a function call. What does each hover show? Then turn on semantic tokens in Zed and describe what changes in the colouring.</li><li><span class="ex-label">Porting</span>Sketch, in a paragraph, what a minimal language-server client for your favourite editor would need to do. List the four messages it must send and the one notification it must display. Why is the fact that the server is "a plain stdio LSP" the thing that makes this feasible?</li><li><span class="ex-label">Meta</span>The build system derives dependencies from the source's import lines rather than from a list you maintain, while the <em>module list</em> is explicit and tool-refreshed. Describe one class of bug each choice eliminates and one class each makes harder to diagnose.</li></ol></section>
+      <nav class="chapter-nav"><a href="../../speed/20-ffi-and-interoperability/index.html">← Previous</a><a href="../../speed/22-attributes-and-compile-time-metaprogramming/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

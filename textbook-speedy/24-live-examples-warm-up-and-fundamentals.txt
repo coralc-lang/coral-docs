@@ -1,0 +1,672 @@
+Chapter24
+
+Live Examples: Warm-Up and Fundamentals
+
+Learning to Swim by Getting in the Water
+
+Every language you learn has a moment when the chapters stop explaining and start asking. You have read about loops, functions, variants, collections. You can follow every example someone else wrote. Then a problem lands in front of you, and none of the syntax matters. The real question is where to start. This chapter is the first of four that answer it by working problems end to end, the way you would in an interview or a first week on the job.
+
+Every problem in these chapters follows the same arc. I state the problem plainly, the way it would appear on a whiteboard. Then I give you the picture: a homely analogy that makes the problem feel like something you could have thought of yourself, because you could have. Then the brute-force approach, plus a blunt reason it is slow. Then the better approach, with the reasoning that connects the two. Then a complete Coral program you could compile. Then an honest account of what it costs in time and memory, in words rather than symbols. Finally, the edge cases that bite and a variation to push a little further.
+
+One habit before we begin. When you read a solution, do not just check that it works. Ask which line carries the weight, and why the author knew to reach for it. Every problem below holds exactly one idea that turns a slow answer into a fast one. The rest is bookkeeping. Find that idea.
+
+We start with warm-ups: loops, arithmetic, and a few classic tricks. The chapters that follow take on arrays and strings (Chapter25), hashing (Chapter26), and stacks, queues, and linked lists (Chapter27). The language features underneath live in Chapter4 (loops), Chapter5 (functions), Chapter13 (variants), and Chapter16 (collections).
+
+24.1 Running Sum of an Array
+
+The problem
+
+Given an array of numbers, produce a second array where entry i is the sum of the first i + 1 entries of the original. So for `[1, 2, 3, 4]` the answer is `[1, 3, 6, 10]`.
+
+Picture this
+
+Picture a jar of money and a running total. Every day you add whatever came in and write the new total on a slip of paper. You never re-add the whole history from scratch. You take yesterday's total and add today's deposit. That single observation, carrying the previous total forward, is the entire problem.
+
+Brute force
+
+For each position i, loop from 0 to i and add the numbers again. Fine for a small array. Now look at the cost. Entry 1 adds one number, entry 2 adds two, entry 3 adds three, and so on. The total work is 1 + 2 + 3 + ... + n, roughly n² / 2. Double the array and you quadruple the work. The brute-force version throws away everything it just computed.
+
+The better approach
+
+Keep one variable holding the sum so far. Walk the array once, add the current element to it, and record it. Each new entry costs one addition, and the previous work is reused instead of repeated. That is the whole idea: a running accumulator.
+
+The implementation
+
+    import(lib) std::vec { Vec };
+    import(lib) std::io::ios { println };
+
+    Vec<i32> runningSum(const Vec<i32>* nums) {
+        Vec<i32> out = Vec<i32>::withCap(nums->count());
+        i32 sum = 0;
+        for (usize i = 0; i < nums->count(); i++) {
+            sum = sum + nums->at(i);
+            out.push(sum);
+        }
+        return out;
+    }
+
+    void main() {
+        Vec<i32> nums = Vec<i32>::new();
+        nums.push(1); nums.push(2); nums.push(3); nums.push(4);
+        Vec<i32> out = runningSum(&nums);
+        for (i32 x : out) {
+            println("{}", x);
+        }
+    }
+
+Notice three small courtesies. `withCap` reserves exactly the room we need, so the vector never reallocates while we fill it. The loop condition reads `nums->count()` on each pass, the checked, honest way to walk a `Vec` by index (Chapter16 covers the pointer-versus-index distinction). And `sum` is a plain local: no allocation, no bookkeeping beyond one integer.
+
+The cost
+
+Time is linear. One pass, one addition per element, so the running time grows in direct proportion to the input size. Space is linear too, and here that is unavoidable: we return a new array of the same length. The accumulator itself is a single integer, the constant extra space the algorithm needs on top of the output.
+
+Edge cases and a variation
+
+An empty array produces an empty array; the loop simply never runs. The first output entry always equals the first input entry, a good one-line sanity check. A very large sum can overflow `i32`; if the input is large, promote the accumulator to `i64`. The variation worth doing: instead of a second array, compute the sum of any sub-range `[lo, hi]` in constant time. Store the running sums as a prefix-sum array, then the sum of `[lo, hi]` is `prefix[hi] - prefix[lo - 1]`. Trade one pass of preprocessing for constant-time range queries. That trick reappears all over interview problems, and we use it again in Chapter26.
+
+24.2 The Maximum and the Second Maximum
+
+The problem
+
+Find the largest element of an array, and then the second-largest. Return both.
+
+Picture this
+
+Imagine a sports tournament where you watch one match at a time and must remember the two best players so far. You keep the champion in your head. Whenever someone beats the champion, the old champion becomes your second-best. That is the algorithm.
+
+Brute force
+
+Find the maximum in one pass. Then find the maximum of everything except that element in a second pass. Two passes, still linear. So why improve it? Because "everything except that element" gets awkward when the maximum appears more than once, and because the second pass revisits data the first pass already understood. It works. It is also clumsy.
+
+The better approach
+
+One pass, two variables: `best` and `second`. For each number, if it beats `best`, the old `best` slides into `second` and the number becomes the new `best`. Otherwise, if it beats `second`, it becomes `second`. One pass, constant state.
+
+The tricky word is "beats." Second-largest must be strictly smaller than the largest, or it is not the second-largest at all. So the sliding comparison must be strict. If the new number equals `best`, it does not become the second. Otherwise you would report two copies of the same value as first and second.
+
+The implementation
+
+    import(lib) std::vec { Vec };
+    import(lib) std::io::ios { println };
+
+    struct TopTwo {
+        i32 best;
+        i32 second;
+        bool hasSecond;
+    }
+
+    TopTwo topTwo(const Vec<i32>* nums) {
+        i32 best = nums->at(0);
+        i32 second = 0;
+        bool hasSecond = false;
+        for (usize i = 1; i < nums->count(); i++) {
+            i32 x = nums->at(i);
+            if (x > best) {
+                second = best;
+                best = x;
+                hasSecond = true;
+            } else if (x < best && (!hasSecond || x > second)) {
+                second = x;
+                hasSecond = true;
+            }
+        }
+        return TopTwo { .best = best, .second = second, .hasSecond = hasSecond };
+    }
+
+The `hasSecond` flag is not decoration. If every element is equal, no second-largest exists, and a function that cannot say so would have to lie. We could return an `Option<i32>` from Chapter15 instead. The flag and the `Option` carry the same information, and the `Option` is the more idiomatic Coral answer. I use the flag here so the struct stays self-contained and the logic stays visible in one place.
+
+The cost
+
+Time is linear: one pass over the data, a constant number of comparisons per element. Space is constant, two numbers and a flag no matter how big the array is. This is the first problem where the memory answer beats "proportional to the input." It will not be the last.
+
+Edge cases and a variation
+
+An array with one element has a largest and no second. An array of all-equal elements has a largest and no second, which is exactly why the strict comparison matters. An empty array is invalid input here; guard against it at the top or document that the caller must not pass one. The variation: find the third-largest in the same single pass. Same idea, one more variable, one more branch. Writing it out will show you why generalizing to "the k-th largest in one pass" gets ugly fast, and why for large k you reach for a heap. Chapter16's `PriorityQueue` is that heap, and we use it for ranking there.
+
+24.3 Reverse an Integer (and the Palindrome Test)
+
+The problem
+
+Given a 32-bit signed integer, reverse its digits. So `123` becomes `321` and `-123` becomes `-321`. If the reversal would overflow a 32-bit signed integer, the answer is `0`. As a companion, decide whether a number reads the same forwards and backwards.
+
+Picture this
+
+Think of pulling digits off the end of a number the way you peel a tag off a price: the last digit comes off first, and each peeled digit gets appended to the right side of a new number. Take `123`. Peel 3, put it down as `3`. Peel 2, append to make `32`. Peel 1, append to make `321`. You build the reverse of a number by peeling and appending.
+
+Brute force
+
+Convert the number to a string, reverse the string, convert back. Easy to write, hard to get wrong. But it allocates, and it drags the whole text layer into a problem about arithmetic. A fine fallback, not what an interviewer wants to see.
+
+The better approach
+
+Peel and append with integer arithmetic. The last digit of `n` is `n % 10`. Appending a digit `d` to an accumulator `rev` is `rev = rev * 10 + d`. Chop the last digit off with `n = n / 10`. Repeat until `n` hits zero. The one care point is overflow: accumulate in a 64-bit integer and check against the 32-bit bounds before returning, because overflowed `i32` arithmetic in Coral is a bug you cannot see.
+
+The implementation
+
+    import(lib) std::io::ios { println };
+
+    i32 reverse(i32 x) {
+        i64 n = (i64)x;
+        i64 rev = 0;
+        while (n != 0) {
+            i64 digit = n % 10;
+            n = n / 10;
+            rev = rev * 10 + digit;
+        }
+        if (rev > 2147483647 || rev < -2147483648) {
+            return 0;
+        }
+        return (i32)rev;
+    }
+
+    bool isPalindromeNumber(i32 x) {
+        if (x < 0) return false;
+        if (x != 0 && x % 10 == 0) return false;
+        i32 rev = 0;
+        while (x > rev) {
+            rev = rev * 10 + x % 10;
+            x = x / 10;
+        }
+        return x == rev || x == rev / 10;
+    }
+
+The palindrome test hides a beautiful trick. Rather than reversing the entire number, which could overflow, we reverse only the last half and stop when the reversed half has caught up to the remaining front half. Take `1221`. We peel `1` then `2` to get `rev = 12`, while `x` has become `12`. They are equal, so it is a palindrome. Take `12321`. We peel to `rev = 123` while `x = 12`; the halves crossed, and the middle digit sits in `rev`. So we also accept `x == rev / 10`, which drops `rev`'s last digit and compares the outer halves. Negative numbers are never palindromes because of the minus sign. Neither is a positive number ending in zero (other than zero itself), because reversing it would start with a zero. Both cases are rejected up front.
+
+The cost
+
+Time is proportional to the number of digits, the base-ten logarithm of the value; for a 32-bit int, at most ten iterations. Space is constant: a handful of integers, no allocation. This is the first appearance of a pattern worth naming, logarithm-time. It returns with force in 23.8.
+
+Edge cases and a variation
+
+Watch `x = 0`, a palindrome whose reversal is `0`. Watch the overflow guard, the whole reason we compute in `i64`. Watch negative values in the reversal, where the sign must survive. Since `n % 10` is negative for negative `n` in languages with signed modulo, the digits accumulate with the correct sign and need no special handling. The variation: reverse the bits of a 32-bit integer instead of the digits. The structure is identical. Peel a bit with `& 1`, append it with `<< 1 | bit`. Writing it cements the analogy that a number is just a sequence of symbols, whichever base you use.
+
+24.4 FizzBuzz
+
+The problem
+
+Print the numbers from 1 to n, but for multiples of three print "Fizz", for multiples of five print "Buzz", and for multiples of both print "FizzBuzz".
+
+Picture this
+
+This is the traffic-light problem of interviews. It exists to see whether you can turn three plain rules into code without tying yourself in knots. The whole game is the overlap. Fifteen is divisible by both, and it must print the combined word, not "Fizz" and then "Buzz."
+
+Brute force
+
+A chain of four `if`s: check divisibility by 15 first, then 3, then 5. That works. The danger is ordering. Check 3 before 15, and fifteen prints "Fizz" and never reaches the "FizzBuzz" branch. The brute-force version is correct only if you remember the ordering rule, and "remember the rule" is not something the compiler checks.
+
+The better approach
+
+Exactly two independent questions exist, "is it divisible by 3?" and "is it divisible by 5?", with exactly four combinations of answers. That is a closed decision over a pair of booleans, and Chapter13 gave us the tool for it: a switch over a tuple. The compiler checks that we covered all four combinations, so the ordering trap cannot happen. Small problem. But it shows the value of the language feature in a way no abstract example can.
+
+The implementation
+
+    import(lib) std::io::ios { println };
+
+    void fizzBuzz(i32 n) {
+        for (i32 i = 1; i <= n; i++) {
+            switch ((i % 3 == 0, i % 5 == 0)) {
+                (true, true)   => println("FizzBuzz"),
+                (true, false)  => println("Fizz"),
+                (false, true)  => println("Buzz"),
+                (false, false) => println("{}", i),
+            }
+        }
+    }
+
+No `else` arm is needed. The four arms are exhaustive, and the compiler knows it.
+
+The cost
+
+Time is linear in n: one loop iteration per number, a constant amount of work inside (two remainders and a dispatch). Space is constant. The interesting part is not the asymptotic cost, which could hardly be simpler. It is the control flow. A decision that would be four ordered `if`s becomes a table the compiler verifies.
+
+Edge cases and a variation
+
+Handle `n <= 0` by printing nothing, which the loop already does. The variation: make the rules data rather than code. Suppose each number must be labelled by a list of `(divisor, word)` pairs configured at runtime, the classic "generalized FizzBuzz." Now the fixed tuple switch becomes a loop over the rules, each matching word appended to a `String`, and the exhaustive-checking benefit is gone, because the compiler no longer knows the rules. That trade, a closed decision checked at compile time versus an open list handled at runtime, is the same one Chapter13 draws between variants and raw integers.
+
+24.5 Greatest Common Divisor and Least Common Multiple
+
+The problem
+
+Given two integers, find their greatest common divisor: the largest integer that divides both evenly. Then, as a companion, find their least common multiple.
+
+Picture this
+
+Picture two gearwheels, one with `a` teeth and one with `b`, meshed and turning. The point where a tooth from each wheel lines up with the same spot again, after rolling, obeys the same arithmetic that finds the shared factors. Euclid's insight, about twenty-three centuries old, is the one we use: the shared factors of `a` and `b` are exactly the shared factors of `b` and `a mod b`. You can shrink the pair without losing the answer.
+
+Brute force
+
+Walk every integer from 1 up to the smaller number and remember the last one that divides both. Linear in the smaller value. Fine for small numbers, hopeless for numbers with many digits.
+
+The better approach
+
+Euclid's algorithm. Replace `(a, b)` with `(b, a mod b)`, over and over. The remainder is always smaller than `b`, so the pair shrinks fast, and when the remainder hits zero the other number is the answer. The number of steps is logarithmic. Each step effectively halves the pair in the worst case, which is where the logarithm comes from.
+
+The implementation
+
+    import(lib) std::io::ios { println };
+
+    i64 gcd(i64 a, i64 b) {
+        if (a < 0) a = -a;
+        if (b < 0) b = -b;
+        while (b != 0) {
+            i64 r = a % b;
+            a = b;
+            b = r;
+        }
+        return a;
+    }
+
+    i64 lcm(i64 a, i64 b) {
+        i64 g = gcd(a, b);
+        if (g == 0) return 0;
+        i64 left = a / g;
+        return left * b;
+    }
+
+Look at the order of operations in `lcm`. The tempting formula is `(a * b) / g`, and it is wrong at scale: `a * b` can overflow long before you divide. Divide first, `(a / g) * b`, and the intermediate value stays small, because `g` divides `a` exactly. Reordering to divide before multiplying saves real programs and costs nothing.
+
+The cost
+
+Time is logarithmic in the inputs. Each step replaces the larger number with a remainder smaller than the other, so the pair shrinks geometrically in the worst case. Space is constant: three integers, reused. The `lcm` adds a fixed, small number of operations on top, so it has the same complexity.
+
+Edge cases and a variation
+
+`gcd(a, 0)` is `a`, and `gcd(0, 0)` is zero. Decide what your program should do with the all-zero case, because "the largest number dividing both zeroes" is a mathematical corner. Negative inputs are handled by working with absolute values; a divisor's sign is irrelevant. The variation: find the GCD of an entire array by folding the two-argument version across the elements, `gcd(a, b, c) = gcd(gcd(a, b), c)`, a one-line use of the `reduce` adaptor from Chapter16's `iter` module.
+
+24.6 Fibonacci and the Cost of Naive Recursion
+
+The problem
+
+Compute the n-th Fibonacci number, where `fib(0) = 0`, `fib(1) = 1`, and every later value is the sum of the two before it.
+
+Picture this
+
+This problem is famous not because it is hard, but because it is the clearest place to watch a program run catastrophically slow for a reason you cannot see in the code. It looks like two lines of arithmetic. It is actually a tree of redundant work. This is where that lesson lands.
+
+Brute force
+
+The literal definition, written literally:
+
+    i64 fibNaive(i64 n) {
+        if (n < 2) return n;
+        return fibNaive(n - 1) + fibNaive(n - 2);
+    }
+
+Correct and unusable. To compute `fib(n)` it computes `fib(n-1)` and `fib(n-2)`; `fib(n-1)` then computes `fib(n-2)` all over again. The same subproblems are recomputed an exponential number of times. The number of calls roughly doubles with every increment of n. `fib(50)` performs on the order of a billion operations, and `fib(100)` would outlast a human lifetime.
+
+The better approach
+
+Two ways to fix it. The first is to remember. Whenever `fib` computes a value for the first time, store it in an array, and check the array before recursing. Then each value is computed once. The second, simpler here, is to notice that the dependence only ever reaches back one or two, so a running pair of the last two values is enough. Walk forward from the bottom.
+
+The implementation
+
+    import(lib) std::vec { Vec };
+    import(lib) std::io::ios { println };
+
+    i64 fib(i64 n) {
+        if (n < 2) return n;
+        i64 prev = 0;
+        i64 cur = 1;
+        for (i64 i = 2; i <= n; i++) {
+            i64 next = prev + cur;
+            prev = cur;
+            cur = next;
+        }
+        return cur;
+    }
+
+    i64 fibMemo(i64 n, Vec<i64>* memo) {
+        if (n < 2) return n;
+        if (memo->at((usize)n) >= 0) return memo->at((usize)n);
+        i64 value = fibMemo(n - 1, memo) + fibMemo(n - 2, memo);
+        memo->set((usize)n, value);
+        return value;
+    }
+
+In `fibMemo` we use `-1` as the sentinel for "not computed yet," which is honest because Fibonacci numbers are never negative. This is the sentinel-versus-`Option` trade from Chapter15. The sentinel is compact and, here, provably safe. An `Option<i64>` would be the more general choice, at the cost of a tag byte per slot.
+
+The cost
+
+The naive recursion's time is exponential, roughly proportional to the golden ratio raised to the power n, because it expands each subproblem into the whole subtree beneath it. Its space is only linear, the depth of the recursion, which is why it fails on time and not on memory. The iterative version is linear time and constant space, one step per value, keeping only the last two. The memoized version is also linear time, but its space is linear too, because it keeps every value. The iterative one wins here. The memoized one generalizes to problems where the dependencies are not neatly the last two.
+
+Edge cases and a variation
+
+Negative `n` should be rejected or defined. Mathematical Fibonacci can be extended backward, but a function taking `i64` should say what it does. Values overflow `i64` around `fib(93)`, so for large n you need big integers or modular arithmetic. The variation: compute only `fib(n) mod m`. Since the recurrence is linear, the iterative version works unchanged if you take a remainder at each step, and now it never overflows. A common interview twist that rewards choosing the iterative formulation.
+
+24.7 Count Primes (the Sieve of Eratosthenes)
+
+The problem
+
+Given an integer n, count how many prime numbers are strictly less than n.
+
+Picture this
+
+Imagine crossing out numbers on a long numbered list. Start at 2 and cross out every second number after it: 4, 6, 8, and so on. Move to the next uncrossed number, 3, and cross out every third after it: 6, 9, 12. Then 5, then 7. When you reach the end, the numbers you never crossed out are exactly the primes. You did not test a single number for primality. You eliminated the composites wholesale. That is the sieve.
+
+Brute force
+
+For each number, divide it by every integer up to its square root and call it prime if nothing divides. About the square root of n work per number, so roughly n to the power three-halves overall. Slow enough to hurt for n in the millions.
+
+The better approach
+
+The sieve flips the direction. Instead of asking each number "are you prime?", it lets each prime cross out its multiples. A boolean array records composite-ness. For each prime candidate p, mark `p*p, p*p + p, ...` as composite. Starting at `p*p` rather than `2*p` is the small optimization that skips work the smaller primes already did. Multiples of p below p*p have a smaller prime factor and were already crossed out. The total work is n log log n, almost linear for practical purposes.
+
+The implementation
+
+    import(lib) std::vec { Vec };
+    import(lib) std::io::ios { println };
+
+    i32 countPrimes(i32 n) {
+        if (n < 2) return 0;
+        Vec<bool> composite = Vec<bool>::new();
+        for (i32 i = 0; i < n; i++) composite.push(false);
+
+        i32 count = 0;
+        for (i32 p = 2; (i64)p * (i64)p < (i64)n; p++) {
+            if (!composite.at((usize)p)) {
+                for (i64 m = (i64)p * (i64)p; m < (i64)n; m += (i64)p) {
+                    composite.set((usize)m, true);
+                }
+            }
+        }
+        for (i32 i = 2; i < n; i++) {
+            if (!composite.at((usize)i)) count++;
+        }
+        return count;
+    }
+
+Notice the casts to `i64` in the loop bounds. `p * p` for a large `p` can overflow a 32-bit multiply, and the loop condition would then be silently wrong. Widening the comparison to `i64` prevents it. A small example of a general rule: whenever you multiply two values that could be large, check whether the product fits the type.
+
+The cost
+
+Time is n log log n, very close to linear, because each composite is crossed out once per distinct prime factor, and that count averages very small. Space is linear in n: one byte per number in the `Vec<bool>`. If memory is the constraint, a `Bitset` from Chapter16 stores the same information in one bit per number, sixty-four times smaller, at the price of slightly less direct indexing. For n in the billions, that difference is the difference between running and not running.
+
+Edge cases and a variation
+
+`n < 2` has no primes, so it returns zero before touching the array. The number 2 is prime and is handled naturally. The variation: return the primes themselves, not just their count. Push each uncrossed number into a `Vec<i32>` as you scan, and you have the list. A second variation, worth understanding for its own sake: the linear-time sieve, which marks each composite once, by its smallest prime factor. More code, and a better starting point for problems that need factorizations rather than plain primality.
+
+24.8 Fast Exponentiation
+
+The problem
+
+Compute `base` raised to the power `exp`, for a non-negative integer exponent, without multiplying `base` by itself `exp` times when `exp` is large.
+
+Picture this
+
+Suppose you must compute 2 to the 10th and may only multiply. One factor at a time is ten multiplications. But 2 to the 10th is (2 to the 5th) squared; 2 to the 5th is 2 times (2 to the 4th); 2 to the 4th is (2 to the 2nd) squared; and 2 to the 2nd is (2 to the 1st) squared. By repeatedly squaring you reach the answer in about four multiplications. Squaring is the trick. It turns the exponent's binary digits into a recipe.
+
+Brute force
+
+Multiply `base` into an accumulator `exp` times. Exactly `exp` multiplications, and `exp` can be a billion. Correct, and the baseline to beat.
+
+The better approach
+
+Binary exponentiation. Write the exponent in base two. Read its bits from least significant to most. Each bit that is 1 means "multiply the running result by the current power of base," and before moving on, each step squares that current power. The number of steps is the number of bits in `exp`, its base-two logarithm. For an exponent near a billion, that is about thirty steps instead of a billion.
+
+The implementation
+
+    import(lib) std::io::ios { println };
+
+    i64 power(i64 base, u32 exp) {
+        i64 result = 1;
+        i64 factor = base;
+        u32 e = exp;
+        while (e > 0) {
+            if ((e & 1u) != 0u) {
+                result = result * factor;
+            }
+            factor = factor * factor;
+            e = e >> 1u;
+        }
+        return result;
+    }
+
+The three lines inside the loop are the whole algorithm. If the lowest bit of the exponent is set, take the current factor into the result. Square the factor, so it now represents the next power. Shift the exponent right, dropping that bit. When no bits remain, the result is complete. Written out for `base = 3`, `exp = 5`: `e = 5` (binary 101), bit set, `result = 3`, `factor = 9`, `e = 2`; bit clear, `factor = 81`, `e = 1`; bit set, `result = 3 * 81 = 243`, which is indeed 3 to the 5th.
+
+The cost
+
+Time is proportional to the number of bits in the exponent, its base-two logarithm; for a 32-bit exponent, at most thirty-two iterations. Space is constant, three integers, no matter how large the exponent. This is the sharpest example in the chapter of a huge improvement from a small change in how you look at the input.
+
+Edge cases and a variation
+
+An exponent of zero returns one, including for `base = 0` by the common convention (some call 0 to the 0th undefined; choose and document). Negative exponents are excluded by the `u32` type, a design decision made visible in the signature: you cannot call this function with a negative exponent, so the question never arises. Overflow is the real risk, since the intermediate squares grow quickly. For modular exponentiation, the variation that matters in cryptography, you take a remainder after every multiply and the algorithm is unchanged. That is the version inside every RSA implementation and inside Chapter26's hashing discussion. Worth writing once by hand.
+
+24.9 Armstrong (Narcissistic) Numbers
+
+The problem
+
+A number is *Armstrong* (also called *narcissistic*) when it equals the sum of its own digits, each raised to the power of how many digits the number has. `153` has three digits, and `1³ + 5³ + 3³ = 1 + 125 + 27 = 153`, so it is Armstrong. Given a bound `n`, list every Armstrong number up to and including `n`. As a companion, decide whether a single number is Armstrong.
+
+Picture this
+
+Each digit of a number carries a weight: itself, raised to the count of digits. To test the number you peel off the digits one at a time, weigh each, and add the weights. The only mild surprise is that the exponent depends on the number you are testing, not on the digit, so you must count the digits before you weigh anything.
+
+Brute force
+
+The literal reading: for a candidate, peel each digit, and raise it by multiplying it by itself `d` times, where `d` is the digit count. That is `d` multiplications per digit, so about `d²` work per number. It is correct, and it recomputes the same tiny powers over and over: `5³` does not depend on which number is being tested.
+
+The better approach
+
+Count the digits once, then reuse 23.8's squaring `power` helper so each `digit^d` costs a handful of multiplications instead of `d`. The digit loop does not change at all. Fast exponentiation earns its keep here even for tiny exponents, because it collapses the "multiply d times" idea into one reusable helper and removes a nested loop from the middle of the test.
+
+The implementation
+
+    import(lib) std::vec { Vec };
+    import(lib) std::io::ios { println };
+
+    i64 ipow(i64 base, i64 exp) {
+        i64 result = 1;
+        i64 factor = base;
+        i64 e = exp;
+        while (e > 0) {
+            if ((e & 1) != 0) {
+                result = result * factor;
+            }
+            factor = factor * factor;
+            e = e >> 1;
+        }
+        return result;
+    }
+
+    i32 digitCount(i32 n) {
+        if (n == 0) return 1;
+        i32 d = 0;
+        while (n > 0) {
+            d++;
+            n = n / 10;
+        }
+        return d;
+    }
+
+    bool isArmstrong(i32 n) {
+        if (n < 0) return false;
+        i32 digits = digitCount(n);
+        i32 m = n;
+        i64 sum = 0;
+        while (m > 0) {
+            i64 d = m % 10;
+            sum = sum + ipow(d, (i64)digits);
+            m = m / 10;
+        }
+        return (i64)n == sum;
+    }
+
+    Vec<i32> armstrongUpTo(i32 n) {
+        Vec<i32> out = Vec<i32>::new();
+        for (i32 x = 1; x <= n; x++) {
+            if (isArmstrong(x)) out.push(x);
+        }
+        return out;
+    }
+
+The `ipow` helper is the 23.8 loop verbatim with the exponent type widened to `i64`, so it can serve any caller. `sum` is an `i64` because a ten-digit number can raise a digit to the tenth power many times, and the running total is not guaranteed to fit a 32-bit integer even when the final answer would.
+
+The cost
+
+Testing one number costs about `d` digit steps times `log d` squarings, so `O(d log d)`, effectively constant for a 32-bit value. Listing every Armstrong number up to `n` therefore costs `O(n log n)` in the digit counts. Space is constant apart from the returned vector. The numbers are rare, so the output is tiny no matter how large `n` gets.
+
+Edge cases and a variation
+
+Zero is Armstrong by the usual convention (`0` has one digit and `0¹ = 0`), which is why the listing starts at one only to keep the warm-up honest about what "positive" means. Single digits 1 through 9 are all Armstrong trivially, since `9 = 9¹`. Negative numbers are rejected because the minus sign is not a digit. The variation worth trying: precompute a table `power[d][digit]` for `d` up to ten and `digit` from 0 to 9, then each test is a table lookup inside the digit loop. It is more code and more memory, and it trades a few multiplications for an array index; that trade is the same one Chapter16 draws between computing and caching.
+
+24.10 The Collatz Sequence
+
+The problem
+
+Start with a positive integer `n`. If it is even, halve it; if it is odd, replace it with `3n + 1`. Repeat until you reach 1. Return how many steps that took. As a companion, among all starting values up to a limit, find the one whose chain is longest.
+
+Picture this
+
+The sequence is nicknamed the hailstone sequence because the numbers rise and fall unpredictably before they settle at 1: `7, 22, 11, 34, 17, 52, 26, 13, 40, 20, 10, 5, 16, 8, 4, 2, 1`. Nobody has proved every chain reaches 1, but for every number anyone has tried it does. For our purposes the interesting part is that different starting numbers share the same tails: once two chains meet, the rest is identical.
+
+Brute force
+
+Simulate each starting value independently and count. That is fast per number, but across a range of starts it recomputes shared tails again and again. Every chain that passes through 16 pays for the walk from 16 down to 1, and many chains pass through 16.
+
+The better approach
+
+Remember the chain length of every value you compute, in a table indexed by the value. Before stepping, check the table; if the answer is known, add it and stop. This is the memoized recursion of 23.6, applied to a problem where the tail is shared rather than the head. Values larger than the limit are computed but not stored, because the table only has room for the starts.
+
+The implementation
+
+    import(lib) std::vec { Vec };
+    import(lib) std::io::ios { println };
+
+    i64 collatzSteps(i64 n, Vec<i32>* memo) {
+        if (n == 1) return 0;
+        if (n > 0 && n < (i64)memo->count()) {
+            i32 cached = memo->at((usize)n);
+            if (cached >= 0) return (i64)cached;
+        }
+        i64 next = 0;
+        if (n % 2 == 0) {
+            next = n / 2;
+        } else {
+            next = 3 * n + 1;
+        }
+        i64 steps = 1 + collatzSteps(next, memo);
+        if (n > 0 && n < (i64)memo->count()) {
+            memo->set((usize)n, (i32)steps);
+        }
+        return steps;
+    }
+
+    i32 longestCollatz(i32 limit) {
+        if (limit < 1) return 0;
+        Vec<i32> memo = Vec<i32>::withCap((usize)limit + 1);
+        for (i32 i = 0; i <= limit; i++) memo.push(-1);
+        memo.set(1, 0);
+
+        i32 bestStart = 1;
+        i64 bestLen = 0;
+        for (i32 i = 1; i <= limit; i++) {
+            i64 len = collatzSteps((i64)i, &memo);
+            if (len > bestLen) {
+                bestLen = len;
+                bestStart = i;
+            }
+        }
+        return bestStart;
+    }
+
+The sentinel `-1` means "not computed yet," exactly as in `fibMemo` from 23.6, and it is safe here for the same reason: a chain length is never negative. The arithmetic runs in `i64` because the odd step triples a value that has already grown, and a large `n` can push `3n + 1` past what a 32-bit integer holds even though the start fits one.
+
+The cost
+
+With memoization the work is close to linear in the limit: each value in the table is computed once, and values above the limit appear only as transient links. Without it, the cost is the sum of all chain lengths, far larger. Space is linear in the limit, one integer per starting value. The recursion depth is at most the longest chain, which for values in the millions stays in the hundreds.
+
+Edge cases and a variation
+
+`n = 0` is not a legal start and `limit < 1` returns zero before any work. `n = 1` takes no steps, which the table records directly. The real numerical trap is overflow on the odd branch, which is why the whole computation is `i64`; a 32-bit `3n + 1` wraps and can bounce forever without reaching 1. The variation: record not just the length but the *peak* value each chain reaches, and find the start whose chain climbs highest. Same loop, one more running maximum threaded through the recursion's return value or carried in an extra table.
+
+24.11 Perfect Numbers and Amicable Pairs
+
+The problem
+
+A *perfect* number equals the sum of its proper divisors, the divisors strictly smaller than itself: the divisors of `28` are `1, 2, 4, 7, 14`, and `1 + 2 + 4 + 7 + 14 = 28`. Two numbers are an *amicable pair* when each equals the sum of the other's proper divisors: `220` and `284` are the classic example. Given a bound `n`, list the perfect numbers up to `n` and the amicable pairs below it.
+
+Picture this
+
+Divisor sums are a friendship ledger. Every number writes down the sum of its proper divisors; a perfect number finds its own name, and two amicable numbers find each other's. The only real work is computing a divisor sum, and the trick is that divisors come in factor pairs: if `d` divides `n`, so does `n / d`. So you only search up to the square root and add both members of each pair, being careful not to double-count the square root when `n` is a perfect square.
+
+Brute force
+
+For a single number, test every integer from 1 to `n - 1` and add the ones that divide. That is linear per number, so listing perfect numbers up to `n` costs about `n²`, and the amicable scan does that work twice per candidate. Slow enough that it stalls in the tens of thousands.
+
+The better approach
+
+Compute the divisor sum in `O(sqrt n)` by walking `d` from 2 while `d * d <= n`. Each time `d` divides `n`, add both `d` and `n / d`, skipping the second when the two are equal. Seed the sum at 1 because 1 divides everything. Then a perfect test is one comparison, and an amicable test is two divisor sums.
+
+The implementation
+
+    import(lib) std::vec { Vec };
+    import(lib) std::io::ios { println };
+
+    i64 divisorSum(i64 n) {
+        if (n < 2) return 0;
+        i64 sum = 1;
+        for (i64 d = 2; d * d <= n; d++) {
+            if (n % d == 0) {
+                sum = sum + d;
+                i64 other = n / d;
+                if (other != d) sum = sum + other;
+            }
+        }
+        return sum;
+    }
+
+    bool isPerfect(i64 n) {
+        return n > 1 && divisorSum(n) == n;
+    }
+
+    Vec<i64> perfectUpTo(i64 n) {
+        Vec<i64> out = Vec<i64>::new();
+        for (i64 x = 2; x <= n; x++) {
+            if (isPerfect(x)) out.push(x);
+        }
+        return out;
+    }
+
+    Vec<i64> amicableFlat(i64 n) {
+        Vec<i64> out = Vec<i64>::new();
+        for (i64 a = 2; a <= n; a++) {
+            i64 b = divisorSum(a);
+            if (b > a && b <= n && divisorSum(b) == a) {
+                out.push(a);
+                out.push(b);
+            }
+        }
+        return out;
+    }
+
+The `other != d` guard is the square-root subtlety in action: for `n = 16`, `d = 4` divides it, but `16 / 4` is also `4`, and adding it twice would overcount the divisor 4. The `b > a` test in `amicableFlat` keeps each pair once and lets `a < b` handle the second half of the reciprocity, so `(220, 284)` is emitted once and never as `(284, 220)`.
+
+The cost
+
+One divisor sum is `O(sqrt n)`; listing the perfect numbers up to `n` is `O(n sqrt n)`; the amicable scan is `O(n sqrt n)` as well, since it calls the sum a small constant number of times per candidate. Space is constant beyond the returned vector. For bounds in the millions you would build a divisor-sum sieve instead, filling every value's sum in `O(n log n)` total, the same inversion the prime sieve of 23.7 uses.
+
+Edge cases and a variation
+
+One is not perfect, because its only proper divisor sum is zero, and `n < 2` returns zero from the helper. Prime numbers have divisor sum one, so they never satisfy `isPerfect` and never form a pair with anything but one, which `b > a` filters out. The variation: build the divisor sums for the whole range with a sieve, then both problems become a single linear scan. Adding `d` to every multiple of `d` for `d` from 1 to `n` costs `O(n log n)` total and turns the amicable scan from `O(n sqrt n)` into `O(n)`, a foreshadowing of the sieve-versus-trial-division trade that opened 23.7.
+
+24.12 Exercises
+
+1. Comprehension. In 23.1, why is the brute-force running-sum quadratic while the accumulator version is linear? State in one sentence what the accumulator "carries forward" that the brute force recomputes.
+
+2. Comprehension. In 23.2, why must the comparison that slides the old best into second place be strict (`>` and `<`, never `>=` or `<=`)? Give an array where a non-strict comparison gives the wrong second-largest.
+
+3. Implementation. Write `bool isArmstrong(i32 n)` returning whether n equals the sum of its own digits each raised to the number of digits (for example, 153 = 1³ + 5³ + 3³). Which helper from this chapter do you reuse?
+
+4. Implementation. Write `i32 singleNumber(const Vec<i32>*)` where every element appears twice except one; return the one. (Hint: the bitwise XOR `^` has the property that `x ^ x == 0` and `x ^ 0 == x`. Fold the whole array.) Then write the version that uses a `Set` instead, and compare the space cost.
+
+5. Implementation. Write `i32 missingNumber(const Vec<i32>*)` for the numbers 0 through n with exactly one missing. Solve it twice: once with the arithmetic sum formula and once with XOR. Which is safer against overflow, and why?
+
+6. Analysis. In 23.6, the memoized version checks `memo->at(n) >= 0` to mean "already computed." Explain why this sentinel is safe for Fibonacci and unsafe in general, and rewrite it with `Option<i64>` from Chapter15.
+
+7. Analysis. In 23.7, explain in your own words why the sieve's inner loop starts at `p * p` and why that does not skip any composite. Then change it to start at `2 * p` and describe exactly what becomes redundant.
+
+8. Implementation. Write `u64 powerMod(u64 base, u64 exp, u64 mod)` using the squaring loop of 23.8, taking a remainder after every multiply. Test it against the naive method for small values, and explain why it never overflows for any 64-bit inputs.
+
+9. Math. Write `bool isPerfectSquare(i32 n)` without calling any square-root function, using the observation that the squares are the partial sums 1, 1+3, 1+3+5, and so on. What is the complexity, and how does it compare to a binary search for the root?
+
+10. Meta. Across this chapter, one idea turned a slow solution into a fast one in every problem. Name the idea in each of 23.1, 23.5, 23.6, 23.7, and 23.8, and say what they have in common. This habit, naming the load-bearing idea, is the one that transfers to problems you have never seen.

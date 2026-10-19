@@ -1,0 +1,707 @@
+Chapter 18
+
+Input, Output, and the Filesystem
+
+A Program That Cannot Reach Outside Is a Calculator
+
+Every chapter before this one lived inside the process. A `Vec` grows in memory, a `String` builds in memory, a `Result` carries a value between two functions without leaving the program. All of it is computation, and computation alone, however clever, vanishes when the program stops. Real programs do not stop there. They print a line so a human can read it, read a number the human typed, open a file, walk a directory, read an environment variable, launch another program, and write a log for whoever comes after. Each of those operations crosses a boundary between the program and the world, and Coral calls that boundary I/O.
+
+The boundary is why this chapter is different from the others in one specific way. Everything on the far side of it, the disk, the terminal, the operating system, a second process, can fail for reasons your program did not cause and cannot predict. The file was deleted. The permission was never granted. The disk is full. The pipe closed early. Chapter 15 built the tool for exactly this situation: `Result`, a value that says "it worked, and here is the thing" or "it failed, and here is why." You will meet `Result` in nearly every function in this chapter, and that is not an accident. I/O is where the outside world enters, and `Result` is how Coral lets it in without pretending it is safe.
+
+This chapter is a tour of the `std::io` tree and the closely related `std` modules that support it. It begins with the shape of the tree, then covers console input and output, then files, then the buffered and binary layers, then paths and directories, then the environment, processes, and command-line arguments, then logging and the terminal, and finally error handling and a complete worked program. It sits right after the chapter on text because half of I/O is text: printing a value, reading a line, parsing a number, joining a path. Here the text meets the disk.
+
+18.0 The Whole I/O Surface at a Glance
+
+Before the tour, a map. The modules below live under `std::io`, and every one is a real file you can read. The columns say what each module is for and what it hands you. One of them, `ios`, is delivered by the compiler prelude, which loads `std::io::ios` (along with `std::text::string`, `std::option`, `std::result`, `std::vec`, `std::collections::arr`, and `core::str`) into every unit, so `print`, `println`, `readLine`, and `String` need no import at all.
+
+    module              purpose                          headline names
+    std::io::ios        console I/O and parsing          print println readLine read read < parseI64
+    std::io::fs         files, dirs, metadata            fileOpen fileRead fileWrite readFileToString
+    std::io::bio        typed binary readers/writers     FileReader FileWriter readU32Le writeU32Be
+    std::io::fios       C FILE* buffered streams         FileHandle fileOpen fileReadAll fileWriteString
+    std::io::path       path string manipulation         join normalize extension stem parent filename
+    std::io::process    subprocesses                     spawn waitFor readStdout run exit
+    std::io::env        environment variables            get getInto set unset all
+    std::io::cmd        command-line arguments           ArgParser commandLine
+    std::io::log        structured logging               Logger LogLevel
+    std::io::term       ANSI terminal control            reset bold red cursorPos clearScreen
+
+Three facts hold across the whole table, and they are worth stating before the first function. First, `fs` sits at the bottom: it is the one module the others can import without a cycle, and it defines the shared error type `IoError` that every other module returns. Second, the tree is layered. `fs` issues raw system calls; `fios` wraps the C library's buffered `FILE*`; `bio` adds typed binary encoding over an open file descriptor; `ios` sits at the top with the console conveniences a normal program actually calls. Third, the portable surface is the same on every platform, `std::io::fs` on Linux and `std::io::fs` on Windows present the same names and the same signatures, while the module underneath (`platform::libc` on Linux, `platform::win32` on Windows) is what differs. A program written against `std` does not change when it changes platform; only the raw error codes inside an `IoError` do.
+
+18.1 The Shape of the I/O Library
+
+Start with the smallest question: where does a value go when you print it?
+
+In C the answer is a variadic function, `printf`, that trusts a format string at runtime and reads whatever arguments happen to be on the stack. In Coral the answer is a set of ordinary functions in `std::io::ios`, checked at compile time. The entry points are four:
+
+    pub void print<comptime T>(T fmt, ...)
+    pub void println<comptime T>(T fmt, ...)
+    pub void eprint<comptime T>(T fmt, ...)
+    pub void eprintln<comptime T>(T fmt, ...)
+
+`print` writes to standard output with no trailing newline; `println` appends one. The `e` variants write to standard error, which is the channel a program uses for diagnostics so that they survive being piped somewhere else. There is also `vaprint(... args)`, which takes values and no format string at all, printing each argument in sequence through the default rendering.
+
+The `comptime T` in the signature is the mechanism the whole thing rests on. It is the compile-time parameter from the generics chapter, and it lets the compiler see the format literal and the argument types at the same time. A mismatch is a build error, not a runtime surprise. If you write `println("{} {}", a)` with one placeholder too many, the build stops and names the problem; a C `printf` in the same situation reads a stray word off the stack and prints garbage.
+
+The key at each layer is the same. `fs` is the platform's file system, `bio` and `fios` are two ways to move bytes through it, `ios` is what you call most of the time. The rest of this chapter walks from the top down.
+
+18.2 Console Output: print, println, and the Manipulators
+
+Format a line is the first thing most programs do, so begin there.
+
+    import(lib) std::io::ios { println, eprintln };
+
+    void main() {
+        i32 x = 255;
+        str name = "ada";
+        f64 pi = 3.14159;
+
+        // {} consumes the next argument and dispatches on its type
+        println("hello, {}", name);              // hello, ada
+        // {:x} and {:b} are integer-only specifiers
+        println("dec {} hex {:x} bin {:b}", x, x, x);
+        eprintln("wrote {} bytes", 42);          // to stderr, not stdout
+    }
+
+The default placeholder `{}` consumes the next argument and renders it by dispatching on the argument's type. The dispatcher handles every built-in scalar (`i8` through `u64`), `bool`, `cchar`, `char`, both C string types, `str`, `String`, `rawptr`, the manipulator types below, and any type implementing the built-in `@toStr` trait. A type that implements none of these is a compile error at the call site, which is the correct behaviour: you cannot accidentally print a struct as raw bytes.
+
+The two braces are escapes. `{{` prints a literal `{`, `}}` prints a literal `}`, and the count of placeholders must equal the count of trailing arguments exactly. `{:d}` renders an integer in decimal, `{:x}` in hexadecimal, `{:b}` in binary, and `{:p}` renders a pointer. `{..}` spreads a whole iterable, rendering each element through the default dispatch and separating them with a comma and a space:
+
+    // {:d} is decimal; {..} spreads an iterable, separating with ", "
+    println("value = {:d} hex = {:x} bin = {:b}", 255, 255, 255);
+    println("items: {..}", numbers);
+
+The integer specifiers are integer-only, a non-integer argument with `{:d}` is a compile error, and `char` counts as an integer, rendering its codepoint numerically, so the compiler catches the mistake of formatting a float with `{:x}` rather than silently producing nonsense. Likewise `{..}` requires something range-for can walk; a typo is caught at build time.
+
+When you want special rendering without a new specifier, pass a manipulator. A manipulator is a small value that renders specially through the plain `{}` placeholder. The `ios` module defines five:
+
+    import(lib) std::io::ios { spaces, repeat, hex, bin, fixed };
+
+    // a manipulator renders specially through the plain {} placeholder
+    println("{}right-aligned", spaces(10));   // ten spaces, then the text
+    println("{}", repeat('-', 30));           // a rule of thirty dashes
+    println("{}", hex(0xDEADBEEF));           // 0xdeadbeef
+    println("{}", bin(0b1010));               // 0b1010
+    println("{}", fixed(3.14159, 2));         // 3.14
+
+The exact signatures are `spaces(u64 count)`, `repeat(u8 ch, u64 count)`, `hex(u64 value)`, `bin(u64 value)`, and `fixed(f64 value, u64 precision)`. `repeat` here takes a single byte, not a string; the formatting module's `fmt::repeat` takes a `str` and a count, and the two are different tools with the same name in different modules, so import carefully.
+
+Two honest caveats belong in the text, in bold.
+
+**The `std::fmt::format` function is a stub.** It is declared `String format(str f, ...)` and it does not interpolate. It deletes exact `{}` pairs from the format string and substitutes nothing, copying every other byte through unchanged, so a typed placeholder such as `{:x}` is left in the output literally. `format("x = {}", 3)` returns `"x = "`, with no error and no value. Real interpolation lives in `print`, `println`, `eprint`, and `eprintln`. When you need to build a `String` rather than print one, use the `formatX` family (`formatInt`, `formatFloat`, `formatHex`, and the rest) from the text chapter, not `format`.
+
+**Output is unbuffered, and `flush` is a no-op.** Each `print` call builds its whole line in a fixed 1024-byte stack buffer and issues a single `write(2)` when it finishes. Because `println` assembles a complete line and one syscall writes it, a line is never split partway across a syscall, and there is no C-style `stdout` buffer left holding your text. `flush()` exists for symmetry and does nothing. The practical consequence is that a line printed before a crash on the next line is already on the terminal.
+
+Why this matters: printing is the first thing a beginner does and the last thing a professional trusts. Knowing that a `{}` is checked at compile time, that `{{` is a literal brace, and that `{:x}` is integer-only saves a specific kind of confusing afternoon, and knowing that `format` is a stub saves a worse one.
+
+18.3 Console Input: Reading a Line and Reading Values
+
+Reading is the mirror image of printing, and it is more delicate, because a program that reads is at the mercy of what it is given.
+
+The basic operation reads one line into a `String` you own:
+
+    pub bool readLine(String* out)
+
+    import(lib) std::io::ios { readLine, println };
+    import(lib) std::text::string { String };
+
+    void main() {
+        String line = String::new();
+        // readLine returns false once the stream has ended
+        while (readLine(&line)) {
+            if (line.isEmpty()) break;
+            println("you said: {}", line);
+        }
+        line.free();   // readLine fills a String you own
+    }
+
+`readLine` clears `out`, then reads bytes until a newline, dropping carriage returns so that Windows-style CRLF input is handled transparently. It returns `false` when the stream has ended and nothing was read; because it returns `true` for a final line that has no newline, the `while (readLine(...))` loop processes the last unterminated line and stops cleanly on the next call. `String` is growable, so the line can be arbitrarily long.
+
+For a single byte there is `readChar`, which returns a `u8` and returns zero at end of input:
+
+    pub u8 readChar()
+
+For a typed value, `read` parses the next line according to the type of its output parameter:
+
+    pub void read<comptime T>(T* out)
+    pub T    readVal<T>()
+
+    import(lib) std::io::ios { read, readVal };
+
+    // read dispatches on the type of its output parameter
+    i32 n = readVal<i32>();      // reads a line, parses an integer
+    f64 g;
+    read(&g);                    // reads a line, parses a double
+    String s;
+    read(&s);                    // reads a line into a String
+
+`read` dispatches on `@typeof(T)` at compile time. It handles the signed and unsigned integers and the floats by reading a line and parsing it, `bool` by reading a line and accepting `true`, `1`, or `yes` as true and anything else as false, `cchar` by reading a character, and `String` by reading a line. `readVal<T>` is the convenience form that reads into a local and returns it.
+
+Simply put, `readLine` is a conveyor belt that hands you one line at a time, and `readVal` is the belt followed by a converter that turns the line into a number. If the line is not a number, `readVal` has no good way to tell you, it returns the parse result through the same channel parses go through below, so a program that cares whether the input was well-formed should call `readLine` and then a `parseX` function, where failure is a value rather than a guess.
+
+18.4 Parsing Text into Values
+
+The three parsing functions in `ios` turn a `str` into a number and report success through an out-parameter:
+
+    pub i64 parseI64(str sv, bool* ok)
+    pub u64 parseU64(str sv, bool* ok)
+    pub f64 parseF64(str sv, bool* ok)
+
+    import(lib) std::io::ios { parseI64, parseF64 };
+
+    bool ok = false;
+    // success is reported through the out-parameter, not the return value
+    i64 n = parseI64("-42", &ok);       // ok is true, n is -42
+    i64 bad = parseI64("12x", &ok);     // ok is false, bad is 0
+
+The convention is deliberately simple: on success the function sets `*ok` true and returns the value; on failure it sets `*ok` false and returns zero. `parseI64` accepts an optional leading `+` or `-`, then decimal digits only, and rejects the empty string, a lone sign, any non-digit, and any value that would overflow `i64`, including the boundary case `-9223372036854775808`, which is handled exactly. `parseU64` accepts an optional leading `+` and digits only. `parseF64` defers to the C library's `strtod` on a bounded copy of the input, then insists that only trailing whitespace remains; so `" 3.5"` and `"3.5  "` parse, while `"3.5x"` fails.
+
+This is the lightweight alternative to `Result`, and the shape tells you when to use it. When the caller only needs a yes-or-no, an out-parameter is one line shorter than a `Result` and the failure carries no detail worth propagating. When the caller needs to know why the input was bad, reach for `Result` instead, as Chapter 15 describes. A common beginner mistake is to ignore the `ok` flag and use the returned zero as though it were the parsed value: `parseI64("abc", &ok)` returns `0`, which is indistinguishable from a genuine zero unless you check the flag.
+
+18.5 Files: Opening, Reading, Writing, Closing
+
+Now to the disk. A file in Coral begins with an open call that returns a handle or an error.
+
+    import(lib) std::io::fs { fileOpen, fileClose, File, IoError };
+    import(lib) std::result { Result };
+
+    // fileOpen returns a Result, never a sentinel value
+    Result<File, IoError> opened = fileOpen("notes.txt", "r");
+    if (opened.isErr()) {
+        eprintln("could not open notes.txt");
+        return;
+    }
+    File f = opened.unwrap();
+    // ... use f ...
+    fileClose(f);   // every successful open needs exactly one close
+
+`File` is a distinct type wrapping the operating system's file descriptor (or handle), so the compiler will not let you pass a bare integer where a file is expected. `fileOpen` takes a stdio-style mode string, and it is worth knowing exactly what each one does, because the mode selects the flags passed to the system:
+
+    mode    open flag combination                       effect
+    "r"     read only                                   file must exist
+    "w"     write only, create, truncate                existing content is lost
+    "a"     write only, create, append                  writes always land at EOF
+
+Adding a `+` after the mode letter widens the handle to read-and-write (for example `"r+"` opens an existing file for both). The mode string is a small language of its own, and the table above is the whole of it for the common cases.
+
+Three operations move bytes through the handle:
+
+    // fileRead returns how many bytes were read; zero means end of file
+    pub Result<isize, IoError> fileRead(File f, u8* buf, usize count)
+    pub Result<isize, IoError> fileWrite(File f, const u8* buf, usize count)
+    // whence is SEEK_SET, SEEK_CUR, or SEEK_END
+    pub Result<isize, IoError> fileSeek(File f, isize offset, i32 whence)
+
+`fileRead` reads up to `count` bytes into `buf` and returns how many it actually read; a return of zero means end of file, which is a success, not an error. `fileWrite` writes `count` bytes and returns how many it wrote. `fileSeek` moves the position of the handle and returns the new offset; the `whence` argument is one of the constants `SEEK_SET` (from the start), `SEEK_CUR` (from the current position), or `SEEK_END` (from the end). All three wrap the corresponding system call and translate a negative result into an `IoError`.
+
+Reading a whole file a chunk at a time is such a common shape that the library provides it directly, and it is the function to reach for first:
+
+    pub Result<String, IoError> readFileToString(str path)
+    pub Result<bool, IoError>   writeFileFromString(str path, const String* data)
+
+    import(lib) std::io::fs { readFileToString, writeFileFromString };
+    import(lib) std::text::string { String };
+
+    Result<String, IoError> loaded = readFileToString("notes.txt");
+    if (loaded.isOk()) {
+        String text = loaded.unwrap();
+        println("{} bytes", text.len);
+        text.free();   // the returned String is owned by the caller
+    }
+
+    String out = String::from("hello, file\n");
+    // "w" mode truncates at open, so a failure mid-write truncates the file
+    (void)writeFileFromString("out.txt", &out).unwrap();
+    out.free();
+
+`readFileToString` opens the file read-only, reads it in 4096-byte chunks, and appends each chunk to a growable `String`, so it reads files of any size without a size query first. On any error it closes the handle, frees the partial buffer, and returns the `IoError`. `writeFileFromString` opens the path for writing, truncating whatever was there, and writes the entire buffer, looping until every byte is out; it returns `Ok(true)` on success. Notice the order of the truncation: `"w"` mode destroys the old contents at open time, so a failure partway through a write leaves a truncated file. When that matters, write to a temporary file and rename it over the target, which is atomic on the same filesystem.
+
+You do not have to open, read, and close when all you need is to ask whether a path exists or is accessible, and you do not have to open at all to delete or rename:
+
+    pub bool   fileExists(str path)
+    pub bool   canAccess(str path, i32 mode)
+    pub Option<bool> statPath(str path, Stat* out)
+    pub Result<bool, IoError> deleteFile(str path)
+    pub Result<bool, IoError> renameFile(str oldPath, str newPath)
+
+    import(lib) std::io::fs { fileExists, canAccess, deleteFile, renameFile, R_OK, W_OK };
+
+    // absence is not an error here: fileExists simply returns false
+    if (fileExists("config.txt")) { /* ... */ }
+    if (canAccess("config.txt", W_OK)) { /* writable */ }
+    (void)renameFile("a.txt", "b.txt").unwrap();
+    (void)deleteFile("old.txt").unwrap();
+
+`fileExists` asks the system whether the path resolves and returns a plain `bool`; absence is not an error, it is the answer. `canAccess` takes one of `F_OK`, `R_OK`, `W_OK`, `X_OK` and reports whether the path is accessible in that mode. `statPath` fills a `Stat` structure with the file's metadata (size, mode, link count, and timestamps) and returns `Some(true)` on success or `None` when the path cannot be statted; it is the call that also tells you whether a path is a file or a directory, through `getFileType`, which we meet in 18.7.
+
+Whenever a `Result` comes back, the same discipline from Chapter 15 applies: handle the `Err` case with a switch or a check, and let `unwrap` appear only after the failure has genuinely been dealt with. Reading from a file has no side channel and no hidden state; the value of the call is the whole story, and you have to open the parcel to get the bytes.
+
+A common beginner mistake is to open a file and forget to close it on the error path. The library's own functions do not have this problem, because each of them closes the handle before returning an error, but a hand-written function must do the same. The rule is simple: every successful `fileOpen` needs exactly one `fileClose`, on every path out of the function.
+
+18.6 Buffered and Binary I/O: bio and fios
+
+The file functions in the last section talk to the system one call at a time. That is the right default, because it is the most predictable, but it is not the only layer, and two more deserve to be named.
+
+The first is `std::io::fios`, which wraps the C library's `FILE*` and therefore inherits C stdio's buffering. Its handle is a distinct `FileHandle` over the opaque stream:
+
+    // a distinct handle over the C library's opaque buffered FILE*
+    pub distinct FileHandle = rawptr;
+
+    pub Result<FileHandle, IoError> fileOpen(str path, str mode)
+    pub void   fileClose(FileHandle fh)
+    pub Result<usize, IoError> fileWrite(FileHandle fh, str data)
+    pub Result<usize, IoError> fileRead(FileHandle fh, u8* buf, usize maxLen)
+    pub Result<usize, IoError> fileWriteString(FileHandle fh, const String* s)
+    pub Result<bool, IoError>  fileReadAll(str path, String* out)
+    pub bool   fileEof(FileHandle fh)
+    pub bool   fileError(FileHandle fh)
+    pub void   fileFlush(FileHandle fh)
+
+The reason to use it is the buffering: `fios` accumulates small reads and writes in a user-space buffer and issues far fewer system calls than the raw layer would. For a program that writes many short pieces, or reads a file in very small increments, that difference is the difference between one syscall per piece and one syscall per buffer-full, and the cost per system call is hundreds to thousands of times the cost of a memory copy. When performance matters and the access pattern is many small operations, buffering is the first lever.
+
+The second module is `std::io::bio`, which is not about buffering at all, it is about *encoding*. It provides two wrapper types over an open `File` that read and write typed values in a chosen byte order:
+
+    pub struct FileReader { i32 fd; ... }   // FileReader::fromFd(f)
+    pub struct FileWriter { i32 fd; ... }   // FileWriter::fromFd(f)
+
+    import(lib) std::io::bio { FileReader, FileWriter };
+    import(lib) std::io::fs { fileOpen, fileClose, File };
+
+    // "rb" opens the file in binary mode
+    File f = fileOpen("data.bin", "rb").unwrap();
+    FileReader r = FileReader::fromFd(f);
+
+    u32 magic  = r.readU32Le();       // little-endian, four bytes
+    u16 version = r.readU16Be();      // big-endian, two bytes
+    f64 sample = r.readF64Le();
+    r.skip(8);                        // advance over a reserved field
+
+    fileClose(f);   // the wrapper borrows the descriptor, it does not own it
+
+There is a reader and a writer method for each scalar width and each byte order: `readU8`/`writeU8`, `readU16Le`/`readU16Be`, `readU32Le`/`readU32Be`, `readU64Le`/`readU64Be`, the signed variants, and `readF32`/`readF64` in both orders. `fromFd` wraps an already-open `File`; the wrapper owns the descriptor's position but not its lifetime, so you still close the `File` yourself. There are also the free byte-swap helpers `bswapU16`, `bswapU32`, and `bswapU64`.
+
+Two honest notes keep this layer from surprising you. First, the *typed* readers and writers do not report errors: `readU32Le` calls `readBytes` and ignores its result, yielding a zero-filled value on a short read, and `writeU32Le` ignores a failed `writeBytes`. Only `readBytes` and `writeBytes` return `Result<bool, IoError>`, and they do the exact-count guarantee, `readBytes` loops until it has `n` bytes or fails with `Eof`, and `writeBytes` loops until all bytes are written. If a truncated or corrupt file is a real possibility, use `readBytes` into your own buffer and check the result, then decode yourself. Second, `bio` does not buffer, so a struct of ten fields costs ten small system calls; combine it with `fios` (or read the whole record with one `readBytes`) when the record is hot.
+
+Why this matters: "I/O is slow" is true but imprecise. What is slow is the *crossing*, the system call, and the number of crossings is a property of how you read, not of how much you read. `fs` gives you control, `fios` reduces the crossings for you, and `bio` gives you the encoding. Knowing which problem you have is the whole of choosing between them.
+
+18.7 Paths, Directories, and Metadata
+
+A path is a string with grammar, and the `path` module parses that grammar without ever touching the disk. Every function is a string operation, which is why they are cheap and why they work on paths that do not exist yet.
+
+    import(lib) std::io::path {
+        join, normalize, absolute, changeExtension,
+        extension, stem, parent, filename, isAbsolute, hasExtension
+    };
+
+    str p = "/home/ada/notes/today.txt";
+    // the path accessors are pure string operations; no disk is touched
+    println("{}", filename(p));      // today.txt
+    println("{}", stem(p));          // today
+    println("{}", extension(p));     // .txt
+    println("{}", parent(p));        // /home/ada/notes
+
+    // join inserts a separator only when one is actually needed
+    String full = join("/home/ada", "notes/today.txt");   // /home/ada/notes/today.txt
+    String clean = normalize("/home/ada/./notes//today.txt"); // /home/ada/notes/today.txt
+    String abs = absolute("/home/ada", "notes/today.txt");    // resolve relative to base
+    String md = changeExtension(full.asView(), ".md");        // /home/ada/notes/today.md
+
+The odd one out is `findLastSep`, which returns the index of the last separator or `p.len + 1` when there is none; it is an implementation detail exposed for completeness, and the named functions built on it (`parent`, `filename`, `stem`, `extension`) are what you should use. `join` inserts a separator only when needed, so joining a path that already ends in `/` does not create a doubled one. `normalize` collapses repeated separators and `.` segments; `absolute` resolves a relative path against a base and then normalizes. Note that `normalize` does not resolve `..`, and none of these functions check the filesystem, so two different strings can name the same file and two equal strings can name different files on a case-insensitive platform. Path equality is not file identity.
+
+On Linux the separator is `/` and `\` is accepted as an alternate; on Windows the reverse is true. Because the module hides this behind `SEP` and the separator-aware functions, you should almost never write a separator literally in portable code; use `join` and the accessors instead.
+
+Directories are manipulated with `fs`:
+
+    pub Result<bool, IoError> createDir(str path, i32 mode)
+    pub Result<bool, IoError> createDirRecursive(str path, i32 mode)
+    pub Result<bool, IoError> removeDir(str path)
+    pub Result<Dir, IoError>  openDir(str path)
+    pub bool readDirEntry(Dir dir, Dirent* out)
+    pub void closeDir(Dir dir)
+
+`createDir` makes a single directory; `createDirRecursive` makes every missing component in the path, the way `mkdir -p` does, and treats an already-existing directory as success. The `mode` argument carries the permission bits (for example `448` for owner-only `rwx`, or `493` for the conventional `0755`). `removeDir` removes an *empty* directory; to remove one with contents you must walk it and delete the entries first. `openDir` returns a `Dir` handle, and you read it one entry at a time:
+
+    import(lib) std::io::fs {
+        openDir, readDirEntry, closeDir, Dirent, getFileType, statPath, Stat
+    };
+
+    void listDir(str path) {
+        Result<Dir, IoError> od = openDir(path);
+        if (od.isErr()) {
+            eprintln("cannot list {}", path);
+            return;
+        }
+        Dir dir = od.unwrap();
+        Dirent entry;
+        // readDirEntry returns false at the end of the stream
+        while (readDirEntry(dir, &entry)) {
+            str name = str::fromCstr((cchar*)entry.d_name);
+            // "." and ".." are real entries and must be skipped by hand
+            if (name.equals(".") || name.equals("..")) continue;
+            println("{}", name);
+        }
+        closeDir(dir);
+    }
+
+`readDirEntry` copies the next entry into the `Dirent` and returns `false` at the end of the stream; `d_name` is a NUL-terminated byte array, which is why the example converts it with `str::fromCstr` rather than treating it as a length-carrying view. The `.` and `..` entries are real directory entries and must be skipped by hand.
+
+To learn what an entry *is*, stat it and classify the mode:
+
+    pub struct Stat { /* size, mode, link count, timestamps */ }
+    pub enum FileType {
+        Unknown, Regular, Directory, CharDevice,
+        BlockDevice, Fifo, Symlink, Socket
+    }
+    pub Option<bool> statPath(str path, Stat* out)
+    pub FileType getFileType(const Stat* s)
+
+    Stat st;
+    if (statPath("notes.txt", &st).isSome()) {
+        println("size = {}", st.st_size);
+        // getFileType reads st_mode for you, so no magic numbers appear
+        switch (getFileType(&st)) {
+            FileType::Regular   => println("a regular file"),
+            FileType::Directory => println("a directory"),
+            else                => println("something else"),
+        }
+    }
+
+`Stat` is shaped after the POSIX structure, so its fields are platform-defined numbers rather than friendly abstractions: `st_size` is the size in bytes, `st_mode` is the raw mode bits, and the three timestamp triples are seconds and nanoseconds. `getFileType` is the portable reading of `st_mode`; it maps the mode's top bits to the `FileType` enum so you never test magic numbers by hand. The timestamps are worth a warning: they are whatever the platform's `stat` returns, subject to the platform's epoch and resolution, so comparing them across platforms is a bug waiting to happen.
+
+18.8 Environment, Processes, and Arguments
+
+Three modules bring a program into contact with the machinery around it.
+
+`std::io::env` reads and writes environment variables:
+
+    pub Option<String> get(str name)
+    pub bool getInto(str name, String* out)
+    pub Result<bool, IoError> set(str name, str value)
+    pub Result<bool, IoError> unset(str name)
+    pub usize all(Vec<String>* out)
+
+    import(lib) std::io::env { get, getInto, set, unset, all };
+    import(lib) std::option { Option };
+    import(lib) std::text::string { String };
+
+    Option<String> home = get("HOME");
+    if (home.isSome()) {
+        String value = home.unwrap();
+        println("HOME = {}", value);
+        value.free();   // get returns an owned String; the caller frees it
+    }
+
+    String pathVar = String::new();
+    // getInto writes into a String you already own
+    if (getInto("PATH", &pathVar)) { /* ... */ }
+    pathVar.free();
+
+    // set and unset can fail, so both return a Result
+    (void)set("MY_APP_MODE", "debug").unwrap();
+    (void)unset("MY_APP_MODE").unwrap();
+
+`get` returns an owned `String` inside an `Option`, so the caller frees it when done; `getInto` writes into a `String` you already own and returns whether the variable was set, freeing the old contents first. Absence is `None` or `false`, never an error, because a missing environment variable is a normal state, not a failure. `set` and `unset` return a `Result` because changing the environment can fail. `all` appends every `"NAME=VALUE"` entry to a `Vec<String>` and returns the count; as always with a container of owned values, the caller is responsible for freeing each string before disposing the vector.
+
+`std::io::process` runs other programs:
+
+    pub struct Process { i32 pid; i32 stdinFd; i32 stdoutFd; i32 stderrFd; }
+    pub struct ProcessResult { i32 exitCode; bool signaled; i32 termSignal; }
+
+    pub Result<Process, IoError>       spawn(str cmd, Vec<str>* args)
+    pub Result<ProcessResult, IoError> waitFor(Process* p)
+    pub Result<isize, IoError>         writeStdin(Process* p, const cchar* data, usize len)
+    pub Result<isize, IoError>         readStdout(Process* p, u8* buf, usize maxLen)
+    pub Result<isize, IoError>         readStderr(Process* p, u8* buf, usize maxLen)
+    pub Result<i32, IoError>           run(str cmd, Vec<str>* args)
+    pub void                           exit(i32 code)
+
+`spawn` creates the child process with pipes connected to its standard input, output, and error. It does not wait; it hands you a `Process` and returns. You then talk to the child through the pipe file descriptors: `writeStdin` sends bytes to it, `readStdout` and `readStderr` pull bytes back, and `waitFor` blocks until the child exits, closes the pipes, and returns its exit status. Because `waitFor` closes the pipes, read everything you want from the child *before* waiting for it, or the child may block trying to write into a pipe nobody is draining.
+
+`run` is the whole dance for the common case: it spawns the child, drains both its output pipes while it runs (so it never blocks), waits for it, and returns the exit code. When you only need "did it succeed," `run` is the one call to make.
+
+    import(lib) std::io::process { spawn, run, waitFor, readStdout, Process, ProcessResult };
+    import(lib) std::vec { Vec };
+
+    // run spawns, drains both pipes, waits, and returns the exit code
+    i32 status = run("grep", args).unwrap();
+    println("grep exited with {}", status);
+
+    // Or stream the child's output yourself:
+    Vec<str> argv = Vec<str>::new();
+    argv.push("-l");
+    argv.push("TODO");
+    Process p = spawn("grep", &argv).unwrap();
+    u8 buf[512];
+    while (true) {
+        isize n = readStdout(&p, buf, 512).unwrap();
+        if (n <= 0) break;
+        // ... use buf[0 .. n) ...
+    }
+    // drain the pipes before waitFor, or the child may block on a full pipe
+    ProcessResult result = waitFor(&p).unwrap();
+    println("exit {}", result.exitCode);
+
+The argument vector is a `Vec<str>`. Note that `spawn` uses the executable search path, exactly as the shell does, so `spawn("grep", ...)` finds `grep` on `PATH`; a path with a slash is used as given. `ProcessResult` distinguishes a normal exit (`exitCode` set, `signaled` false) from a child killed by a signal (`signaled` true, `termSignal` carrying the signal number), which is the distinction a shell needs to report "Segmentation fault" instead of an exit code. `exit(code)` terminates the current process immediately; use it when `main` cannot express the outcome you need, and prefer returning a code from `i32 main` when it can.
+
+Now the awkward part, stated honestly. `std::io::cmd` offers an `ArgParser`, but its methods take `argc` and `argv` directly:
+
+    // parse, hasFlag, and getOption all take argc/argv directly
+    pub struct ArgParser {
+        Vec<String> positional;
+        bool error;
+        String errMsg;
+        usize pos;
+
+        static ArgParser new()
+        void dispose()
+        void parse(i32 argc, cchar** argv)
+        bool hasFlag(i32 argc, cchar** argv, str shortFlag, str longFlag)
+        bool getOption(i32 argc, cchar** argv, str shortFlag, str longFlag, String* out)
+        usize count()
+        str get(usize idx)
+    }
+    pub Option<str> commandLine()
+
+`parse` collects the non-flag arguments as positional values, skipping anything that begins with `-` and stopping at a bare `--`. `hasFlag` tests for a short or long flag, `getOption` reads the value that follows one into a `String` you own, `count` and `get` read back the positionals, and `dispose` frees the owned strings. The catch is the `argc`/`argv` pair: Coral's usual entry point is `void main()` with no parameters, and the startup code passes arguments to the C `main` without the language exposing them as parameters. So `ArgParser` pairs naturally with a C-style entry point, `i32 main(i32 argc, cchar** argv)`, while a program written with `void main()` does not have the pair to hand it.
+
+The portable door for the plain entry point is `commandLine()`, which returns the raw process command line as an `Option<str>`. This is exactly what the standard library's own compiler uses to parse its flags. On Linux it is the contents of `/proc/self/cmdline`, with the arguments separated by NUL bytes; on Windows it is the single string from `GetCommandLineA`. Reading `argv[1]` on Linux is therefore a small scan:
+
+    import(lib) std::io::cmd { commandLine };
+    import(lib) std::option { Option };
+
+    // Linux: argv[0]\0argv[1]\0...\0, return argv[1], or "" if absent.
+    str firstArg() {
+        // commandLine returns the raw argv[0]\0argv[1]\0...\0 buffer
+        Option<str> cl = commandLine();
+        if (cl.isNone()) return "";
+        str all = cl.unwrap();
+        usize i = 0;
+        while (i < all.len && all.ptr[i] != 0) i += 1;   // skip argv[0]
+        if (i >= all.len) return "";
+        i += 1;                                          // step over the NUL
+        usize start = i;
+        while (i < all.len && all.ptr[i] != 0) i += 1;
+        if (i == start) return "";
+        return str::fromParts(all.ptr + start, i - start);
+    }
+
+Returning a `str` view into the command line is safe here because the command-line buffer lives for the whole process. The Windows form of `commandLine` is a single space-separated string, so a portable `firstArg` would need to split on spaces there; the example is deliberately Linux-shaped, and the platform difference is exactly the kind of thing `#[[cfg]]` attributes or a `flag` block exist to handle.
+
+A common beginner mistake is to assume `main` receives `argv` the way it does in C. It does not, in the usual Coral idiom; the runtime supplies the C `main` arguments, but a `void main()` simply ignores them, and the portable accessor is `commandLine()`.
+
+18.9 Logging and the Terminal
+
+Two modules remain, and both are conveniences worth knowing before you rebuild them.
+
+`std::io::log` provides a small leveled logger:
+
+    pub variant LogLevel { Debug, Info, Warn, Error, Fatal }
+
+    pub struct Logger {
+        LogLevel minLevel;
+        String name;
+
+        static Logger new(str name, LogLevel minLevel)
+        void dispose()
+        void setLevel(LogLevel level)
+        bool enabled(LogLevel level)
+        void debug(str msg)
+        void info(str msg)
+        void warn(str msg)
+        void error(str msg)
+        void fatal(str msg)
+    }
+
+    import(lib) std::io::log { Logger, LogLevel };
+
+    Logger log = Logger::new("server", LogLevel::Info);
+    log.debug("starting");            // dropped: below the minimum
+    log.info("listening on port {}", 8080);
+    // Error and Fatal go to stderr; the rest go to stdout
+    log.error("connection dropped");
+    log.dispose();
+
+`new` copies `name` into an owned `String`, so `dispose` frees it; forgetting to dispose leaks one small buffer. `enabled` answers whether a message at a level would pass the filter, which lets a caller skip expensive formatting work for a message that will be dropped. The routing is worth memorizing: `Error` and `Fatal` go to standard error, everything else to standard output, so errors survive redirection while ordinary logs do not have to. The logger's `_log` helper formats a line as `[LEVEL][name] message` through `println`/`eprintln`; there is no file sink and no structured encoding, so a program that needs JSON logs or log rotation builds that on top rather than expecting it here.
+
+`std::io::term` writes ANSI escape sequences for color and cursor control. It is a toolkit of small functions, each of which reads like the escape it emits:
+
+    pub void reset()
+    pub void bold() dim() italic() underline() blink() reverse() hidden() strikethrough()
+
+    pub void black() red() green() yellow() blue() magenta() cyan() white()
+    pub void bgBlack() /* ... */ bgWhite()
+    pub void brightBlack() /* ... */ brightWhite()
+
+    pub void cursorUp(u64 n) cursorDown(u64 n) cursorRight(u64 n) cursorLeft(u64 n)
+    pub void cursorPos(u64 row, u64 col)
+    pub void clearScreen() clearLine() clearToEnd() clearLineEnd()
+    pub void saveCursor() restoreCursor() hideCursor() showCursor()
+
+    import(lib) std::io::term { green, reset, cursorUp, clearScreen };
+
+    green();
+    println("this line is green");
+    reset();   // ANSI escapes are emitted even when output is redirected
+
+A terminal that understands ANSI will render these; a pipe or a file receives the raw escape bytes, because the public functions do not test whether the output is a terminal. A program that may be redirected should decide for itself, once, whether to emit color, rather than assuming a terminal on the other end. The cursor and clear helpers are the raw material of a terminal user interface; they are also the raw material of a mess, so confine them to the parts of a program that deliberately manage a region of the screen.
+
+18.10 Errors: Reading IoError Honestly
+
+Every function in this chapter that touches the outside world returns a `Result`, and every `Err` carries the same type, defined in `fs` and used everywhere above it:
+
+    pub variant IoError {
+        Os       { i32 code; str op; },   // errno (Linux) / GetLastError (Windows)
+        Eof      { str op; },             // stream ended before the requested bytes
+        BadUsage { str msg; }             // caller-side problem, no system call
+    }
+    // os(op) captures the calling thread's current error number
+    pub extend IoError {
+        static IoError os(str op)
+    }
+
+The three cases split failures by *who* is responsible. `Os` means the operating system refused the operation; `code` is the raw platform error number and `op` names the operation that failed (`"open"`, `"read"`, `"mkdir"`). `Eof` means a stream ended before the requested bytes arrived, the `bio` reader's exact-count guarantee is the main producer. `BadUsage` means the caller asked for something nonsensical, such as an invalid open mode; no system call was made, and the `msg` says what was wrong. `IoError::os(op)` is a constructor used inside the library immediately after a failing call, capturing the calling thread's error number; user code rarely builds one, it inspects them.
+
+Inspecting one is an ordinary variant switch:
+
+    import(lib) std::io::fs { IoError };
+
+    void reportIoError(str path, IoError e) {
+        // the three cases split failures by who is responsible
+        switch (e) {
+            IoError::Os { code, op }  => { eprintln("{}: {} (os error {})", path, op, code); },
+            IoError::Eof { op }       => { eprintln("{}: unexpected end of file during {}", path, op); },
+            IoError::BadUsage { msg } => { eprintln("{}: {}", path, msg); },
+        }
+    }
+
+The one thing to understand about `Os.code` is that it is the platform's number, not a portable one. On Linux it is the value of `errno`: for instance 2 is "no such file or directory", 13 is "permission denied", 21 is "is a directory", and 17 is "file exists". The same numbers mean something else on Windows, where `code` is a `GetLastError` value instead. This is a deliberate choice: the low-level number is preserved so a caller who needs it can have it, and the `op` string gives the human-readable context that is portable. A test that wants to distinguish "missing" from "permission denied" in a portable way cannot switch on the number; it should either check accessibility first with `canAccess`, or accept that this is a platform-specific corner and guard it accordingly.
+
+The common failure modes are worth naming, because recognizing them turns a mystery into a sentence:
+
+    symptom                        usual cause                         first check
+    open of a file that should exist fails   wrong working directory    paths are relative to CWD, not the source
+    read returns 0 immediately      file is empty, or offset at EOF     a zero result is success, not failure
+    write "succeeds" but file is short   old content truncated at open   "w" truncates before the first write
+    open fails with a permission code    mode was never granted          canAccess(path, R_OK/W_OK)
+    removeDir fails                 directory is not empty              walk and delete entries first
+    child never returns             nobody drained its output pipe      read before waitFor, or use run
+
+Two final points of discipline. First, `Result` does not force you to handle the error, but the language does force you to *open* it: `unwrap` on an `Err` aborts with a message that names the mistake, and that abort is the failure of last resort, not a strategy. Handle the `Err`, or propagate it, and let `unwrap` appear only after you have proven it cannot fail. Second, an I/O error is not a bug in your program in the way an out-of-range index is; it is the world being the world. That is why I/O failures are `Result` and not assertions, and why the same error can be worth a retry in one context and a fatal report in another.
+
+18.11 Putting It Together: A Word-Count Tool
+
+Here is a complete program that uses console I/O, file reading, argument access, string scanning, and error handling together. It is a small `wc`: it reads a named file, counts lines and words, and prints the counts next to the byte size and the path.
+
+    import(lib) std::io::ios { println, eprintln };
+    import(lib) std::io::fs { IoError, readFileToString };
+    import(lib) std::io::cmd { commandLine };
+    import(lib) std::text::string { String };
+    import(lib) std::option { Option };
+    import(lib) std::result { Result };
+
+    // Linux: the raw command line is argv[0]\0argv[1]\0...\0.
+    // Returns argv[1] as a view, or "" when there is none.
+    str firstArg() {
+        Option<str> cl = commandLine();
+        if (cl.isNone()) return "";
+        str all = cl.unwrap();
+        usize i = 0;
+        while (i < all.len && all.ptr[i] != 0) i += 1;   // skip argv[0]
+        if (i >= all.len) return "";
+        i += 1;
+        usize start = i;
+        while (i < all.len && all.ptr[i] != 0) i += 1;
+        if (i == start) return "";
+        return str::fromParts(all.ptr + start, i - start);
+    }
+
+    void reportIoError(str path, IoError e) {
+        switch (e) {
+            IoError::Os { code, op }  => { eprintln("{}: {} (os error {})", path, op, code); },
+            IoError::Eof { op }       => { eprintln("{}: unexpected end of file during {}", path, op); },
+            IoError::BadUsage { msg } => { eprintln("{}: {}", path, msg); },
+        }
+    }
+
+    bool isSpaceByte(u8 c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    }
+
+    i32 main() {
+        str path = firstArg();
+        if (path.len == 0) {
+            eprintln("usage: wc <file>");
+            return 1;
+        }
+
+        Result<String, IoError> loaded = readFileToString(path);
+        if (loaded.isErr()) {
+            reportIoError(path, loaded.unwrapErr());
+            return 1;
+        }
+
+        String text = loaded.unwrap();
+        usize lines = 0;
+        usize words = 0;
+        bool inWord = false;
+        // one byte-based pass: a newline ends a line, whitespace ends a word
+        for (usize i = 0; i < text.len; i += 1) {
+            u8 c = text.at(i);
+            if (c == '\n') lines += 1;
+            if (isSpaceByte(c)) {
+                inWord = false;
+            } else if (!inWord) {
+                words += 1;
+                inWord = true;
+            }
+        }
+
+        // {:d} prints the counts as decimal, then the byte size and path
+        println("{:d} {:d} {:d} {}", lines, words, text.len, path);
+        text.free();   // release the String returned by readFileToString
+        return 0;
+    }
+
+Read the program from the top. `firstArg` asks for the raw command line, steps over the program name, and returns the first argument as a view into the command-line buffer, a view that is valid for the life of the process, which is why returning it is safe. `reportIoError` is the one place that knows how to turn an `IoError` into a sentence, and it handles all three cases so the caller never sees a raw number if it does not want one. `main` returns `i32` because this tool has meaningful exit codes: zero on success, one when the argument is missing or the file could not be read.
+
+The counting loop is deliberately index-based and byte-based. It walks the file once, incrementing `lines` at every newline and `words` at the transition from whitespace to non-whitespace, which is the same rule `wc` uses for its word count. `text.at(i)` is bounds-checked; since the loop condition already guarantees `i < text.len`, the check never fires, and the code stays readable. The byte count is simply `text.len`, the authoritative length from the text chapter, and there is no `strlen` walk anywhere in the program.
+
+The ownership is explicit at the end: `readFileToString` returned an owned `String`, and `text.free()` releases it. If you were writing a library file rather than a user program, you would mark the file `#[[no_drop_all]]` and free everything by hand, as the standard library does; in ordinary code, the `@drop` conformance on `String` is what eventually reclaims a buffer you forget to free, which is exactly why you must not free it twice.
+
+Three small extensions would make this a finished tool, and each is an exercise below. Counting lines as newlines is off by one for a file whose last line has no trailing newline; a real `wc` adds one when the file is non-empty and does not end in `\n`. Reading the whole file into memory is fine for a source file and wrong for a log that does not fit; a streaming version uses `fios` and counts as it goes. And reading everything as bytes is correct only for ASCII; counting a UTF-8 file's "words" through a byte view is right, but counting its characters would need the codepoint walk from the text chapter.
+
+Why this matters: this page-sized program is the shape almost every command-line tool takes, parse an argument, read some input, transform it, print a result, and report failure with an exit code. Once the pieces are familiar, the differences between `wc`, `grep`, `cat`, and a hundred other tools are small.
+
+18.12 Exercises
+
+1. Comprehension. Why does every file operation in `std::io` return a `Result` rather than raising an exception or returning a sentinel like `-1`? Give one failure that a sentinel could not distinguish from a real value, and say what the `Result` carries instead.
+
+2. Comprehension. Explain the difference between `print`, `println`, `eprint`, and `eprintln`, and give a concrete situation in which using `print` where you meant `eprintln` produces a confusing result once the program is piped to a file.
+
+3. Tracing. What does each of these print, and why? `println("a{}b", 1)`, `println("{{}}")`, `println("{}", 2, 3)`, and `println("x = {:x}", 3.5)`. Which of them fails to compile rather than printing something?
+
+4. Implementation. Write a program that reads integers from standard input, one per line, until end of input, and prints their sum and average. Which of `readVal<i32>`, `readLine` plus `parseI64`, or `read` do you choose, and what happens if a line is not a number?
+
+5. Files. Write `copyFile(str src, str dst)` using `fileOpen`, `fileRead`, and `fileWrite` with a fixed buffer, returning `Result<bool, IoError>`. Then rewrite it with `readFileToString` and `writeFileFromString`, and say what each version does with a file larger than your buffer.
+
+6. Buffering. A program writes ten thousand short lines to a file, one `fileWrite` call each, using `fs`. Estimate how many system calls it makes, then rewrite it with `fios` and estimate again. Which layer do you reach for when the file is written once, and which when it is written continuously?
+
+7. Binary. Use `bio::FileReader` to read a two-byte little-endian unsigned length followed by that many bytes of payload from a file you write first with `FileWriter`. Then change only the read order to `readU16Be` and explain why the payload length changes.
+
+8. Paths. Given a user-supplied path, print its parent, filename, stem, and extension, and a version with the extension changed to `.bak`. Do this without touching the filesystem at all, and explain how you know none of the functions opened a file.
+
+9. Directories. Write `countEntries(str dir) usize` that returns the number of entries in a directory, skipping `.` and `..`, using `openDir`, `readDirEntry`, and `closeDir`. What must you remember to do on every path out of the function?
+
+10. Processes. Use `run` to execute `git rev-parse --short HEAD` and print its exit code. Then redo it with `spawn`, `readStdout`, and `waitFor` so you can capture the output as well as the status, and explain why reading before waiting matters.
+
+11. Environment. Write a program that reads `HOME` with `get` and a fallback from `getInto` into a reusable `String`. Where exactly does the `String` returned by `get` get freed, and what would change if you used `getInto` twice with the same variable?
+
+12. Logging and terminal. Add a `Logger` at level `Info` to the word-count program, logging the path and the counts. Then argue for and against adding color with `term`, considering what happens when the output is redirected to a file.
+
+13. Errors. Extend the word-count program so that a missing file prints a friendly message and exits with code 2, a permission error exits with code 3, and any other `Os` error exits with code 1, using the `op` string and the error number. Which parts of this are portable, and which are not?
+
+14. Stub. Call `std::fmt::format("value = {}", 42)` and print the result. Explain in one paragraph why it does not interpolate, and what to use instead for each of the two things you might have wanted: printing a value, and building a `String`.
+
+15. Putting it together. Turn the word-count example into a small `grep`: read the file, split it into lines, and print each line that contains a search string given as the second argument, prefixed with its line number. Then add a `-c` flag that prints only the count of matching lines. Which functions from `str` and `strutil` do you need, and how does the ownership of the file's `String` change when you return lines that view into it?
+
+16. Meta. This chapter's layering is `fs` for raw control, `fios` for buffering, `bio` for encoding, and `ios` for convenience. Argue for and against collapsing them into one module with options, as C's `FILE*` does without a separate binary layer. Where is the line between a useful separation and a choice the programmer should make once?

@@ -1,0 +1,423 @@
+Appendix H, Memory and Concurrency
+
+This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A, A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.
+
+---
+
+## std::memory
+
+### 52. `std::memory::mman`, Allocators and allocation (aka `std::mman`)
+
+```coral
+pub variant AllocError { AllocFailed { str msg; } }
+
+pub Allocator* defaultAllocator;          // global default allocator
+pub void initDefaultAllocator()
+pub void ensureDefaultAllocator()
+pub void deinitDefaultAllocator()
+
+pub Allocator libcAllocator;              // malloc/free-backed
+pub Allocator miAllocator;                // mimalloc-backed
+pub Allocator cAllocator;                 // libc-backed wrapper
+pub Allocator pageAllocator;              // page-granular
+pub const usize pageSize = 4096u;
+
+pub struct FixedBufferAllocator
+{
+    u8* buffer; usize cap; usize used;
+    void init(u8* buffer, usize size)
+    Allocator allocator()
+    void reset()
+    usize remaining(const self*)
+}
+
+pub struct StackFallbackAllocator
+{
+    FixedBufferAllocator fba;
+    Allocator* fallback;
+    u8 stackBuf[1024];
+    void init(Allocator* fallback)
+    Allocator allocator()
+}
+
+pub struct ArenaAllocator
+{
+    Allocator* backing;
+    u8* base; usize cap; usize used;
+    void init(Allocator* backing, usize initialCap)
+    void deinit()
+    Allocator allocator()
+    rawptr push(usize size)
+    T*     pushType<T>(usize count)
+    void   reset()
+    usize  remaining()
+}
+
+pub struct PoolAllocator
+{
+    rawptr freeList; usize blockSize; usize blockCount;
+    u8* backing; Allocator* source;
+    void init(Allocator* source, usize blockSize, usize blockCount)
+    void deinit()
+    Allocator allocator()
+    rawptr allocBlock()
+    void   freeBlock(rawptr block)
+}
+
+pub struct ScopeAlloc
+{
+    Allocator* backing;
+    rawptr* ptrs; usize* sizes;
+    usize len; usize cap;
+    void init(Allocator* backing, usize cap)
+    rawptr alloc(usize size)
+    T*     allocType<T>(usize count)
+    void   freeAll()
+    void   deinit()
+    usize  bytesUsed(const self*)
+    // helper: void _grow()
+}
+
+pub struct LoggingAllocator
+{
+    Allocator* parent;
+    usize totalAlloced; usize totalFreed; usize currentUsed;
+    usize allocCount; usize freeCount;
+    rawptr* trackPtrs; usize* trackSizes;
+    usize trackLen; usize trackCap;
+    void init(Allocator* parent)
+    Allocator allocator()
+    void printStats()
+    // helpers: _trackGrow _track _untrack
+}
+
+// convenience wrappers over the default allocator
+pub T*   alloc<T>(usize count)
+pub void dealloc<T>(T* ptr)
+pub T*   realloc<T>(T* ptr, usize newCount)
+pub void copy<T>(T* dst, T* src, usize count)
+pub void move<T>(T* dst, T* src, usize count)
+pub void zero<T>(T* ptr, usize count)
+pub bool equal<T>(const T* a, const T* b, usize count)
+```
+
+### 53. `std::memory::intrinsics::memory`, Raw memory primitives
+
+```coral
+pub void memmove(rawptr dst, const rawptr src, usize n)
+pub void memcpy(rawptr dst, const rawptr src, usize n)
+pub rawptr mmap(rawptr addr, usize length, i32 prot, i32 flags, i32 fd, i64 offset)
+pub void munmap(rawptr addr, usize length)
+pub void memset(rawptr dst, u8 val, usize n)
+pub i32  memcmp(const rawptr a, const rawptr b, usize n)
+```
+
+### 54. `std::memory::allocators::allocator`, `Allocator` (vtable)
+
+```coral
+pub struct Allocator
+{
+    rawptr ctx;
+    rawptr(rawptr, usize)          alloc;
+    void(rawptr, rawptr)           free;
+    rawptr(rawptr, rawptr, usize)  realloc;
+}
+```
+
+### 55. `std::memory::allocators::tlsf`, `Tlsf` (Two-Level Segregated Fit)
+
+```coral
+pub struct Tlsf
+{
+    rawptr heapStart; rawptr heapEnd; usize heapSize;
+    FreeBlock* freeLists[32][32];
+    u32 fliBitmap;
+    u32 sliBitmap[32];
+
+    void init(rawptr heap, usize size)
+    rawptr alloc(usize size)
+    void   free(rawptr ptr)
+    rawptr realloc(rawptr ptr, usize newSize)
+    usize  getHeapSize(const self*)
+    usize  getFreeSize(const self*)
+    Allocator allocator()
+    // helpers: _fls _lsbIndex _getIndex _blockSize _blockFromPtr _memcpy
+    //          _ptrFromBlock _nextBlock _writeFooter _prevBlock
+    //          _removeFree _insertFree _findSuitableBlock
+}
+```
+Constants: `FLI_COUNT = 32`, `SLI_COUNT = 32`, `MIN_BLOCK_SIZE = 32u`,
+`BLOCK_ALIGN = 8u`, `BLOCK_USED = 1u`, `BLOCK_PREV_USED = 2u`.
+
+### 56. `std::memory::allocators::mimalloc`, `MiAlloc`
+
+```coral
+pub struct MiAlloc
+{
+    MiHeap heap;
+
+    void init(usize reserveSize)
+    rawptr alloc(usize size)
+    void   free(rawptr ptr)
+    rawptr realloc(rawptr ptr, usize newSize)
+    rawptr calloc(usize count, usize size)
+    usize  getAllocated()
+    usize  getFreed()
+    usize  getUsed()
+    usize  getMapped()
+    Allocator allocator()
+}
+pub void miStatsPrint(MiAlloc* alloc)
+```
+Constants include `MI_ARENA_SIZE = 64 MiB`, `MI_SEGMENT_SIZE = 4 MiB`,
+`MI_PAGE_SIZE = 64 KiB`, `MI_SLICE_SIZE = 64 KiB`, `MI_ALIGN = 16`,
+`MI_MAX_BLOCK_SIZE = 512 KiB`, `MI_HUGE_THRESHOLD = 128 KiB`,
+`MI_SIZE_CLASS_COUNT = 44`, `MI_SEGMENT_MAP_SIZE = 64`.
+
+### 57. `std::memory::pool`, `Pool<T>` (fixed-size object pool)
+
+```coral
+pub struct Pool<T>
+{
+    rawptr freeList;
+    u8* blocks;
+    usize blockSize;
+    usize blockCount;
+    usize totalBlocks;
+    usize usedBlocks;
+
+    static Pool<T> new()
+    void dispose()
+    T*   acquire()
+    void release(T* obj)
+    usize available()
+    usize used()
+    usize capacity()
+    bool _grow()
+}
+```
+
+### 58. `std::memory::shared_ptr`, `SharedPtr<T>` (refcounted)
+
+```coral
+pub struct SharedPtr<T>
+{
+    T* ptr;
+    RefCount* rc;       // contains usize count
+
+    bool init(T value)
+    void dispose()
+    T    get(const self*)
+    T*   data()
+    const T* constData(const self*)
+    usize refCount(const self*)
+    bool isValid(const self*)
+}
+void drop()
+```
+
+### 59. `std::memory::smart_ptr`, `SmartPtr<T>` (unique)
+
+```coral
+pub struct SmartPtr<T>
+{
+    T* ptr;
+
+    bool init(T value)
+    void dispose()
+    T    get(const self*)
+    T*   data()
+    const T* constData(const self*)
+    void set(T value)
+    bool isValid(const self*)
+    T    take()
+}
+void drop()
+```
+
+---
+
+## std::concurrent
+
+### 60. `std::concurrent::mutex`, `Mutex`
+
+```coral
+pub struct Mutex
+{
+    rawptr impl[6];
+    void init()
+    void initRecursive()
+    void destroy()
+    void lock()
+    void unlock()
+    bool tryLock()
+}
+```
+
+### 61. `std::concurrent::rwlock`, `RwLock`
+
+```coral
+pub struct RwLock
+{
+    rawptr impl[8];
+    void init()
+    void destroy()
+    void readLock()
+    void writeLock()
+    bool tryReadLock()
+    bool tryWriteLock()
+    void unlock()
+}
+```
+
+### 62. `std::concurrent::semaphore`, `Semaphore`
+
+```coral
+pub struct Semaphore
+{
+    rawptr impl[8];
+    bool init(u32 value)
+    void destroy()
+    void wait()
+    bool tryWait()
+    void post()
+    i32  value()
+}
+```
+
+### 63. `std::concurrent::signal`, POSIX signals
+
+```coral
+pub const i32 SIGABRT = 6;  SIGALRM = 14; SIGBUS = 7;  SIGCHLD = 17;
+pub const i32 SIGCONT = 18; SIGFPE = 8;   SIGHUP = 1;  SIGILL = 4;
+pub const i32 SIGINT = 2;   SIGKILL = 9;  SIGPIPE = 13; SIGQUIT = 3;
+pub const i32 SIGSEGV = 11; SIGSTOP = 19; SIGTERM = 15; SIGTSTP = 20;
+pub const i32 SIGTTIN = 21; SIGTTOU = 22; SIGUSR1 = 10; SIGUSR2 = 12;
+pub const i32 SIGSYS = 31;  SIGTRAP = 5;  SIGURG = 23; SIGXCPU = 24; SIGXFSZ = 25;
+pub const u8 SIG_DFL = 0;
+pub const usize SIG_IGN = 1;
+
+pub rawptr handle(i32 sig, rawptr handler)
+pub void   ignore(i32 sig)
+pub void   defaultHandler(i32 sig)
+pub i32    sendSig(i32 pid, i32 sig)
+pub i32    raiseSig(i32 sig)
+```
+
+### 64. `std::concurrent::thread`, Threads, conditions, atomics
+
+```coral
+pub distinct Thread = rawptr;
+
+pub struct ConditionVar
+{
+    rawptr impl[6];
+    void init()
+    void destroy()
+    void wait(Mutex* mutex)
+    void signal()
+    void broadcast()
+}
+
+pub variant ThreadError { CreateFailed { str msg; } }
+
+pub Result<Thread, ThreadError> threadCreate(rawptr(rawptr) fn, rawptr arg)
+pub bool   threadJoin(Thread t, rawptr* retval)
+pub void   threadExit(rawptr retval)
+pub Thread threadCurrent()
+
+pub struct AtomicU64
+{
+    u64 value;
+    u64  load()
+    void store(u64 val)
+    u64  fetchAdd(u64 delta)
+    u64  fetchSub(u64 delta)
+    bool compareExchange(u64 expected, u64 desired)
+}
+
+pub struct AtomicU32
+{
+    u32 value;
+    u32  load()
+    void store(u32 val)
+    u32  fetchAdd(u32 delta)
+    u32  fetchSub(u32 delta)
+    bool compareExchange(u32 expected, u32 desired)
+}
+```
+
+### 65. `std::concurrent::threadpool`, `ThreadPool`
+
+```coral
+pub struct ThreadPool
+{
+    Mutex mutex;
+    ConditionVar cond;
+    Thread* threads;
+    Task* queueHead;
+    Task* queueTail;
+    u32 threadCount;
+    bool stop;
+
+    bool init(u32 numThreads)
+    void deinit()
+    bool enqueue(void(rawptr) func, rawptr arg)
+    u32  threadCount()
+    // helper: void _worker()
+}
+pub extend ThreadPool : @drop { void drop(); }
+// helper: void _workerEntry(rawptr arg)
+```
+
+### 66. `std::concurrent::async`, Stackful-fiber async runtime
+
+Built on glibc `ucontext`. `spawn` creates a fiber, `await` parks the current
+fiber until a future resolves, and `run`/`runOnce` drive the scheduler.
+
+```coral
+pub variant AsyncError
+{
+    OutsideFiber { str msg; },
+    NullFuture   { str msg; },
+    SpawnFailed  { str msg; }
+}
+
+pub struct Future
+{
+    u8     state;         // FUTURE_PENDING / FUTURE_READY
+    rawptr result;
+    Fiber* waiters;
+    Future* chanNext;
+    bool   counted;
+}
+
+pub usize defaultFiberStackSize = 131072;   // 128 KiB
+
+pub bool init()
+pub Result<Future*, AsyncError> spawn(void(rawptr) fn, rawptr arg)
+pub Result<rawptr, AsyncError>  await(Future* f)
+pub Future* sleep(u64 ms)
+pub bool    run()
+pub void    runOnce()
+pub Future* poolRun(ThreadPool* pool, void(rawptr) fn, rawptr arg)
+
+pub struct AsyncChannel
+{
+    rawptr* buf;
+    usize cap;
+    usize count;
+    usize head;
+    Future* recvHead;
+    Future* recvTail;
+
+    bool    init(usize capacity)
+    void    deinit()
+    bool    send(rawptr value)
+    Future* recv()
+}
+pub extend AsyncChannel : @drop { void drop(); }
+```
+State/step constants (`FUTURE_*`, `FIBER_*`, `STEP_*`) and the scheduler
+internals (`Fiber`, `Scheduler`, `TimerEntry`, `_nowMs`, `_initScheduler`, …)
+are non-`pub` and not part of the public surface.

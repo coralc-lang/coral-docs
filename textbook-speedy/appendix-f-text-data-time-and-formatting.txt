@@ -1,0 +1,369 @@
+Appendix F, Text, Data, Time, and Formatting
+
+This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A, A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.
+
+---
+
+## std::text
+
+`String` is re-exported into the prelude.
+
+### 24. `std::text::ascii`, ASCII / UTF-8 helpers
+
+```coral
+pub bool isAscii(u8 b)
+pub bool isAsciiDigit(u8 b)
+pub bool isAsciiAlpha(u8 b)
+pub bool isAsciiAlnum(u8 b)
+pub bool isAsciiHex(u8 b)
+pub bool isAsciiSpace(u8 b)
+pub bool isAsciiUpper(u8 b)
+pub bool isAsciiLower(u8 b)
+pub u8   toAsciiLower(u8 b)
+pub u8   toAsciiUpper(u8 b)
+pub u8   asciiDigitVal(u8 b)
+pub u8   asciiHexVal(u8 b)
+
+pub u32  utf8ByteCount(u8 b)
+pub u32  utf8Decode(const u8* buf, u32* bytesOut)
+pub u32  utf8Encode(u32 cp, u8* buf)
+pub u32  utf16ToUtf8(u16 cp, u8* buf)
+pub usize utf8CountChars(str s)
+pub bool utf8IsValid(str s)
+```
+
+### 25. `std::text::string`, `String`
+
+```coral
+pub struct String
+{
+    u8* ptr;
+    usize len;
+    usize cap;
+
+    static String new()
+    static String withCap(usize cap)
+    static String from(str sv)
+    static String fromCstr(const cchar* cstr)
+    static String join(str sep, const Vec<str>* parts)
+
+    String clone()
+    void   free()
+    str    asView()
+    cchar* asCstr()
+    u8*    asU8()
+
+    void   pushChar(u8 c)          // one raw byte
+    void   pushCodepoint(char c)   // one UTF-8 codepoint
+    void   pushByte(u8 b)
+    void   appendView(str sv)
+    void   pushView(str sv)
+    void   pushStr(const String* other)
+    void   pushCstr(const u8* cstr)
+    void   pushRepeat(u8 c, usize n)
+
+    void   clear()
+    void   shrinkToFit()
+    void   truncate(usize newLen)
+    void   insertView(usize idx, str sv)
+    void   removeRange(usize start, usize end)
+    void   replaceAll(str needle, str replacement)
+    void   toUpper()
+    void   toLower()
+    void   reverse()
+
+    u8     at(usize idx)
+    void   atApply(usize idx, u8 c)
+    bool   isEmpty()
+    bool   equals(const String* other)
+    bool   equalsView(str sv)
+    i32    compare(const String* other)
+    usize  findChar(u8 c)
+    usize  rfindChar(u8 c)
+    usize  findView(str needle)
+    bool   startsWith(str prefix)
+    bool   endsWith(str suffix)
+    bool   containsView(str needle)
+
+    String trim()
+    String trimStart()
+    String trimEnd()
+    String substr(usize start, usize end)
+    Vec<str> splitByte(u8 delim)
+    String repeat(usize n)
+    String padLeft(usize totalLen, u8 padChar)
+    String padRight(usize totalLen, u8 padChar)
+    usize  countChar(u8 c)
+
+    bool   nextCodepoint(usize* idx, char* out)
+    usize  codepointCount()
+    // helper: void _ensure(usize extra)
+}
+pub extend String : @drop { void drop(); }
+```
+
+### 26. `std::text::strutil`, String-view utilities
+
+```coral
+pub usize  split(str sv, u8 delim, str* out, usize maxParts)
+pub Vec<str> splitVec(str sv, u8 delim)
+pub str    trim(str sv)
+pub str    trimLeft(str sv)
+pub str    trimRight(str sv)
+pub bool   startsWith(str sv, str prefix)
+pub bool   endsWith(str sv, str suffix)
+pub bool   contains(str sv, str sub)
+pub isize  indexOf(str sv, str sub)
+pub isize  indexOfChar(str sv, u8 ch)
+pub isize  lastIndexOf(str sv, str sub)
+pub String replace(str sv, str from, str to)
+pub String join(const str* parts, usize count, str sep)
+pub String joinVec(const Vec<str>* parts, str sep)
+pub str    substr(str sv, usize start, usize len)
+pub bool   equalsIgnoreCase(str a, str b)
+```
+
+### 27. `std::text::utf8`, UTF-8 codec
+
+```coral
+pub u8     encodeCodepoint(u32 cp, u8* out)
+pub u32    decodeCodepoint(const u8* s, usize len, usize* consumed)
+pub usize  codepointLen(const u8* s, usize len)
+pub usize  countCodepoints(const u8* s, usize len)
+pub bool   isValid(const u8* s, usize len)
+pub String toLower(const u8* s, usize len)
+pub String toUpper(const u8* s, usize len)
+pub Option<char> nextChar(const u8* s, usize len, usize* consumed)
+pub String encodeChar(char c)
+```
+
+### 28. `std::text::uri`, `Uri`
+
+```coral
+pub struct Uri
+{
+    String scheme;
+    String userInfo;
+    String host;
+    u16    port;
+    String path;
+    String query;
+    String fragment;
+    bool   hasPort;
+
+    static Uri new()
+    void dispose()
+    bool parse(str input)
+}
+pub extend Uri : @drop { void drop(); }
+```
+
+### 29. `std::text::regex`, `Regex` (POSIX ERE via libc)
+
+```coral
+const i32 REG_EXTENDED = 1;
+const i32 REG_ICASE    = 2;
+const i32 REG_NOSUB    = 4;
+
+pub struct Regex
+{
+    rawptr impl[8];
+    bool   compiled;
+    usize  groupCount;
+    u8*    findBuf;
+    usize  findBufCap;
+
+    bool compile(str pattern, bool caseInsensitive)
+    void free()
+    bool matches(str input)
+    bool find(str input, Vec<str>* groups)
+}
+pub i32 regexFlags(bool extended, bool icase, bool nosub)
+pub extend Regex : @drop { void drop(); }
+```
+
+---
+
+## std::data
+
+### 30. `std::data::option`, `Option<T>` (aka `std::option`, prelude)
+
+```coral
+pub variant Option<T>
+{
+    None,
+    Some { T value; }
+}
+
+pub extend<T> Option<T>
+{
+    bool isSome()
+    bool isNone()
+    T    unwrap()
+    T    unwrapOr(T default)
+    T*   ptr()
+    const T* constPtr()
+    void map(T(T) fn)
+    void andThen(Option<T>(T) fn)
+    void orElse(Option<T>() fn)
+    T    take()
+}
+```
+
+### 31. `std::data::result`, `Result<T, E>` (aka `std::result`, prelude)
+
+```coral
+pub variant Result<T, E>
+{
+    Ok  { T value; },
+    Err { E error; }
+}
+
+pub extend<T, E> Result<T, E>
+{
+    bool isOk()
+    bool isErr()
+    T    unwrap()
+    T    unwrapOr(T defaultVal)
+    E    unwrapErr()
+    T*   okPtr(self)
+    E*   errPtr(self)
+    void mapOk(T(T) fn)
+    void mapErr(E(E) fn)
+    void andThen(Result<T, E>(T) fn)
+    void orElse(Result<T, E>(E) fn)
+}
+```
+
+---
+
+## std::time
+
+### 32. `std::time`, Wall-clock and monotonic time
+
+Ported from the old `std/core/time` module. Each target implements the same
+public surface with its own native clock: the Linux build issues raw x86_64
+syscalls (`clock_gettime`, `gettimeofday`, `nanosleep`, `time`); the Windows
+build calls `QueryPerformanceCounter`, `GetSystemTimeAsFileTime`, and `Sleep`.
+There is no libc in either path.
+
+```coral
+pub const CLOCK_REALTIME  : i32 = 0;
+pub const CLOCK_MONOTONIC : i32 = 1;
+
+pub struct Timespec { i64 sec; i64 nsec; }
+pub struct Timeval  { i64 sec; i64 usec; }
+
+pub Timespec nowMonotonic()                       // CLOCK_MONOTONIC
+pub Timespec nowRealtime()                        // CLOCK_REALTIME
+pub Timeval  nowTimeval()                         // gettimeofday / derived
+pub u64      unixSeconds()                        // time(2) / file-time epoch
+pub Timespec addTimespec(Timespec a, Timespec b)
+pub Timespec subTimespec(Timespec a, Timespec b)
+pub f64      timespecToF64(Timespec ts)           // sec + nsec * 1e-9
+pub f64      timevalToF64(Timeval tv)             // sec + usec * 1e-6
+pub void     sleepTimespec(Timespec ts)           // nanosleep / Sleep
+pub void     sleepMs(u64 ms)
+```
+
+- `nowMonotonic()` never jumps backwards and is the clock to use for measuring
+  elapsed time; `nowRealtime()` is wall-clock and can move when the system time
+  is adjusted.
+- `sleepTimespec` / `sleepMs` do not retry a shortened sleep; a signal can wake
+  them early (matching the old module).
+- `Timespec` / `Timeval` are plain value types with no `@drop`.
+
+```coral
+import(lib) std::time { Timespec, nowMonotonic, subTimespec, sleepMs, timespecToF64 };
+
+Timespec t0 = nowMonotonic();
+sleepMs(10u);
+Timespec t1 = nowMonotonic();
+println(timespecToF64(subTimespec(t1, t0)));
+```
+
+### 33. `std::duration`, `Duration`
+
+Ported from the old `std/core/duration` module. A `Duration` is a signed span of
+time stored as `(i64 sec, i64 nsec)` and always normalized so
+`0 <= nsec < 1_000_000_000`. Arithmetic saturates at the `i64` limits instead of
+wrapping. The implementation is identical on Linux and Windows.
+
+```coral
+pub struct Duration
+{
+    i64 sec;
+    i64 nsec;
+
+    static Duration fromSecs(i64 s)
+    static Duration fromMillis(i64 ms)
+    static Duration fromMicros(i64 us)
+    static Duration fromNanos(i64 ns)
+    static Duration fromF64(f64 seconds)
+
+    i64 asSecs()
+    i64 asMillis()
+    i64 asMicros()
+    i64 asNanos()
+    f64 asF64()
+    bool isZero()
+
+    Duration add(Duration other)
+    Duration sub(Duration other)
+    Duration mul(i64 factor)
+    Duration div(i64 factor)        // assert(factor != 0)
+
+    i32 compare(Duration other)     // -1 / 0 / 1
+    bool eq(Duration other)
+    bool lt(Duration other)
+    bool gt(Duration other)
+    bool le(Duration other)
+    bool ge(Duration other)
+
+    Timespec toTimespec()
+    void     sleep()                // blocks for the span
+}
+
+pub Duration seconds(i64 s)
+pub Duration millis(i64 ms)
+pub Duration micros(i64 us)
+pub Duration nanos(i64 ns)
+```
+
+- `fromF64` maps NaN and non-representable inputs to `Duration::fromSecs(0)`.
+- `mul` / `div` and the scaled `as*` accessors return the saturated extreme on
+  overflow rather than wrapping.
+- `sleep()` bridges to `std::time::sleepTimespec`.
+
+```coral
+import(lib) std::duration { Duration, seconds, millis };
+
+Duration total = seconds(2).add(millis(500));
+println(total.asMillis());   // 2500
+```
+
+---
+
+## std::fmt
+
+### 39. `std::fmt::fmt`, String formatting
+
+```coral
+pub String format(str f, ...)                 // NOTE: stub, see below
+pub String formatInt(i64 val, u64 radix, bool upper)
+pub String formatUint(u64 val, u64 radix, bool upper)
+pub String formatFloat(f64 val, u64 precision)
+pub String formatHex(u64 val, bool prefix)
+pub String formatHexUpper(u64 val, bool prefix)
+pub String formatBin(u64 val, bool prefix)
+pub String formatChar(char c)
+pub String padLeft(str sv, usize width, u8 pad)
+pub String padRight(str sv, usize width, u8 pad)
+pub String repeat(str sv, usize count)
+pub String join(const str* parts, usize count, str sep)
+pub String joinVec(const Vec<String>* parts, str sep)
+// helper: u64 _clampRadix(u64 radix)
+```
+> **Note:** `fmt::format` currently strips `{}` placeholders without
+> substituting arguments; use `io::ios`' `print`/`println` (whose format
+> handling is implemented in the compiler) for real formatting.

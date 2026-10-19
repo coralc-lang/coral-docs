@@ -1,0 +1,1090 @@
+Chapter36
+
+Live Examples: Programming Principles
+
+The Rules Behind the Rules
+
+Every language feature in this book exists to serve a principle, and the principles are older than the syntax. SOLID, DRY, cohesion, coupling, composition over inheritance, the discipline of failure: these are not ceremonies invented by a consultant. They are descriptions, in advance, of the shapes that make code easy to change and hard to break, and the shapes that make it easy to break. A program is read far more often than it is written, and modified more often than it is read. Every principle in this chapter is a bet that the future will ask something of this code, and a strategy for being ready when it does.
+
+The trouble with principles is that they are stated abstractly and learned concretely, or not at all. "Single responsibility" means nothing until you have felt a function that changes for four unrelated reasons, and it means everything after. So this chapter teaches each principle the only way it sticks: with a before and an after, both in Coral, both small enough to hold in your head. The before is real code of the kind you have written. It works, it passes its test, and it is quietly carrying a debt. The after is the same code reshaped around the principle, and the difference is the lesson. Nothing here requires object orientation. Coral has no inheritance to inherit from, and that turns out to be a gift: the composition, the traits, and the error discipline that remain are the parts of the principles that actually carry weight in any language.
+
+A word on how to read the pairs. The before is not stupid code written to be mocked. It is code a competent person writes under deadline pressure, and it works today. The after is not automatically the "right" answer in every situation either. Principles trade one kind of cost for another (more types, more files, more indirection), and the skill is knowing when the trade is worth it. Each example ends with a sentence about when the before is actually fine, because a principle applied everywhere is as much a failure of judgment as one applied nowhere.
+
+A second word on the theme that ties the examples together. Almost every before/after in this chapter is really one move: taking knowledge that is spread out and duplicated, and giving it a single home with a name. The name is the point. A duplicated loop has no name to change; a named function does. A public field with an implicit contract has no place to enforce it; a constructor does. The programmer's version of "a place for everything, and everything in its place" is exactly this: knowledge gets a home, and the home gets a name.
+
+36.1 Naming: The Cheapest Documentation
+
+The principle. A name should tell the reader what a thing is or does, at the level of abstraction the reader is working at. If you have to read the body to know what a function does, the name has failed.
+
+The intuition. Names are documentation that cannot go stale, because the compiler will not let you rename a thing without touching every use. A comment can lie; a name cannot drift. The cost of a good name is a few extra seconds of thought; the benefit is paid on every future read. The test is simple: can someone who has never seen this file read the call site and know what happens? If not, rename.
+
+The before.
+
+    pub f64 calc(f64 a, f64 b) {
+        // what is 0.85? the reader has to guess
+        return a * b * 0.85;
+    }
+
+    pub bool chk(u32 n) {
+        // and what does the range 3..24 mean?
+        return n >= 3 && n <= 24;
+    }
+
+    pub void proc(Vec<f64>* d) {
+        // "proc" says nothing about the 1.2 multiplier
+        for (usize i = 0; i < d->count(); i += 1)
+            d->set(i, d->at(i) * 1.2);
+    }
+
+Every one of these works. Now read a call site: `calc(x, y)`, `chk(n)`, `proc(v)`. You cannot tell what any of them does, what the magic `0.85` means, or what range `3..24` represents. The knowledge lives only in the body, and a reader has to open every definition.
+
+The after.
+
+    // the magic number now has a name that states the business rule
+    pub const f64 WHOLESALE_MARKUP = 0.85;
+
+    pub f64 retailPrice(f64 cost, f64 quantity) {
+        // the call site reads as a sentence
+        return cost * quantity * WHOLESALE_MARKUP;
+    }
+
+    // bounds carry their meaning
+    pub const u32 MIN_USERNAME_LENGTH = 3;
+    pub const u32 MAX_USERNAME_LENGTH = 24;
+
+    pub bool isValidUsernameLength(u32 length) {
+        return length >= MIN_USERNAME_LENGTH && length <= MAX_USERNAME_LENGTH;
+    }
+
+    pub const f64 TAX_RATE = 1.2;
+
+    pub void applyTax(Vec<f64>* prices) {
+        // the rate is named, so the intent is visible at the loop
+        for (usize i = 0; i < prices->count(); i += 1)
+            prices->set(i, prices->at(i) * TAX_RATE);
+    }
+
+Now the call sites read as sentences: `retailPrice(cost, qty)`, `isValidUsernameLength(len)`, `applyTax(prices)`. The magic numbers have names, and the names explain the business rule. A reader never has to open a body to know what is happening.
+
+Cost and notes. Longer names cost keystrokes and horizontal space, and the habit can go wrong: `theLengthOfTheUsernameEnteredByTheUser` is worse than `usernameLength`, because a name that tries to be a sentence defeats its own purpose. The standard library's own names are almost aggressively short (`len`, `cap`, `count`, `at`) because their types and their few lines of use make the meaning obvious; the economy is earned, not assumed. The rule is not "long names," it is "names that carry the information the reader needs and no more."
+
+When the before is fine. Local loop variables inside a short, obvious loop can be `i`, `j`, and `n`; the surrounding twenty lines give them all the context they need. The principle applies to the names that cross a boundary, function names, type names, public fields, exported constants, because those are the ones a reader sees without the body.
+
+Variation. Take a function you wrote recently whose name contains `do`, `process`, `handle`, or `data`, and rename it to say precisely what it does to precisely what. If you cannot, the function is probably doing more than one thing, and the next section applies.
+
+36.2 DRY: Don't Repeat Yourself
+
+The principle. Every piece of knowledge in a system should have a single, authoritative representation. When the same rule is written in two places, the two will eventually disagree, and the system will contain a contradiction.
+
+The intuition. The real enemy is not extra typing; it is the change that has to be made in five places and is made in four. A duplicated piece of logic is a bet that it will never need to change, and that bet loses eventually. DRY is the discipline of finding the duplication and giving it one home, so that a change is one edit in one place. The subtlety is that DRY is about knowledge, not text. Two functions that happen to look similar but express different rules should stay separate, because merging them would couple two things that evolve independently.
+
+The before. Registration validates a username in three places, each with its own slightly different rule.
+
+    pub bool registerUser(str name) {
+        // this copy of the username rule...
+        if (name.len < 3 || name.len > 24) return false;      // rule A
+        if (name.len == 0) return false;
+        return true;
+    }
+
+    pub bool renameUser(str newName) {
+        // ...is duplicated here...
+        if (newName.len < 3 || newName.len > 24) return false;  // rule A again
+        return true;
+    }
+
+    pub bool createGuest(str label) {
+        // ...and has already drifted in this third copy
+        if (label.len < 2 || label.len > 24) return false;      // rule A', drifted
+        return true;
+    }
+
+The first two agree; the third has already drifted to a minimum of two, and nobody remembers why. When the product owner says "usernames must now be at least four characters," a developer will find two of the three checks and ship a bug. The three copies were a bet, and it just lost.
+
+The after. One function owns the rule, and every call site asks it.
+
+    // one authoritative home for the rule
+    pub const u32 MIN_USERNAME_LENGTH = 4;
+    pub const u32 MAX_USERNAME_LENGTH = 24;
+
+    pub bool isValidUsername(str name) {
+        return name.len >= MIN_USERNAME_LENGTH && name.len <= MAX_USERNAME_LENGTH;
+    }
+
+    // every caller now asks the same function
+    pub bool registerUser(str name) {
+        return isValidUsername(name);
+    }
+
+    pub bool renameUser(str newName) {
+        return isValidUsername(newName);
+    }
+
+    pub bool createGuest(str label) {
+        return isValidUsername(label);
+    }
+
+Now the rule is in one place. Changing the minimum is a one-line edit, and there is no place left for the rule to hide and drift. If guests genuinely need a different rule, that is a different piece of knowledge, and it earns its own named function, the point is not to force everything together, but to make sure two copies of the same knowledge never exist.
+
+Cost and notes. The naive fear is that DRY adds indirection: `registerUser` now calls `isValidUsername`, which is one hop more than an inline check. The hop is free (the compiler inlines it), and the clarity is not. The real risk is over-application: merging two functions because their bodies look alike when their reasons for existing are different. If the username rule and the guest-label rule are conceptually distinct, they should be distinct even if today they happen to compare the same numbers. A shared helper would couple them, and the next change to one would wrongly affect the other.
+
+When the before is fine. Genuinely one-off code, a check used exactly once, in exactly one place, is not duplicated and needs no extraction. DRY is about repetition, not about length.
+
+Variation. Grep a project for a constant that appears as a literal in more than one file. Every hit is a candidate for a named constant, and every one is a place where the next change might be missed.
+
+36.3 Single Responsibility, Cohesion, and Coupling
+
+The principle. A module, a type, or a function should have one reason to change: one job, one owner of a single piece of knowledge. Cohesion is how strongly the parts of a thing belong together; coupling is how much one thing depends on another. High cohesion and low coupling is the goal.
+
+The intuition. Picture a function that reads a file, parses it, computes a statistic, formats the result, and writes it to the screen. Five reasons to change: the file format changes, the parser changes, the statistic changes, the report format changes, the output destination changes. Every one of those edits touches the same function, so every change risks breaking the other four concerns. Splitting the function into five, each with one reason to change, means a change to the report format touches the report code and nothing else. The pieces are more cohesive (each does one thing) and less coupled (none needs to know how the others work).
+
+The before. A single `reportSales` does everything.
+
+    pub struct SalesSummary {
+        // the summary value the function computes then prints
+        f64 total;
+        f64 average;
+        u32 count;
+    }
+
+    pub f64 totalOf(const Vec<f64>* values) {
+        f64 sum = 0.0;
+        for (usize i = 0; i < values->count(); i += 1) sum += values->at(i);
+        return sum;
+    }
+
+    // this one function carries five reasons to change
+    pub void reportSales(const Vec<f64>* values) {
+        // load (pretend it happens here)
+        // the statistic is computed inline, not returned
+        f64 total = totalOf(values);
+        f64 average = values->count() > 0 ? total / (f64)values->count() : 0.0;
+
+        // format and print, all tangled with the computation
+        println("Sales report");
+        println("  count:   {}", values->count());
+        println("  total:   {}", total);
+        println("  average: {}", average);
+    }
+
+The name promises a report; the function computes a summary, decides a format, and writes to stdout. Changing the output to a file, or reusing the summary in a different report, means editing this one function and hoping nothing else moves.
+
+The after. Each concern gets a name and a home.
+
+    pub struct SalesSummary {
+        // the pure result, with no formatting attached
+        f64 total;
+        f64 average;
+        u32 count;
+    }
+
+    // pure computation: one reason to change (the definition of the statistic)
+    pub SalesSummary summarise(const Vec<f64>* values) {
+        f64 total = 0.0;
+        for (usize i = 0; i < values->count(); i += 1) total += values->at(i);
+        u32 n = (u32)values->count();
+        f64 average = n > 0 ? total / (f64)n : 0.0;
+        return SalesSummary { .total = total, .average = average, .count = n };
+    }
+
+    // formatting: one reason to change (the presentation)
+    pub String formatSummary(const SalesSummary* s) {
+        String out = String::new();
+        out.appendView("Sales report\n");
+        out.appendView("  count:   " + formatInt((i64)s->count, 10, false) + "\n");
+        out.appendView("  total:   " + formatFloat(s->total, 2) + "\n");
+        out.appendView("  average: " + formatFloat(s->average, 2) + "\n");
+        return out;
+    }
+
+    // delivery: one reason to change (the destination)
+    pub void reportSales(const Vec<f64>* values) {
+        // three-line composition of the three concerns
+        SalesSummary s = summarise(values);
+        print(formatSummary(&s));
+    }
+
+Now the statistic can be reused without printing; the format can change without touching the arithmetic; the destination can change without touching either. `summarise` is pure and easy to test, `formatSummary` depends only on the summary, and `reportSales` is a three-line composition.
+
+Cost and notes. Splitting adds types and function names, and there is a real cost to too fine a split: a function that does nothing but forward its arguments to another function has added indirection without adding clarity. The right granularity is one reason to change per piece, and the way to find it is to ask, of each piece, "what kinds of edits will this need over its life?" If two concerns will always change together, they belong together.
+
+When the before is fine. A throwaway script that runs once and is deleted needs no structure. Structure is an investment against future change; if there is no future, there is nothing to invest against.
+
+Variation. Take the `reportSales` after and add a second report format, `formatSummaryCSV`, without touching `summarise` or the arithmetic. The ease of that change is the measure of the split.
+
+36.4 Composition over Inheritance
+
+The principle. Prefer assembling behaviour by combining small parts over arranging types in a hierarchy. Inheritance couples a subtype to its parent's implementation; composition couples it only to the interface it uses.
+
+The intuition. Coral has no inheritance at all, and this is worth pausing on, because it removes the temptation entirely. The classic mistake in a language that has it is the "employee" hierarchy: a base `Employee`, then `Manager extends Employee`, then `Contractor extends Manager` because a contractor happens to be paid like a manager, and now a change to manager pay rules silently changes contractors. The inheritance expressed a coincidence as a kind of being. Composition says instead: an employee has a role, a pay type, and a schedule, each a small independent value. Combine them, and the coincidence disappears. A type is a bag of parts, not a position in a family tree.
+
+The before. One struct carrying union-ish fields selected by a kind tag.
+
+    enum RoleKind { Engineer, Manager, Contractor }
+
+    pub struct Employee {
+        // the tag selects which of the fields below are even meaningful
+        str name;
+        RoleKind kind;
+        f64 baseSalary;      // meaningful for Engineer and Manager
+        f64 hourlyRate;      // meaningful for Contractor
+        u32 reports;         // meaningful for Manager
+        u32 hoursThisWeek;   // meaningful for Contractor
+    }
+
+    pub f64 pay(const Employee* e) {
+        // every new role means another branch here
+        if (e->kind == RoleKind::Contractor)
+            return e->hourlyRate * (f64)e->hoursThisWeek;
+        return e->baseSalary;
+    }
+
+This is the tagged-union-by-hand trap from Chapter13: half the fields are meaningless for any given employee, and nothing stops code from reading `hourlyRate` off an engineer. Adding a role means adding fields and editing every function that switches on `kind`.
+
+The after. Compose a role and a pay arrangement, each a small own value.
+
+    variant Pay {
+        // each case carries exactly the fields it needs
+        Salaried { f64 base; }
+        Hourly   { f64 rate; u32 hours; }
+    }
+
+    variant Role {
+        // roles are a closed set of cases
+        Engineer,
+        Manager   { u32 reports; }
+        Contractor,
+    }
+
+    pub struct Employee {
+        // composed parts, not a family tree
+        str name;
+        Role role;
+        Pay pay;
+    }
+
+    pub f64 weeklyPay(const Employee* e) {
+        // depends only on the pay arrangement
+        return switch (e->pay) {
+            Pay::Salaried { base }        => base,
+            Pay::Hourly { rate, hours }   => rate * (f64)hours,
+        };
+    }
+
+    pub bool managesOthers(const Employee* e) {
+        // depends only on the role
+        return switch (e->role) {
+            Role::Manager { reports } => reports > 0,
+            else                      => false,
+        };
+    }
+
+Now the fields travel with the case that owns them: a `Pay::Hourly` has its hours, and there is no way to ask a salaried employee for an hourly rate because the value does not have one. `weeklyPay` depends only on the pay arrangement, and `managesOthers` only on the role, so they are coupled to less. Adding a role is a new case the compiler insists every switch handle; adding a pay arrangement is a new case that only the pay switch sees.
+
+Cost and notes. Composition produces more named types (`Pay`, `Role`) and forces decisions that the flat struct let you defer. That is the point: the decisions were being made implicitly by convention, and composition makes them explicit and checked. The cost is real when the parts are trivial and never vary. Wrapping a single `f64` in a one-case variant is ceremony, not composition.
+
+When the before is fine. A small closed set of records that genuinely share all their fields and will never diverge is fine as a plain struct. Reach for composition when fields are conditionally meaningful, which is the exact smell of the before.
+
+Variation. Add a `Role::Intern` case and route it through `weeklyPay` via a `Pay::Stipend { f64 amount; }`. List every place the compiler forces you to update, and notice that each one is a place that would have silently done the wrong thing in the before.
+
+36.5 Open/Closed with Traits
+
+The principle. Code should be open for extension but closed for modification: you should be able to add new behaviour without editing existing, working code.
+
+The intuition. Consider a function that computes the area of a shape, switched over an enum of shape kinds. Every new shape means editing that function, and every edit risks the shapes that already worked. A trait inverts the dependency: instead of the area function knowing every shape, each shape knows its own area, and the function is written against the trait. Adding a shape is a new `extend` block in a new file; no existing line changes. This is the heart of the expression problem, new operations versus new cases, and the trait chooses "new cases are cheap."
+
+The before. One switch that knows every shape.
+
+    enum ShapeKind { Circle, Rectangle, Triangle }
+
+    pub struct Shape {
+        // one generic pair of numbers reused by every shape kind
+        ShapeKind kind;
+        f64 a;
+        f64 b;
+    }
+
+    pub f64 area(const Shape* s) {
+        // adding a shape means editing this very function
+        switch (s->kind) {
+            ShapeKind::Circle    => return 3.14159 * s->a * s->a,
+            ShapeKind::Rectangle => return s->a * s->b,
+            ShapeKind::Triangle  => return 0.5 * s->a * s->b,
+        }
+    }
+
+Adding a `Pentagon` means editing this function, which means recompiling and retesting everything that touches `area`. A bug introduced here affects circles.
+
+The after. A trait the shapes satisfy, and code written against the trait.
+
+    import(lib) std::math::math { pi, sqrt };
+
+    trait Shape {
+        // the contract every shape must satisfy
+        f64 area();
+        f64 perimeter();
+    }
+
+    // each shape supplies its own area and perimeter
+    pub struct Circle { f64 radius; }
+    pub extend Circle : Shape {
+        f64 area() { return pi * self.radius * self.radius; }
+        f64 perimeter() { return 2.0 * pi * self.radius; }
+    }
+
+    pub struct Rectangle { f64 width; f64 height; }
+    pub extend Rectangle : Shape {
+        f64 area() { return self.width * self.height; }
+        f64 perimeter() { return 2.0 * (self.width + self.height); }
+    }
+
+    // written against the contract, not against any concrete shape
+    pub f64 totalArea<T>(const Vec<T>* shapes) {
+        f64 sum = 0.0;
+        // the compiler checks every T really satisfies Shape
+        for (usize i = 0; i < shapes->count(); i += 1) sum += shapes->at(i).area();
+        return sum;
+    }
+
+A third shape is a new struct and a new `extend ... : Shape` block. `totalArea` is not touched, not recompiled in its logic, and not retested against the shapes it already handled. The conformance itself is checked by the compiler: a missing method or a wrong signature is an E12xx diagnostic at the extend block, not a surprise at a call.
+
+Cost and notes. The trait buys extension for new cases at the price of new operations: adding `volume()` to `Shape` means adding it to every implementor, which is exactly the trade the expression problem names. There is a second limit worth stating plainly: `totalArea<T>` is generic, so a single `Vec` holds one concrete shape type. A heterogeneous collection of different shapes is a different design, a `variant Shape` with an exhaustive switch, as in Chapter13, and choosing between the trait and the variant is choosing which direction you expect to grow.
+
+When the before is fine. A genuinely closed set that will never gain a case, and whose operation is used in exactly one place, is fine as a switch. The trait earns its keep when new cases are expected and when the operation is used from many call sites.
+
+Variation. Add a `Square` type with its own `extend Square : Shape`, and confirm that `totalArea` still works with `Vec<Square>` without a single change. Then add a `describe()` method to the trait and list every implementor the compiler forces you to update.
+
+36.6 Dependency Inversion and Interface Segregation
+
+The principle. High-level code should depend on abstractions, not on concrete implementations. And an interface should be small and specific, so that a type is not forced to implement methods it does not use.
+
+The intuition. A registration function that takes a concrete database is welded to that database; you cannot test it without a real one, and you cannot swap the database without editing it. Invert the dependency: define a small trait for exactly the operations the function needs (save a user, look one up), and have the function take a generic and call the trait's methods, checked when it is instantiated. Now the production database satisfies it, and a test can satisfy it with an in-memory stand-in. Interface segregation is the same idea applied to the trait's size: a function that only saves should not demand a trait that also offers delete, migrate, and vacuum, because then every test stand-in must implement all of them. Small traits keep implementors honest and tests cheap.
+
+The before. High-level registration welded to Postgres, and a fat trait that forces useless methods.
+
+    trait Database {
+        // the fat interface: six methods, most of them irrelevant here
+        bool connect(str url);
+        bool save(User u);
+        Option<User> find(i32 id);
+        bool delete(i32 id);
+        void migrate();
+        void vacuum();
+    }
+
+    // the high-level function is welded to the concrete interface
+    pub bool registerUser(const User* u, Database* db) {
+        return db->save(*u);        // needs only save, demands six methods
+    }
+
+To test `registerUser`, you must write a class implementing all six methods, five of which are irrelevant to the test. Any type that wants to be usable here must carry the whole fat interface.
+
+The after. Two small traits, and a function that depends only on the one it needs.
+
+    pub struct User { i32 id; str name; }
+
+    trait UserWriter {
+        // the one ability this consumer actually needs
+        bool save(User u);
+    }
+
+    trait UserReader {
+        // a separate, equally small ability
+        Option<User> find(i32 id);
+    }
+
+    // Coral has no super-trait clause (`trait A : B`); when a function truly needs
+    // both abilities it takes both, or takes a single trait that names both methods.
+
+    // depends only on the ability to write
+    pub bool registerUser<T>(T* store, User u) {
+        return store->save(u);
+    }
+
+    // production store
+    pub struct MemoryStore {
+        Vec<User> users;
+    }
+
+    pub extend MemoryStore : UserWriter {
+        bool save(User u) {
+            self.users.push(u);
+            return true;
+        }
+    }
+
+    // test stand-in: implements only what the test touches
+    pub struct FailingStore { bool failNext; }
+    pub extend FailingStore : UserWriter {
+        bool save(User u) {
+            // the contract permits returning false, so this is substitutable
+            if (self.failNext) return false;
+            return true;
+        }
+    }
+
+`registerUser` now depends on a one-method abstraction. Production passes a `MemoryStore`; a test passes a `FailingStore` that implements exactly one method and can make `save` fail on demand. The function cannot call `delete` or `vacuum` because it never asked for the ability, which is a guarantee, not a restriction.
+
+Cost and notes. Each trait is a name and a small contract, and small traits multiply. The discipline is to define a trait for the operations a consumer needs, not for all the operations a type happens to have; the former is interface segregation, and the latter is the fat trait the before suffered from. Liskov substitutability is the companion rule: an implementor must honour the contract, not merely satisfy the signatures. A `FailingStore` that fails when `failNext` is set is substitutable because the `UserWriter` contract explicitly permits `save` to return false; a store that silently dropped writes while returning true would violate it.
+
+When the before is fine. A single concrete implementation with no prospect of a second and no need to test in isolation is fine to pass directly. The abstraction earns its keep when there is a second implementation (test or production) or when swapping is a real possibility.
+
+Variation. Add a `UserDeleter` trait and a `manageUser` function that needs both writing and deleting, constrained to `UserStore` (which composes the two). Then make `registerUser` take a `UserWriter` while `manageUser` takes the composed trait, and explain why the narrower function is the easier one to test.
+
+36.7 Error-Handling Discipline
+
+The principle. Failure is a value. An operation that can fail says so in its return type, and the caller must deal with the failure to get at the result. A sentinel that collides with real data is a bug waiting for the day the data hits the sentinel.
+
+The intuition. The seductive shortcut is to return `-1` for "not found" or `null` for "failed." It works, it is fast, and it is a lie the type system cannot see: an `i64` that is usually an id and sometimes a failure is two things wearing one type. Callers forget to check; real data eventually equals the sentinel; and the failure travels silently until it surfaces far from its cause. Chapter15's `Result` and `Option` make the failure part of the type, so the caller cannot reach the value without opening the parcel. The discipline is to choose the right one: `Option` when the only thing you can say is "nothing," `Result` when you can say why.
+
+The before. Sentinels everywhere.
+
+    pub i32 parseAge(str s) {
+        // returns -1 on failure, but -1 is not a valid age, so it seems safe
+        bool ok;
+        i64 value = parseI64(s, &ok);
+        if (!ok) return -1;
+        return (i32)value;
+    }
+
+    pub void showAge(str s) {
+        // the caller must remember to check the sentinel
+        i32 age = parseAge(s);
+        if (age == -1) {
+            println("bad age");
+            return;
+        }
+        println("age {}", age);
+    }
+
+The `-1` is a convention, and the convention is checked nowhere. A caller that forgets the check prints "-1 years old." A caller that passes a genuinely negative input gets "bad age" for the wrong reason. And if the program ever parses an age of `-1` in a context where negatives are legal, the sentinel fires a false alarm.
+
+The after. A `Result` with an error variant that names the cause.
+
+    import(lib) std::io::ios { parseI64 };
+
+    pub variant AgeError {
+        // each failure mode is a distinct, nameable case
+        NotANumber { str text; },
+        Negative   { i32 value; },
+        TooLarge   { i32 value; },
+    }
+
+    pub Result<i32, AgeError> parseAge(str s) {
+        bool ok;
+        i64 value = parseI64(s, &ok);
+        // the failure and the reason travel in the return type
+        if (!ok) return Result<i32, AgeError>::Err { .error = AgeError::NotANumber { .text = s } };
+        if (value < 0) return Result<i32, AgeError>::Err { .error = AgeError::Negative { .value = (i32)value } };
+        if (value > 150) return Result<i32, AgeError>::Err { .error = AgeError::TooLarge { .value = (i32)value } };
+        return Result<i32, AgeError>::Ok { .value = (i32)value };
+    }
+
+    pub void showAge(str s) {
+        // the switch is exhaustive: no success path can ignore the error
+        switch (parseAge(s)) {
+            Result::Ok { value }  => println("age {}", value),
+            Result::Err { error } => switch (error) {
+                AgeError::NotANumber { text } => println("'{}' is not a number", text),
+                AgeError::Negative { value }  => println("age {} is negative", value),
+                AgeError::TooLarge { value }  => println("age {} is implausibly large", value),
+            },
+        }
+    }
+
+Now the type carries the failure and the reason. The compiler will not let `showAge` reach the value without handling the error, and the three failure modes are distinct cases a caller can respond to differently. There is no sentinel to collide with real data because there is no sentinel; the success case and the failure case are different shapes.
+
+Cost and notes. `Result` is more verbose at every layer, and if `Err` can always be immediately unwrapped to a default, the machinery is overhead. The discipline is the honest signalling: a function that can fail declares it, and a caller that can handle a failure distinguishes it from a success. The rule of thumb from Chapter15 holds: if a caller can do something reasonable about the failure, return `Result`; if the only sensible response is "the program is wrong, stop," use an assertion.
+
+When the before is fine. A private helper whose sentinel is impossible in its domain and whose callers are all in one file that is read as a unit is survivable. The moment the function crosses a module boundary, the type has to carry the truth.
+
+Variation. Add a `parseAges` that parses a whole `Vec<str>` and returns `Result<Vec<i32>, AgeError>`, stopping at the first failure. Then change it to collect the failures into a `Vec<AgeError>` and return both successes and errors, and explain which signature is kinder to the caller.
+
+36.8 Invariants, Assertions, and Defensive Programming
+
+The principle. An invariant is a condition that must always hold for a value to be meaningful. Establish it when the value is created, enforce it there, and use assertions to catch violations that indicate a bug. Defensive programming, checking every argument against every possible bad value, is different, and applying it everywhere hides bugs rather than finding them.
+
+The intuition. A range of numbers has an invariant: the low bound is not above the high bound. If you expose two public fields, nothing stops a caller from setting `lo` above `hi`, and every method you write must defend against that possibility forever. If instead the only way to make a range is a constructor that checks the invariant once, then every method can assume it, and the assumption is honest because the constructor is the only door. Assertions are how you state the assumption in code: `@assertOut(lo <= hi, "...")` at the top of a method fails loudly and names the violated contract, which is exactly right for a bug. Defensive programming is for input from outside the program, where failure is expected and recoverable. Assertions are for internal invariants, where failure means the code is wrong.
+
+The before. Public fields, no constructor, defensive checks scattered everywhere.
+
+    pub struct Range {
+        // public fields: nothing enforces lo <= hi
+        i32 lo;
+        i32 hi;
+    }
+
+    pub i32 rangeLength(const Range* r) {
+        if (r->lo > r->hi) return 0;          // one of many defensive checks
+        return r->hi - r->lo;
+    }
+
+    pub bool rangeContains(const Range* r, i32 x) {
+        if (r->lo > r->hi) return false;       // and another
+        return x >= r->lo && x <= r->hi;
+    }
+
+Every operation carries its own defence against an illegal state that should never have existed. The checks are inconsistent (one returns zero, one returns false), they slow every call, and they camouflage the real bug, whatever code created the broken range, by silently swallowing it.
+
+The after. A constructor that establishes the invariant, accessors that assume it, and an assertion that names the contract.
+
+    pub struct Range {
+        // fields stay private so only make() can create a Range
+        i32 lo;
+        i32 hi;
+
+        static Option<Range> make(i32 lo, i32 hi) {
+            // the one door: the invariant is checked exactly here
+            if (lo > hi) return Option<Range>::None;
+            return Option<Range>::Some { .value = Range { .lo = lo, .hi = hi } };
+        }
+
+        // the invariant is established by make(); these methods may assume it
+        i32 length() {
+            @assertOut(self.lo <= self.hi, "Range invariant violated: lo > hi");
+            return self.hi - self.lo;
+        }
+
+        bool contains(i32 x) {
+            // the assertion is a bug check, not input validation
+            @assertOut(self.lo <= self.hi, "Range invariant violated: lo > hi");
+            return x >= self.lo && x <= self.hi;
+        }
+    }
+
+The illegal range cannot be constructed through the one door, so the methods need no defensive branch; the assertion is not a defence against bad input but a check that the code which built this range honoured its contract. If the assertion ever fires, it points at a bug in the program, which is what an assertion is for. Outside input is handled where it enters, `make` returns an `Option`, so a caller with a questionable pair of numbers deals with the failure at the boundary.
+
+Cost and notes. Making the constructor the only door usually means making the fields private, which is a real design decision: it buys the invariant at the cost of direct field access. The two checks are cheap (a comparison and a branch), and in a release build they may be compiled away or kept, depending on policy. The important thing is that they are assertions, not error handling. The distinction to keep sharp: `Result` for things the world can do to you, assertions for things your own code should never do. A function called with a negative array length is a bug; a file that is missing is a fact of life.
+
+When the before is fine. A throwaway struct that is constructed in one place and never escapes is fine with public fields and no constructor. The invariant earns its constructor when the value crosses module boundaries or is built in many places.
+
+Variation. Add a `union(const Range* a, const Range* b)` method that returns the smallest range containing both, and prove in a comment that it preserves the invariant, `min(lo) <= max(hi)`, so no caller needs to defend against it. That proof is the payoff of having a single door.
+
+36.9 Testing with std::testing
+
+The principle. Tests are executable specifications. A test that expresses a property of the code is worth more than a test that just exercises it, because a property catches the inputs you did not think to try.
+
+The intuition. The temptation is to "test" by printing results and squinting. That works once, at the moment you write it, and then rots: the output changes, nobody updates the expected values, and the test passes because nobody is looking. A real test states an expectation and fails loudly when it is not met, so it can be run a thousand times by a machine that never squints. Property tests go further: instead of one input, they check that a mathematical property holds across a range (commutativity, an inverse, an identity), which is a far stronger statement than a single example.
+
+The before. Verification by printing.
+
+    pub u64 gcd(u64 a, u64 b) {
+        // Euclid's algorithm, untouched by the "test" below
+        while (b != 0) { u64 t = a % b; a = b; b = t; }
+        return a;
+    }
+
+    pub void main() {
+        // printing a result is not testing it: no expectation is checked
+        println("{}", gcd(12, 18));    // expect 6
+        println("{}", gcd(18, 12));    // expect 6
+        println("{}", gcd(17, 5));     // expect 1
+    }
+
+The output must be read by a human and compared to a remembered expectation. Nothing fails automatically. Change `gcd` to return `b` by mistake and these lines still print numbers, and the program still exits zero.
+
+The after. Tests with a runner, including a property that spans many inputs.
+
+    import(lib) std::testing::test {
+        _testBegin, _testEnd, assertEq, assertTrue, testSummary, testAllPassed
+    };
+
+    pub u64 gcd(u64 a, u64 b) {
+        // the unit under test, unchanged between the two versions
+        while (b != 0) { u64 t = a % b; a = b; b = t; }
+        return a;
+    }
+
+    #[[test]]
+    void gcdKnownValues() {
+        _testBegin("gcd known values");
+        // the same examples as before, now with assertions that can fail
+        assertEq(6u, gcd(12, 18), "gcd(12,18)");
+        assertEq(6u, gcd(18, 12), "gcd(18,12)");
+        assertEq(1u, gcd(17, 5), "gcd(17,5)");
+        assertEq(0u, gcd(0, 0), "gcd(0,0)");
+        _testEnd();
+    }
+
+    #[[test]]
+    void gcdIsCommutative() {
+        _testBegin("gcd is commutative");
+        // a property checked across a range, not a single example
+        for (u64 a = 0; a < 200; a += 1)
+            for (u64 b = 0; b < 200; b += 1)
+                assertTrue(gcd(a, b) == gcd(b, a), "commutativity in range");
+        _testEnd();
+    }
+
+    #[[test]]
+    void gcdDividesBoth() {
+        _testBegin("gcd divides both inputs");
+        // the defining property of a GCD, over a quarter million pairs
+        for (u64 a = 1; a < 500; a += 1) {
+            for (u64 b = 1; b < 500; b += 1) {
+                u64 g = gcd(a, b);
+                assertTrue(a % g == 0 && b % g == 0, "g divides a and b");
+            }
+        }
+        _testEnd();
+    }
+
+    pub i32 main() {
+        // run every test, then exit non-zero if any failed
+        gcdKnownValues();
+        gcdIsCommutative();
+        gcdDividesBoth();
+        testSummary();
+        return testAllPassed() ? 0 : 1;
+    }
+
+The three tests together say something much stronger than the three printed numbers. `gcdIsCommutative` covers forty thousand input pairs, and `gcdDividesBoth` states the defining property of a GCD across a quarter of a million, either of which would catch a subtly wrong implementation that the three examples miss. The `#[[test]]` attribute marks the functions for a test runner to discover, so the same functions can be run by `coralc test` without a separate registration list.
+
+Cost and notes. Property tests are slower than example tests, so they use smaller ranges than production inputs; the ranges here are chosen to be exhaustive over a small space rather than random over a large one. The harness is deliberately minimal (no fixtures, no mocking), which is the right size for unit tests and for the standard library itself. `assertEq` compares `usize`, so integer tests compare unsigned values; signed-value checks go through `assertTrue` with an explicit comparison.
+
+When the before is fine. A quick experiment while you are still figuring out what the code should do is fine to verify by printing; the tests come once the behaviour is settled. The mistake is shipping the print-and-squint version as the test.
+
+Variation. Add a test for the modular exponentiation from Chapter32.4 that verifies the defining property `(base^exp) mod m` against a slow repeated-multiplication reference for small values, and note that the property test catches off-by-one errors in the exponent's bit loop that a handful of examples would sail past.
+
+36.10 Refactoring a Messy Example: From Script to Module
+
+The principle. Refactoring is changing the shape of code without changing what it does. The goal is to make the next change easy; the test that you have succeeded is that the behaviour is identical and the new shape has a name for each idea.
+
+The intuition. This is the capstone, and it uses every principle at once. What follows is a plausible script: it reads lines of comma-separated name-and-score pairs, computes an average, and prints a summary. It works. It is forty lines in one function with single-letter variables, magic numbers, a sentinel, and duplicated parsing. The refactor pulls out names, gives each concern its own function, replaces the sentinel with a `Result`, and leaves `main` as six lines of composition. The behaviour does not change by a single byte. The shape changes completely.
+
+The before.
+
+    pub void main() {
+        // parsing, validation, statistics and formatting all in one function
+        Vec<f64> scores = Vec<f64>::new();
+        u32 bad = 0;
+
+        String line = String::new();
+        while (readLine(&line)) {
+            // opaque single-letter names: s, v, comma
+            str s = line.asView();
+            usize comma = s.findByte(',');
+            if (comma >= s.len) { bad += 1; continue; }
+            str scoreText = str::fromParts(s.ptr + comma + 1, s.len - comma - 1);
+            bool ok;
+            f64 v = parseF64(scoreText, &ok);
+            if (!ok) { bad += 1; continue; }
+            // the bound 100.0 is a magic number buried inline
+            if (v < 0.0 || v > 100.0) { bad += 1; continue; }
+            scores.push(v);
+        }
+
+        f64 total = 0.0;
+        for (usize i = 0; i < scores.count(); i += 1) total += scores.at(i);
+        // -1.0 is a sentinel for "no scores", indistinguishable from a real -1
+        f64 avg = scores.count() > 0 ? total / (f64)scores.count() : -1.0;
+
+        // the report format is tangled with everything above
+        println("=== Report ===");
+        println("records: {}", scores.count());
+        println("bad:     {}", bad);
+        if (avg < 0.0) {
+            println("average: n/a");
+        } else {
+            println("average: {}", avg);
+        }
+    }
+
+The problems are all here at once: `line`, `s`, `v`, `comma` are opaque; `-1.0` is a sentinel for "no scores," and a legitimate average of `-1` would be indistinguishable; the parsing, the validation, the statistics, and the formatting are one knot; the magic bound `100.0` appears inline; and there is no way to test the average without running the whole program.
+
+The after.
+
+    import(lib) std::io::ios { readLine, parseF64, println };
+    import(lib) std::text::string { String };
+    import(lib) std::vec { Vec };
+
+    // the bounds are named constants instead of inline magic numbers
+    pub const f64 MIN_SCORE = 0.0;
+    pub const f64 MAX_SCORE = 100.0;
+
+    pub struct Record {
+        f64 score;      // the name is validated here; a real program would keep
+                        // an owned copy, since a str would view the reused line
+    }
+
+    pub variant ParseError {
+        // every rejection reason is a distinct case
+        NoComma      { str text; },
+        BadScore     { str text; },
+        OutOfRange   { f64 value; },
+    }
+
+    // one concern: turn a line into a record or an error
+    pub Result<Record, ParseError> parseRecord(str line) {
+        usize comma = line.findByte(',');
+        if (comma >= line.len)
+            return Result<Record, ParseError>::Err { .error = ParseError::NoComma { .text = line } };
+
+        str scoreText = str::fromParts(line.ptr + comma + 1, line.len - comma - 1);
+
+        bool ok;
+        f64 value = parseF64(scoreText, &ok);
+        if (!ok)
+            return Result<Record, ParseError>::Err { .error = ParseError::BadScore { .text = scoreText } };
+        // range check against the named bounds
+        if (value < MIN_SCORE || value > MAX_SCORE)
+            return Result<Record, ParseError>::Err { .error = ParseError::OutOfRange { .value = value } };
+
+        return Result<Record, ParseError>::Ok { .value = Record { .score = value } };
+    }
+
+    pub struct Summary {
+        // the computed statistics, ready for display
+        u32 valid;
+        u32 rejected;
+        f64 sum;
+    }
+
+    // one concern: the statistics, with no I/O and no formatting
+    pub Summary summarise(const Vec<Record>* records, u32 rejected) {
+        f64 sum = 0.0;
+        for (usize i = 0; i < records->count(); i += 1) sum += records->at(i).score;
+        return Summary { .valid = (u32)records->count(), .rejected = rejected, .sum = sum };
+    }
+
+    // one concern: the presentation; "no scores" is a real case, not a sentinel
+    pub void printReport(const Summary* s) {
+        println("=== Report ===");
+        println("records: {}", s->valid);
+        println("bad:     {}", s->rejected);
+        // valid == 0 is the honest test; a zero average prints as zero
+        if (s->valid == 0)
+            println("average: n/a");
+        else
+            println("average: {}", s->sum / (f64)s->valid);
+    }
+
+    pub void main() {
+        // main is now composition: parse, summarise, print
+        Vec<Record> records = Vec<Record>::new();
+        u32 rejected = 0;
+        String line = String::new();
+        while (readLine(&line)) {
+            // the Result forces us to count the rejected lines
+            switch (parseRecord(line.asView())) {
+                Result::Ok { value }  => records.push(value),
+                Result::Err { error } => rejected += 1,
+            }
+        }
+        Summary s = summarise(&records, rejected);
+        printReport(&s);
+    }
+
+The same behaviour, restructured. `parseRecord` owns the parse-and-validate knowledge and returns a `Result` that names each failure mode, so an unknown error is impossible. `summarise` is pure arithmetic that can be tested with a hand-built vector and no input. `printReport` decides the "no scores" case explicitly, and the sentinel is gone: `valid == 0` is the honest test, and an average of zero is reported as zero. `main` is six lines of composition, each calling a function whose name says what it does. The magic bounds are named constants. Every principle from this chapter is present, and the function grew by names rather than by lines.
+
+Cost and notes. The refactor is longer than the original, and that is normal: named ideas take more text than anonymous ones. The payoff is in the changes that now cost one line instead of a careful surgical edit: a new field on `Record`, a new error variant, a different report format, a test of the average in isolation. Refactoring is an investment, and the only way to evaluate it is to ask whether the next change is easier. If the script is never touched again, the refactor was not worth it; if it is the seed of a system, it was overdue.
+
+When the before is fine. A script that runs once, on one file, and is then deleted is exactly the kind of code that should stay a script. The refactor is for code that will live, change, and be read by someone other than you.
+
+Variation. Add a second output format (a CSV summary) by adding `printReportCSV` and changing `main`'s last line. Then add the ability to filter records below a threshold, which now means filtering the `Vec<Record>` before `summarise`. Notice that neither change touches the parser, and say which principle that shows.
+
+36.11 The Law of Demeter
+
+The principle. A piece of code should talk only to its immediate collaborators, and only through their interfaces, not through their collaborators' collaborators. Do not navigate a chain of fields and methods to reach a piece of data; ask the object that owns it.
+
+The intuition. A long navigation chain is a public statement of how the types are wired together. `a->customer.address.city` tells the reader, and the compiler, that this code depends on `Order` having a `Customer` field, on `Customer` having an `Address` field, and on `Address` having a `city`. Any of those can change and this line breaks, even though this code has no business knowing any of them. The rule, often stated as "don't talk to strangers," is to move the question down the chain: let `Address` compare cities, let `Customer` compare addresses, and let `Order` compare orders. Each method then reaches only one step.
+
+The before. A function that reaches through two levels to compare two orders.
+
+    pub struct Address { str city; str postalCode; }
+    pub struct Customer { Address address; }
+    pub struct Order { Customer customer; f64 total; }
+
+    pub bool shipsToSameCity(const Order* a, const Order* b) {
+        // a train wreck: three dots deep into the object graph
+        return a->customer.address.city.equals(b->customer.address.city);
+    }
+
+The comparison knows the entire object graph. Introduce a `Region` between `Customer` and `Address` and this function fails to compile, as does every other function that made the same reach.
+
+The after. Each type answers a question at its own level, reaching one step at most.
+
+    pub struct Address {
+        str city;
+        str postalCode;
+
+        bool sameCity(const Address* other) {
+            // each type answers the question at its own level
+            return self.city.equals(other->city);
+        }
+    }
+
+    // each layer hides the one below it
+    pub struct Customer {
+        Address address;
+
+        bool livesInSameCityAs(const Customer* other) {
+            return self.address.sameCity(&other->address);
+        }
+    }
+
+    pub struct Order {
+        Customer customer;
+
+        bool shipsToSameCityAs(const Order* other) {
+            // reaches exactly one step, no further
+            return self.customer.livesInSameCityAs(&other->customer);
+        }
+    }
+
+Now `Order::shipsToSameCityAs` knows only that it has a `Customer`, and `Customer` knows only that it has an `Address`; the call site is `a->shipsToSameCityAs(b)`. If a `Region` type is introduced later, the change is confined to `Address`, and the call sites never mention its internals.
+
+Cost and notes. The refactor adds one method per level and slightly more code, and `const` pointers keep the methods from mutating their inputs. The benefit is that the dependency graph is shallow: each method is testable with a single object and a fake collaborator, and a change to one type's internals does not ripple outward. This is the mirror image of DRY, instead of giving knowledge one home, it refuses to let knowledge leak.
+
+When the before is fine. Plain data-transfer structs, whose whole purpose is to be read field by field, are not molested by this rule; reaching into a `Point` for its `x` is not a Demeter violation, it is the point. The rule is about behaviour and about deep chains, not about a single field access.
+
+Variation. Find a "train wreck" in your own code, a line with three or more dots, and give the type a method that answers the underlying question. Then ask whether the question belongs to the first type in the chain or to one further down, and put it at the lowest level that can answer it.
+
+36.12 Immutability and Pure Functions
+
+The principle. Prefer values that do not change after they are created, and functions that compute a result without touching anything outside themselves. A pure function, one whose answer depends only on its arguments, is easier to test, safe to call twice, safe to run in parallel, and safe to cache.
+
+The intuition. The enemy is state that drifts. The moment two pieces of information must be kept in agreement by hand, a change to one that forgets the other is a bug waiting to happen. A pure function has no such agreement to maintain: you give it inputs, it returns an output, and there is nothing left behind to be inconsistent. Immutability is the same idea applied to values. If a value never changes, then a reference to it can be shared freely, called twice, or stored without fear.
+
+The before. A cart that caches its own total and mutates in place.
+
+    import(lib) std::vec { Vec };
+
+    pub struct Cart {
+        // two pieces of state that must be kept in agreement by hand
+        Vec<f64> prices;
+        f64 total;      // kept in step with prices by hand
+    }
+
+    pub void addItem(Cart* c, f64 price) {
+        // mutating both fields together is a contract nothing enforces
+        c->prices.push(price);
+        c->total += price;
+    }
+
+    pub f64 applyDiscount(Cart* c, f64 percent) {
+        // mutates in place: calling twice discounts twice
+        c->total = c->total * (1.0 - percent);
+        return c->total;
+    }
+
+Calling `applyDiscount` twice discounts twice. Adding an item after a discount loses the discount, because `total` and `prices` have quietly fallen out of agreement. The two fields are a contract that nothing enforces.
+
+The after. A value, plus functions that read it through a `const` pointer and return a new value.
+
+    import(lib) std::vec { Vec };
+
+    // the only field; total is derived, never stored
+    pub struct Cart { Vec<f64> prices; }
+
+    pub f64 cartTotal(const Cart* c) {
+        // pure: depends only on c and never mutates it
+        f64 sum = 0.0;
+        for (usize i = 0; i < c->prices.count(); i += 1) sum += c->prices.at(i);
+        return sum;
+    }
+
+    pub Cart withItem(const Cart* c, f64 price) {
+        // returns a new cart; the original is untouched
+        Cart next;
+        next.prices = Vec<f64>::new();
+        for (usize i = 0; i < c->prices.count(); i += 1) next.prices.push(c->prices.at(i));
+        next.prices.push(price);
+        return next;
+    }
+
+    pub Cart discounted(const Cart* c, f64 percent) {
+        // discounting is a value transformation, not an in-place edit
+        Cart next;
+        next.prices = Vec<f64>::new();
+        for (usize i = 0; i < c->prices.count(); i += 1)
+            next.prices.push(c->prices.at(i) * (1.0 - percent));
+        return next;
+    }
+
+`cartTotal` is pure: call it once or a hundred times and the answer is the same, and it cannot change the cart. `discounted` returns a new cart and leaves the original alone, so discounting twice is an explicit choice, not an accident. The `const` on each parameter is the compiler's help: a function that promised not to mutate cannot, even by mistake.
+
+Cost and notes. Immutability copies. `withItem` and `discounted` each allocate a new vector, where the mutating version edited in place. For a cart of ten prices that is nothing, and for a hot loop over a million elements it is a real cost, which is why performance-critical code either mutates a local buffer it owns outright or uses a persistent data structure that shares the unchanged parts. The trade is deliberate: pay a copy to remove a whole class of bugs and to make the functions trivially testable.
+
+When the before is fine. A tight numeric loop mutating a buffer it created and will throw away is exactly right; the discipline is about shared, long-lived values, not about every temporary. The mistake is exposing the mutation: a mutating function on a value that callers hold and reuse is where the bugs live.
+
+Variation. Take the `summarise` function from 35.3 and note that it is already pure, then add a memoised wrapper that caches the last result for a repeated identical input and argue why caching is safe only because the function is pure.
+
+36.13 The Strategy Pattern with Function Pointers
+
+The principle. When a piece of code has several interchangeable algorithms, give the algorithm its own name and pass it in, rather than selecting between them with a type switch buried in the middle. The code that uses the strategy stops knowing which one it has.
+
+The intuition. A switch over an operation enum welds the caller to the whole family: every new operation edits the function, and the function must know every case. Passing the operation as a value inverts that. The caller names the operation it wants, the code that consumes it calls it through the common shape, and adding an operation is adding a function, no edit to the code that uses it. In Coral the lightest such value is a function pointer, because there is no inheritance to carry the idea.
+
+The before. A calculator that switches on an operation tag.
+
+    enum Op { Add, Sub, Mul }
+
+    pub f64 compute(Op op, f64 a, f64 b) {
+        // every new operation is a new arm here
+        switch (op) {
+            Op::Add => return a + b,
+            Op::Sub => return a - b,
+            Op::Mul => return a * b,
+        }
+    }
+
+Every new operation is an edit to `compute` and to the enum, and every edit risks the operations that already worked.
+
+The after. The operation is a function value; the consumer knows only its shape.
+
+    import(lib) std::vec { Vec };
+
+    // each algorithm is a plain function of the same shape
+    pub f64 addOp(f64 a, f64 b) { return a + b; }
+    pub f64 subOp(f64 a, f64 b) { return a - b; }
+    pub f64 mulOp(f64 a, f64 b) { return a * b; }
+
+    pub f64 compute(f64(f64, f64) op, f64 a, f64 b) {
+        // the consumer knows only the function's shape
+        return op(a, b);
+    }
+
+    pub f64 reduce(const Vec<f64>* xs, f64(f64, f64) op) {
+        @assertOut(xs->count() > 0, "reduce needs at least one element");
+        // the same strategy value drives a fold
+        f64 acc = xs->at(0);
+        for (usize i = 1; i < xs->count(); i += 1) acc = op(acc, xs->at(i));
+        return acc;
+    }
+
+`compute(addOp, 3.0, 4.0)` and `compute(mulOp, 3.0, 4.0)` choose the algorithm at the call site, and `compute` itself has one line. A fourth operation is a new function and no change to `compute`, which is the open/closed idea of 35.5 in its smallest form. `reduce` shows the same strategy reused for a fold, which is why the standard library's `sortBy` takes a comparison function of exactly this shape.
+
+Cost and notes. A call through a function pointer is an indirect call, which the compiler may not inline unless it knows the concrete target at the call site; the switch version inlines easily. The compensating benefit is that adding operations is open, and the caller decides the behaviour at runtime, which a switch over a fixed enum cannot do without editing the enum. The second cost is the loss of exhaustiveness: the compiler no longer proves that every operation is handled, because a function pointer can be anything.
+
+When the before is fine. A small, closed set of operations used in exactly one place is fine as a switch, and the compiler's exhaustiveness check is worth more than openness there. Reach for the function pointer when the set will grow or when the choice is data-driven.
+
+Variation. Add a `bool(f64, f64) less` strategy to a manual sort and observe that it is the same pattern as `Vec::sortBy`, then compare the function-pointer strategy with the trait-based strategy of 35.5 and say when each is the right tool: the pointer for stateless algorithms, the trait when the strategy carries state.
+
+36.14 The Null Object Pattern
+
+The principle. When a collaborator may be absent, do not make every caller check for the absence. Provide an object that implements the same interface and does nothing, and callers treat presence and absence identically.
+
+The intuition. A nullable collaborator puts a check at every use, and one forgotten check is a crash. The null object removes the special case: the interface is always callable, and "do nothing" is a legitimate, explicit behaviour rather than an absence the caller must remember. It is the difference between "there is a logger, and it is the silent one" and "there may or may not be a logger, and you must ask first." The type system can then guarantee that nobody forgot, because there is nothing to forget.
+
+The before. A process that must check its logger everywhere.
+
+    pub struct ConsoleLogger {
+        void log(str msg) { println("{}", msg); }
+    }
+
+    pub void process(ConsoleLogger* logger, u64 taskId) {
+        // every use must re-check for null; one miss is a crash
+        if (logger != null) logger->log("start");
+        // ... do the work ...
+        if (logger != null) logger->log("done");
+    }
+
+The check is repeated at every call, and a caller with no logger must pass `null` and hope every site checks. A single missed check is a null dereference far from the call that allowed it.
+
+The after. A trait, a real implementation, and a silent one.
+
+    trait Logger {
+        // the callable interface, always present
+        void log(str msg);
+    }
+
+    pub struct ConsoleLogger { str label; }
+    pub extend ConsoleLogger : Logger {
+        void log(str msg) { println("[{}] {}", self.label, msg); }
+    }
+
+    pub struct NullLogger { str label; }
+    pub extend NullLogger : Logger {
+        void log(str msg) { }          // stays silent, on purpose
+    }
+
+    pub void process<T>(T* logger, u64 taskId) {
+        // no null check anywhere: absence is a real object
+        logger->log("start");
+        // ... do the work ...
+        logger->log("done");
+    }
+
+Now there is no null and no check. A caller that wants logs passes a `ConsoleLogger`; a caller that wants silence passes a `NullLogger`; a test passes a recording logger and asserts on what it saw. Each new collaborator is a struct and an `extend` block, and `process` does not change.
+
+Cost and notes. The null object still requires constructing a value to pass, which is trivial, and it adds one struct and one no-op method per interface. The type system now prevents the forgotten check, because there is no check. The discipline is to use it only for genuinely benign absence: a silent logger is fine, but a silent database is not, because a dropped write that reports success is a lie. A no-op is for operations whose absence is meaningful and harmless, not for hiding failure.
+
+When the before is fine. When the collaborator's absence means something the caller must branch on, connecting to a required service, opening a file that must exist, a `Result` or an `Option` is the honest type, and a null object would swallow the problem. Use the null object for the log-and-metrics-shaped seams where "off" is a real mode.
+
+Variation. Add a `RecordingLogger` that appends every message to a `Vec<str>`, use it in a test, and note that this is now possible without a real console or a mock framework. Then make a `FanoutLogger` that forwards each message to two other loggers, and observe that composition, not inheritance, is what makes it easy.
+
+36.15 Backwards-Compatible API Design
+
+The principle. When a widely used type or function must gain a capability, design the change so existing callers keep compiling and behaving as before. Extend the surface; do not reshape it.
+
+The intuition. The most common source of breakage is not a broken feature; it is a helpful one. A struct with public fields is written literally by every caller, so adding a field breaks all of them at once. A function that takes exactly the arguments a caller passes cannot grow a parameter without editing every call. The fix is to own construction: give the type a constructor that supplies defaults, keep the fields private, and add new capabilities as separate functions or as optional builder steps. Then a new field is a default inside the constructor, and no caller notices.
+
+The before. A request struct that every caller builds with a literal.
+
+    pub struct Request {
+        // public fields mean every caller writes a literal
+        str url;
+        u32 timeoutMs;
+    }
+
+    pub void send(const Request* r) { /* ... */ }
+
+Every caller writes `Request { .url = "...", .timeoutMs = 1000 }`. The maintainer now wants a `u32 retries` field with a default of zero; adding it breaks every literal in the codebase. The feature was small and the breakage is total.
+
+The after. A constructor owns the defaults, and new options are additive.
+
+    pub struct Request {
+        str url;
+        u32 timeoutMs;
+        // new capability added without breaking existing literals
+        u32 retries;
+    }
+
+    pub Request request(str url) {
+        // the constructor owns the defaults; a new field is one line here
+        return Request { .url = url, .timeoutMs = 1000, .retries = 0 };
+    }
+
+    pub Request withTimeout(Request r, u32 ms) {
+        // additive builder step, so existing call sites never move
+        r.timeoutMs = ms;
+        return r;
+    }
+
+    pub Request withRetries(Request r, u32 n) {
+        r.retries = n;
+        return r;
+    }
+
+    pub void send(const Request* r) { /* ... */ }
+
+Callers write `send(&withRetries(request(url), 3))`, or `send(&request(url))` for the defaults. When `retries` was added, it was one line in `request`, and no call site moved. The next field added will be the same. The fields are private, so callers cannot construct a `Request` that skips the defaults.
+
+Cost and notes. The type is no longer a transparent record; callers must use the constructor and the builder steps, which is more ceremony than a literal. The payoff is that additive change is free, which matters the moment there is more than one caller you do not control. The same rule applies to functions: rather than changing `send` to take retries, add `sendWithOptions`, or add the new field to the options struct that `send` already takes. An enum is the harder case, because adding a variant breaks every exhaustive switch; that is an argument for handling unknown cases with an `else` arm, or for a second function, when the enum crosses a module boundary.
+
+When the before is fine. An internal struct with one or two call sites in one file is cheaper to change directly; the constructor and the private fields are overhead that a small module does not need. The discipline earns its keep at the boundary between teams, where you cannot edit the callers.
+
+Variation. Take the `AgeError` variant from 35.7 and add a fourth failure case. Count how many `switch` statements must change, then add the same information as a new function instead and count again. The difference is the cost of a breaking change measured in call sites.
+
+36.16 Exercises
+
+1. Naming. Take a function of your own whose name includes `data`, `info`, `handle`, or `process`, and rename it so the name states precisely what it transforms. Then write the one-sentence doc comment the new name makes unnecessary.
+
+2. DRY. Find a rule in a project of yours that is written in more than one place. Extract it into a single named function or constant and list each call site you replaced. If the copies had already drifted, say which one was the bug.
+
+3. Cohesion and coupling. Take a function with more than one reason to change and split it into one function per reason. For each new function, state in one line what kind of edit will make it change, and confirm the reasons are distinct.
+
+4. Composition. Rewrite a struct that uses an enum tag and conditionally-meaningful fields as a `variant` plus composition, as in 35.4. Which fields could the compiler now prove are unavailable in the wrong case?
+
+5. Open/Closed. Implement the shape trait and add two new shapes without editing the `totalArea` function. Then add a `volume()` method to the trait and list every implementor you had to edit. Explain the expression problem in your own words using these two changes as the example.
+
+6. Inversion. Write `registerUser` a second time against a concrete store, and then against the `UserWriter` trait with a failing stand-in. Which version can you test the failure path of, and why can the concrete version not test it without a real database?
+
+7. Errors. Convert a function that uses a sentinel into one that returns a `Result`. Name every failure case as a distinct variant, then write the exhaustive `switch` at one call site. Which cases did the sentinel make indistinguishable?
+
+8. Invariants. Design a `Money` type with an invariant that the amount is never stored with more than two decimal places. Where is the invariant established, where is it asserted, and what does the type gain over a bare `f64`? Then write a property test that constructs a thousand random operation sequences and checks the invariant after each.
+
+9. Testing. Take a function you recently verified by printing and rewrite its verification as tests, at least one of which is a property spanning a range of inputs. Run it, then deliberately break the function and confirm the property test fails where the example test might not.
+
+10. Refactoring. Take the before script in 35.10 and add a feature, say, ignoring comment lines that begin with `#`, without refactoring. Count the lines you had to change and the concerns you had to touch. Then make the same change in the after version and compare. Write two sentences on which shape you would rather maintain, and when the script would still have been the right choice.

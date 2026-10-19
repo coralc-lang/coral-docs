@@ -1,0 +1,794 @@
+Chapter16
+
+Collections and the Standard Library
+
+A Language Without a Library Is a Set of Keywords
+
+Here is a thought experiment. Take away every library from the language you use most. No arrays that grow, no strings that build, no maps, no files, no printing, no math beyond arithmetic. What is left? A set of keywords and a way to move bytes around. Everything that makes the language useful to a human being, the container that holds a list whose length is unknown, the text buffer that accumulates a message, the lookup table that turns a name into a value, lives in the standard library. The language is the grammar; the library is the vocabulary.
+
+Coral's standard library is deliberately organised around one idea, and if you understand the idea you will always know where a tool lives. The idea is that a module groups a capability, and the tree of modules is a tree of capabilities. Under the root `std` sit `collections`, `text`, `io`, `fmt`, `math`, `memory`, `crypto`, `concurrent`, `parser`, `data`, and `testing`. Under `collections` sit the individual structures: `arr`, `vec`, `map`, `hashmap`, `unordered_map`, `set`, `queue`, `deque`, `ringbuf`, `priorityqueue`, `linkedlist`, `tree`, `trie`, `bitset`, `cache`, and the two cross-cutting utilities `iter` and `sort`. Every one of those seventeen modules is real, and this chapter documents every type in them. You never have to guess; you only have to ask "what kind of thing am I doing?" and walk to that branch.
+
+There is one more distinction, and it is worth stating before the first type. `std` is the portable surface, the same names and signatures on every platform. `core` is what the language itself is built from: `str` (the borrowed view, whose methods live in `core::str`), `cchar`, `char_util`, and the numeric limits in `core::limits`. A normal program imports from `std` and never thinks about `core`. `platform` wraps the operating system (on Linux, the libc surface) and is reached only when a program is deliberately doing something close to the metal.
+
+A word about the two import spellings you will see, because it trips people up. The loader resolves the library against a platform aggregator (`lib/std/x86_64/<platform>/lib.crl`), and that aggregator re-exports only a handful of names at the top: `option`, `result`, `vec`, `mman`, `allocator`, and `intrinsics`. So `std::vec`, `std::option`, and `std::result` are short forms that really resolve. The fixed-size array is *not* re-exported there, so `std::arr` does not resolve, you write `std::collections::arr` (or rely on the prelude, which loads it for you, as the next section explains). The base tree's `lib/std/lib.crl` also declares a `pub mod arr`, which is why you may see `std::arr` in older notes; do not depend on it. When in doubt, use the full `std::collections::<module>` path.
+
+Hold on, let me say that more plainly, because it is the key to reading every import in this book. The library is a tree, but a few leaves are also hung near the root so you do not have to climb. When you write:
+
+    import(lib) std::vec { Vec };
+    import(lib) std::option { Option };
+    import(lib) std::result { Result };
+
+you are using three shortcuts. The full paths, `std::collections::vec`, `std::data::option`, `std::data::result`, are exactly equivalent, and this chapter uses the full path wherever it clarifies which branch a type comes from, because knowing where a type lives is half of knowing what it does.
+
+16.0 The Whole Collections Surface at a Glance
+
+Before the tour, a map of the territory. Every module below lives under `std::collections` and is a real file you can read; the import column is the exact path that resolves. `Vec`, `Arr`, `Option`, and `Result` are also delivered by the compiler prelude, which loads `core::str`, `std::io::ios`, `std::text::string`, `std::option`, `std::result`, `std::vec`, and `std::collections::arr` into every unit, so those names need no import at all. The other container names do.
+
+    module (import path)               type               backing structure          order         per-op cost
+    std::collections::vec              Vec<T>             growable array (ptr/len/cap) insertion     push,pop,at O(1); insert,remove O(n)
+    std::collections::arr              Arr<T, N>          inline fixed array          insertion     all O(1); no heap
+    std::collections.map               Map<K, V>          AVL tree                    key order     O(log n)
+    std::collections.hashmap           HashMap<K, V>      linear-probing hash table   none          O(1) average
+    std::collections.unordered_map     UnorderedMap<K, V> HashMap wrapper             none          O(1) average
+    std::collections.set               Set<T>             HashMap<T, bool>            none          O(1) average
+    std::collections.queue             Queue<T>           Deque wrapper (one end)     FIFO          O(1) amortised
+    std::collections.deque             Deque<T>           growable ring (masked)      both ends     O(1) amortised
+    std::collections.ringbuf           RingBuf<T>         fixed ring, overwrite-old   circular      O(1)
+    std::collections.priorityqueue     PriorityQueue<T>   binary heap over an array   min-first     O(log n)
+    std::collections.linkedlist        LinkedList<T>      doubly linked list          insertion     ends O(1); scan O(n)
+    std::collections.tree              Tree<T>            vector-of-children tree      traversal     append child O(1)
+    std::collections.trie              Trie               byte-keyed prefix tree      prefix        O(key length)
+    std::collections.bitset            Bitset             packed 64-bit words          bit index     test,set,toggle O(1)
+    std::collections.cache             Cache<K, V>        hash map + LRU list         recency       O(1) average
+    std::collections.iter              free functions over a `Vec<T>`
+    std::collections.sort              free functions over a `Vec<T>`
+
+Three facts hold across the whole table. First, every container is generic and monomorphised: `Vec<i32>` and `Vec<String>` are separate types that share one source, exactly as in Chapter7. Second, no container takes an allocator parameter. They all allocate through the single process-wide allocator in `std::memory::mman` (`alloc<T>`, `dealloc<T>`, `realloc<T>`, which route to `defaultAllocator`). That is why the allocators and arenas live in their own section, 16.12, and why they are described there honestly as a separate facility rather than as a knob on the containers. Third, struct fields carry no visibility keyword, `pub` is a declaration modifier, not a field modifier, so a container's fields are readable and writable from anywhere. `Vec.data`, `Vec.len`, `Vec.cap`, and `MapEntry`'s fields are part of the observable interface, not hidden behind it.
+
+16.1 Vec<T>: The Dynamic Array
+
+Vec<T> is the workhorse of the whole library, and it is worth understanding it completely, because a great deal of everything else is built on top of it or modelled after it.
+
+Start with the familiar problem. You are reading records from a file and you do not know in advance how many there are. A fixed array cannot hold them because you do not know the size. A linked list could, but then every read hops across the heap and the cache hates you. What you want is an array that starts small and grows itself when it runs out of room. That is a Vec.
+
+Here is its actual declaration, quoted from `std::collections::vec`, fields and all:
+
+    pub struct Vec<T> {
+        T*    data;
+        usize len;
+        usize cap;
+    }
+
+The three fields tell the entire story. `data` points at a heap allocation of `cap` slots. `len` is how many of those slots currently hold live elements. `cap` is how many slots the allocation has room for. The elements occupy `data[0]` through `data[len - 1]`; the slots from `len` to `cap` exist but are not part of the vector's value yet. Every operation Vec supports is bookkeeping on those three numbers, and because the fields are public, which is a deliberate design choice, not an accident, a Vec is a documented data structure rather than an opaque box. You can always ask what it costs in memory, because the numbers that say so are right there.
+
+Simply put, a Vec is a stretchy shelf. Imagine a bookshelf that came with a fixed number of slots (`cap`), some of which you have filled with books (`len`), and a little note on the side saying how many slots the shelf can currently hold. When you add a book to a full shelf, the owner does not nudge every book along; instead they buy a bigger shelf, carry every book across, and throw the old one away. That carrying is why `push` is usually instant but occasionally does real work. A common beginner mistake is to treat `count()` and the `cap` field as the same number: `count()` is how many books you have, and `cap` is how much shelf you have. Only `count()` changes when you add one.
+
+You create one in one of two ways. `new` makes an empty one with no allocation at all, and `withCap` allocates room for a known number of elements up front:
+
+    import(lib) std::vec { Vec };
+
+    Vec<i32> a = Vec<i32>::new();
+    Vec<i32> b = Vec<i32>::withCap(1024);
+
+`new` costs nothing until you push, at which point the first push allocates a small default capacity. `withCap` allocates immediately, which matters when you already know roughly how many elements are coming: allocate once and push a thousand times, instead of reallocating and copying seven times as the buffer doubles.
+
+The core operations read like a sentence:
+
+    Vec<i32> v = Vec<i32>::new();
+    v.push(10);                 // append to the end
+    v.push(20);
+    v.push(30);
+
+    i32 last = v.pop();         // 30; removes and returns the last
+    usize n  = v.count();       // 3 before the pop, 2 after
+    bool e   = v.isEmpty();     // count() == 0
+
+`push` appends, and when `len` has caught up with `cap` it calls `reserve`, which doubles the capacity (or uses 4, for the very first growth) and copies the old elements into the new allocation. `pop` removes and returns the last element; it is an out-of-bounds trap if the vector is empty, so guard with `isEmpty` when you are not sure. `count` reports `len`, it is named `count` rather than `len` so that the method and the field never collide, and `isEmpty` is the readable spelling of `count() == 0`.
+
+Element access comes in several forms, and the names tell you the trade-off. `at` returns an element by value with a bounds check; `set` writes one; `atPtr` and `atConst` return a mutable and a const pointer to a single element; `ptr` and `constPtr` return a pointer to the whole backing array:
+
+    v.set(0, 99);                     // v[0] = 99
+    i32 x = v.at(0);                  // bounds-checked read, by value
+    i32* p = v.atPtr(1);              // pointer to element 1
+    const i32* cp = v.atConst(1);     // const pointer to element 1
+    i32* base = v.ptr();              // the whole array
+    const i32* cbase = v.constPtr();  // the whole array, read-only
+
+The distinction between an access by value and an access by pointer is a theme of the whole library. `at` returns a copy of the element; `atPtr` and `atConst` return a pointer to the element as it lives in the backing array, so writing through a `T*` mutates the vector in place with no copy. Do not read `atPtr` as an unchecked fast path: it carries the same `@assertOut(i < len)` guard that `at` does, and the guard fires the same way. What changes is the return type, not the amount of checking. The genuinely unchecked access is the raw array pointer from `ptr()`/`constPtr()`, where no method stands between you and the element.
+
+Moving elements around is a first-class concern:
+
+    v.insert(0, 5);            // shift right, put 5 at the front
+    v.removeAt(0);             // shift left, drop the front
+    v.removeRange(1, 3);       // remove elements [1, 3)
+    v.fill(7);                 // every element becomes 7
+    v.reverse();               // in place
+    v.clear();                 // len = 0; the allocation is kept
+
+`insert` and `removeAt` are O(n) because they shift the tail, which is the honest cost of keeping elements contiguous. `clear` frees nothing; it simply sets `len` back to zero so the existing allocation can be reused, which is exactly what you want in a loop that refills the same buffer.
+
+A handful of methods make a Vec act like an ordered sequence:
+
+    bool sorted = v.isSortedBy(less);          // bool(T, T) less
+    v.sortBy(less);                            // in-place quicksort
+    i64 where = v.binarySearchBy(key, cmp);    // index, or -1
+
+`sortBy` takes a `bool(T, T)` predicate meaning "a comes before b", and `binarySearchBy` takes an `i32(T, T)` comparator returning negative, zero, or positive. The generic sort in `std::collections::sort` and the typed sorts `sortI32`, `sortF64`, and `sortusize` are built around the same idea; we meet them in 16.11.
+
+Finally, capacity management, which is how you turn a Vec from convenient into fast:
+
+    v.reserve(4096);           // grow capacity to 4096 if it is smaller
+    v.reserveExact(4096);      // same effect: no-op if cap is already >= 4096
+    v.shrinkToFit();           // shrink the allocation to len
+    v.dispose();               // free the backing array now
+
+`shrinkToFit` is the method to call when a Vec has finished growing and may live a long time; it releases the slack that doubling left behind. `dispose` frees the array immediately, and `drop`, which Vec conforms to through `@drop`, calls `dispose` for you when the value goes out of scope. You rarely call `dispose` by hand; you let the value die, and the compiler schedules the free. That is the RAII rule of Chapter11, specialised to the container.
+
+Read the two reserve methods honestly: in the shipped source they are the same function. Both return immediately if the requested capacity is already available and otherwise call `realloc` once to the requested size; neither one is a "grow to exactly" versus "grow to at least" pair, and neither has any additional growth policy. The doubling policy belongs to `push` alone, which calls `reserve(cap * 2)` when the vector is full and `reserve(4)` on the very first push. The names survive because the intent of the two call sites differs, not because the implementations do.
+
+A handful of membership and end methods are easy to miss because the section above was about growth rather than access:
+
+    bool here = v.contains(30);    // linear scan, equality on T
+    i32 f = v.front();             // v.at(0), asserts if empty
+    i32 b = v.back();              // v.at(len - 1), asserts if empty
+
+`contains` is a plain O(n) scan using `==`; it is not the hashed membership of 16.5 and it does not need an equality function passed in, because `==` on the element type must already exist for the container to be usable. `front` and `back` are convenience spellings of `at(0)` and `at(count() - 1)` and carry the same bounds assertion.
+
+The complete method set, in the order the source declares it, is: `new`, `withCap`, `reserve`, `push`, `pop`, `count`, `atPtr`, `atConst`, `at`, `ptr`, `isEmpty`, `constPtr`, `set`, `front`, `back`, `insert`, `removeAt`, `removeRange`, `contains`, `fill`, `reserveExact`, `shrinkToFit`, `clear`, `reverse`, `isSortedBy`, `sortBy`, `binarySearchBy`, `dispose`. (The private `_sortByRange` and `_partitionBy` helpers are the quicksort that `sortBy` drives.) That list is short on purpose: a Vec is not a swiss army knife, it is an array with a length, and the algorithm layer belongs in `iter` and `sort`.
+
+Iterate a Vec either by index or by range-for:
+
+    for (usize i = 0; i < v.count(); i += 1) {
+        println("{}", v.at(i));
+    }
+
+    for (i32 value : v) {
+        println("{}", value);
+    }
+
+The range-for form is the idiomatic read: it visits each element once, in order, and hides the index. Reach for the indexed form only when you need the index itself.
+
+Here is a complete little program that builds a Vec and adds up its contents, so the whole shape is visible at once:
+
+    import(lib) std::io::ios { println };
+    import(lib) std::vec { Vec };
+
+    void main() {
+        Vec<i32> scores = Vec<i32>::new();
+        scores.push(90);
+        scores.push(85);
+        i32 total = 0;
+        for (i32 s : scores) {
+            total += s;
+        }
+        println("total = {}", total);
+    }
+
+Why this matters: almost every real program keeps a list of things whose number it does not know in advance, the lines of a file, the players in a game, the results of a query, and the Vec is the container that grows to hold them.
+
+16.2 Arr<T, N>: Fixed Size, Inline Storage
+
+Vec grows. `Arr<T, N>` is its fixed-size sibling: the length is part of the type, known at compile time, and the storage lives inline in the value rather than behind a pointer.
+
+    import(lib) std::collections::arr { Arr };   // note: "std::arr" does not resolve; the prelude also provides Arr
+    Arr<i32, 4> location = Arr<i32, 4> { 1, 2, 3, 4 };
+
+The declaration is worth seeing in full, because it is the smallest container in the library:
+
+    pub struct Arr<T, N> {
+        T data[N];
+    }
+
+There is no pointer, no length field, and no capacity: `N` is the length, and it is baked into the type. The entire storage is the single inline array `data`. That has three consequences. The value is exactly `N * sizeof(T)` bytes with no indirection, so an Arr inside a struct keeps its elements in the struct and not off on the heap. Copying an Arr copies every element, so an Arr is only cheap to pass around when it is small or when you pass a pointer to it. And `N` is not `usize`, it is a comptime parameter, which is why you write `Arr<i32, 4>` and why generic code that wants "an array of unknown length" has to be generic over `N` as a parameter rather than over a runtime value.
+
+Because `N` is a compile-time constant, the compiler can check every constant index into an Arr, so an out-of-range constant is a build error rather than a runtime trap. The API mirrors Vec's access methods: `ptr`, `constPtr`, `count`, `isEmpty`, `at`, `set`, `atPtr`, `front`, `back`, `fill`, `copyTo`, and `copyFrom`:
+
+    location.set(0, 9);
+    i32 first = location.front();
+    i32 last  = location.back();
+    i32 buf[4];
+    location.copyTo(buf);          // copy every element out
+    location.copyFrom(buf);        // copy every element in
+
+`count()` returns `N` (the constant, not a stored field), and `isEmpty()` is `N == 0`, so an `Arr<T, 0>` is legal and always empty. `at`, `set`, and `atPtr` assert `i < N` at runtime even though N is known; the compiler may fold the check away for a constant index, but the assertion is the contract. Note what is *absent*: there is no `dispose`, no `drop` conformance, and no free. An Arr owns no heap, so there is nothing to release, and `@drop` would have nothing to do, the reason it does not implement the trait. There is also no `insert` or `push`, because growing is not part of the type's contract.
+
+This is the container to reach for when the size is genuinely fixed, a three-component vector, a 2x2 matrix, a fixed header, a lookup table whose extent is a comptime constant, because it needs no heap allocation and its size is a fact the compiler can use. A plain Coral array written `T name[N]` is the same storage without the methods; Arr is the array with the container interface attached.
+
+16.3 Map<K, V>: The Ordered Associative Container
+
+A map associates keys with values. Coral's ordered map is an AVL tree, and the choice to make it ordered is a promise: iteration is deterministic, in key order, and range-shaped queries are possible. The price is O(log n) per operation instead of the O(1) a hash table gives.
+
+The declaration shows why the API looks the way it does:
+
+    pub struct Map<K, V> {
+        MapEntry<K, V>* root;
+        usize len;
+        i32(K, K) cmpFn;
+        bool failed;
+    }
+
+The map does not know how to compare two keys of an arbitrary type `K`; it is handed a comparator at construction. The comparator is `i32(K, K)`, returning negative, zero, or positive, exactly the convention `qsort` and `strcmp` use:
+
+    import(lib) std::collections::map { Map };
+
+    i32 cmpStr(str a, str b) { return a.compare(b); }
+
+    Map<str, i32> ages = Map<str, i32>::new(cmpStr);
+    ages.insert("ada", 36);
+    ages.insert("grace", 45);
+
+    if (ages.contains("ada")) {
+        Option<i32> a = ages.get("ada");
+        println("ada = {}", a.unwrap());
+    }
+    ages.remove("grace");
+
+Two things are worth pausing on. First, `insert` returns a `Result<V, CollectionError>`, because the AVL tree allocates a node and allocation can fail; the `CollectionError` variant has an `AllocFailed` case. You may ignore the result when you are confident, but the library does not pretend a fallible operation cannot fail. Second, `get` returns an `Option<V>`, the same honest "a value, or nothing" from Chapter15:
+
+    Option<i32> maybe = ages.get("ada");
+    if (maybe.isSome()) {
+        i32 a = maybe.unwrap();
+    }
+    i32 definitelyThere = ages.get("ada").unwrapOr(-1);
+
+When you want to modify a value in place rather than copy it out, `getPtr` hands you an `Option<V*>`:
+
+    Option<i32*> slot = ages.getPtr("ada");
+    if (slot.isSome()) {
+        *slot.unwrap() = *slot.unwrap() + 1;   // increment in place
+    }
+
+Because a Map is ordered, iteration is in key order, and it is done with the `each` method rather than a range-for, because the map exposes no iterator of its own:
+
+    void printAge(str key, i32 value) {
+        println("{} = {}", key, value);
+    }
+    ages.each(printAge);
+
+The function passed to `each` receives the key and the value and returns nothing. This is the standard Coral way to walk a container that is not a Vec or an Arr: hand it a function, not a cursor. Because `_eachInOrder` recurses left, then calls `fn`, then recurses right, the keys arrive in ascending comparator order, that is the whole point of paying for a balanced tree.
+
+The complete method set is: `new`, `dispose`, `count`, `isEmpty`, `insert`, `get`, `getPtr`, `contains`, `remove`, `clear`, `each`. `remove` and `clear` return nothing; you ask `contains` first if you need to know whether anything was there. `insert` on an existing key overwrites the value in place and does not change `count`; on a new key it allocates one `MapEntry` node, so it is the only operation that can fail, and it reports that with the `Result` we saw. The tree is an AVL tree: `_insert` recomputes heights on the way back up and performs at most one single or double rotation, and `_remove` rebalances on the way out. Every lookup is a walk of height O(log n), and `contains`, `get`, and `getPtr` share the same `_find` walk.
+
+Two source-level details are worth knowing because they explain behaviour you will see. First, `insert` returns `Result<V, CollectionError>::Ok { .value = value }`, it hands your value straight back, so `insert` is not "insert-or-update returning the old value"; it always returns what you passed in. Second, the AVL deletion uses the in-order successor: it copies the successor's key and value up into the removed node and then deletes the successor. For value types that is invisible; for a key or value type that owns heap memory it means the *same* value object can be moved between nodes, which is fine because the map never frees keys or values (see 16.12).
+
+Descending order, lowest key, and ranges are worth a sentence because they are the things people expect an ordered map to give them and this one largely does not. There is no iterator, no reverse iterator, no `firstKey`/`lastKey`, and no range scan. If you need keys in descending order you can collect them with `each` into a `Vec<K>` and reverse, or, if the order is a permanent property of the application, pass a negated comparator (`i32 reverseCmp(K a, K b) { return -cmpAsc(a, b); }`) and let the same AVL invariants maintain a descending tree with no other change. For "all keys in `[lo, hi)`", collect and filter, or reach for a structure with a range operation. The tree holds the information; the module is simply not built to expose it.
+
+16.4 The Hashed Maps: HashMap and UnorderedMap
+
+The ordered map keeps an O(log n) promise and keeps your keys sorted. When you do not need order and you do want speed, you want a hash table. `HashMap<K, V>` is a linear-probing hash table whose average operations are O(1):
+
+    pub struct HashMap<K, V> {
+        HashMapEntry<K, V>* entries;
+        usize cap;
+        usize len;
+        usize(K) hashFn;
+        bool(K, K) eqFn;
+    }
+
+Hashing needs two functions a generic container cannot invent: a hash and an equality test. You supply both, which means you decide what "the same key" means:
+
+    import(lib) std::collections::hashmap { HashMap };
+
+    usize hashStr(str k) {
+        usize h = 5381;
+        for (usize i = 0; i < k.len; i += 1) h = h * 33 + (usize)k.ptr[i];
+        return h;
+    }
+    bool eqStr(str a, str b) { return a.equals(b); }
+
+    HashMap<str, i32> counts = HashMap<str, i32>::new(hashStr, eqStr);
+    counts.insert("apple", 3);
+    counts.insert("pear", 1);
+
+The API is close to Map's: `insert` (returning a `Result`), `get` and `getPtr` (returning an `Option`), `contains`, `remove`, `removeEntry`, `clear`, `count`, `keys`, `values`, `each`, and `eachEntry`. Notice the one method from that sentence that is *not* there: `HashMap` has no `isEmpty`. It has `count`, so `m.count() == 0` is the emptiness test, and that is exactly what the wrapper below adds. The omission is easy to trip over because `Map` and `Set` both have one.
+
+The table starts at capacity 16 and doubles whenever `len * 2 >= cap`, re-homing every occupied entry into the larger array. Collisions use linear probing with a step of one, and `get`, `contains`, and `getPtr` stop their probe at the first unoccupied slot (with a wrap guard so a table that somehow fills completely still terminates). Nothing about the layout is exposed as order: the `entries` array is scanned start to finish, so `each`, `keys`, and `values` return entries in slot order, which is a function of the hash values, not of insertion.
+
+An analogy helps here. Think of a coat check with numbered hooks. No attendant tells you which hook to use; instead a rule computes a hook number from the ticket in your hand, say, the number of letters in your name. Two guests can compute the same hook number, which is a collision, so the rule adds "if that hook is taken, try the next one." To find your coat again you run the same rule and walk the same short chain. A HashMap is exactly this: the hook number is the hash, "try the next one" is linear probing, and lookup is fast because a good hash spreads names evenly across hooks. A common mistake is to write a hash function that returns the same value for many different keys (for example, always the key's first letter). The table still works, but every lookup degenerates into a linear scan, and the O(1) promise quietly becomes O(n).
+
+`each` walks the occupied entries in slot order; `eachEntry` hands you a pointer to the live `HashMapEntry` instead of a copy of the key and value:
+
+    void report(str key, i32 value) { println("{}: {}", key, value); }
+    counts.each(report);
+
+`eachEntry`'s pointer is the hook for the case where the key or value owns memory. `remove` throws the entry away; `removeEntry` returns it by value (`Option<HashMapEntry<K, V>>`) so the caller can dispose of an owned key or value before the table forgets it. The source says so directly. `removeEntry` also uses backward-shift deletion rather than tombstones, so a removed slot never breaks a probing chain, that is why insertion never has to distinguish "empty" from "deleted".
+
+`UnorderedMap<K, V>` is a thin wrapper with one purpose: to say in the type that iteration order is not a promise. It is built on `HashMap` and forwards every operation, but because it is a distinct type, nobody downstream can accidentally depend on an order that was never guaranteed. It also adds the `isEmpty` that `HashMap` lacks, defined as `inner.count() == 0`, and unlike `HashMap` it carries its own `@drop`. Its method set is exactly: `new`, `dispose`, `count`, `isEmpty`, `insert`, `get`, `getPtr`, `contains`, `remove`, `clear`, `keys`, `values`, `each`. Note there is no `eachEntry` and no `removeEntry` on the wrapper, those live only on `HashMap`.
+
+    import(lib) std::collections::unordered_map { UnorderedMap };
+    UnorderedMap<str, i32> cache = UnorderedMap<str, i32>::new(hashStr, eqStr);
+
+The three-map split is a small example of a large principle in the library: when two behaviours differ, they are two types with two names, not one type with a flag. A flag would let a caller depend on an order a HashMap never promised; two types make the promise explicit in the signature of every function that accepts one.
+
+16.5 Set<T>
+
+A set is a map without values. It answers "is this present?" and enforces uniqueness. Coral's `Set` is a `HashMap<T, bool>` underneath, and it needs the same two functions:
+
+    pub struct Set<T> {
+        HashMap<T, bool> inner;
+        usize(T) hashFn;
+        bool(T, T) eqFn;
+    }
+
+    import(lib) std::collections::set { Set };
+
+    Set<str> seen = Set<str>::new(hashStr, eqStr);
+    seen.insert("apple");
+    seen.insert("banana");
+    seen.insert("apple");          // no effect; already present
+
+    if (seen.contains("apple")) { ... }
+    seen.remove("banana");
+    seen.each(printStr);
+
+Sets are the natural tool for deduplication, membership, and the set algebra that shows up in data work. The library provides the algebra directly:
+
+    Set<str> a = Set<str>::new(hashStr, eqStr);
+    Set<str> b = Set<str>::new(hashStr, eqStr);
+    // ... fill both ...
+
+    Set<str> both  = a.union(&b);
+    Set<str> share = a.intersection(&b);
+    Set<str> onlyA = a.difference(&b);
+    bool aInB      = a.isSubset(&b);       // every element of a is in b
+    bool aCoversB  = a.isSuperset(&b);     // every element of b is in a
+    Vec<str> asList = a.toVec();
+
+The method set is: `new`, `dispose`, `count`, `isEmpty`, `insert`, `contains`, `remove`, `clear`, `toVec`, `each`, `union`, `intersection`, `difference`, `isSubset`, `isSuperset`. Two details matter. First, `insert` returns nothing, not a `Result`: a Set does not need to tell you it inserted a duplicate, it just does not count it. Second, the four algebra methods take a `const Set<T>*` and return a *newly allocated* `Set<T>` built with the receiver's hash and equality functions; the result owns its own table and is disposed (or dropped) independently. `a.union(&b)` leaves neither `a` nor `b` changed. `isSubset` and `isSuperset` allocate a temporary `Vec<T>` internally, so they are not allocation-free even though they only read.
+
+Note the granularity the class does expose: `Set` is unordered and there is no `HashSet` alias and no ordered set anywhere in `std::collections`. If you need ordered traversal of a set-like collection, the library pushes you to `Map<K, V>` with `V = bool` (the structure Set itself is built on) and to walk it with `each`, which visits keys in comparator order.
+
+A common pattern, print each distinct word of a text, is a Set in a few lines:
+
+    Set<str> words = Set<str>::new(hashStr, eqStr);
+    for (str w : splitVec(text, ' ')) {
+        words.insert(w);
+    }
+    words.each(printStr);
+
+Choosing between a Set and a Vec-with-a-scan is a question of size. For a handful of items the scan is faster and simpler; for thousands, the set's average O(1) membership wins by orders of magnitude.
+
+16.6 Queue, Deque, and RingBuf
+
+Order matters as much as membership, and different orders call for different structures. `Queue<T>` is first-in-first-out, and it is a thin wrapper over Deque that deliberately exposes only one end:
+
+    pub struct Queue<T> {
+        deque::Deque<T> inner;
+    }
+
+    import(lib) std::collections::queue { Queue };
+
+    Queue<i32> q = Queue<i32>::new();
+    q.enqueue(1);
+    q.enqueue(2);
+    q.enqueue(3);
+    i32 first = q.dequeue();       // 1, FIFO
+    i32 front = q.peek();          // 2, without removing
+
+    usize n = q.count();
+    bool empty = q.isEmpty();
+    q.clear();
+
+Simply put, a Queue is the checkout line at a shop: the first person to join is the first served, and you only ever add at the back and take from the front. `Deque<T>` is the same line with a second door at the front, so you can join or leave at either end. `RingBuf<T>` is a circular conveyor that holds a fixed number of items and, once it is full, knocks the oldest one off to make room for the newest, the shape you want for "the last N readings."
+
+A common beginner mistake is to use a `Vec` as a queue by calling `removeAt(0)`. That works, but each removal slides every remaining element down one slot, so it is O(n) where a Queue is O(1). Reaching for the container whose name says "queue" is the fix.
+
+`Deque<T>` is a double-ended queue: a growable ring that supports both ends. It is the structure for a work list that grows at both ends and for a sliding window:
+
+    import(lib) std::collections.deque { Deque };
+
+    Deque<i32> d = Deque<i32>::new();
+    d.pushBack(2);
+    d.pushFront(1);
+    i32 left  = d.popFront();      // 1
+    i32 right = d.popBack();       // 2
+    i32 at    = d.at(0);           // random access by logical index
+    d.set(0, 9);
+
+`RingBuf<T>` is a fixed-capacity ring: a queue whose storage is a fixed array with head and tail indices that wrap. It never allocates after construction, and when it is full, pushing overwrites the oldest element, which is precisely the behaviour you want in a logging buffer or a recent-history window:
+
+    import(lib) std::collections.ringbuf { RingBuf };
+
+    RingBuf<f64> samples = RingBuf<f64>::new(1024);
+    samples.push(sample);          // overwrites the oldest once full
+
+    usize held = samples.count();
+    bool full  = samples.isFull();
+    f64 oldest = samples.front();
+    f64 newest = samples.back();
+
+The exact method sets are small and worth having. `Queue<T>`: `new`, `dispose`, `count`, `isEmpty`, `enqueue`, `dequeue`, `peek`, `clear`, plus `@drop`. `Deque<T>`: `new`, `dispose`, `count`, `isEmpty`, `capacity`, `pushFront`, `pushBack`, `popFront`, `popBack`, `front`, `back`, `at`, `set`, `clear`, plus `@drop`. `RingBuf<T>`: `new`, `dispose`, `count`, `isEmpty`, `isFull`, `capacity`, `push`, `pop`, `front`, `back`, `at`, `clear`, plus `@drop`.
+
+Three source-level facts clarify the behaviour. First, `Deque` reserves one slot to distinguish full from empty, so `Deque::new()` allocates a backing array of 8 but `capacity()` reports `cap - 1`, i.e. 7, and the deque grows by `_grow` exactly when `count() >= cap - 1`. Second, `Deque` is the only structure here whose backing array is mask-indexed with a power-of-two size; `RingBuf` uses `% cap` instead, so its capacity need not be a power of two, `RingBuf<f64>::new(1024)` and `RingBuf<f64>::new(1000)` are both legal, and `RingBuf::new(0)` would be a degenerate ring that asserts on first use. Third, `clear` on all three resets the head/tail indices but does not touch the element slots; the elements are simply abandoned, which matters if the element type owns memory (see 16.12). `popFront`, `popBack`, `dequeue`, `pop`, `front`, `back`, `at`, and `set` all carry `@assert` guards, so calling them on an empty (or out-of-range) container traps rather than returning garbage.
+
+The overlap among Queue, Deque, and RingBuf is intentional. Queue is the simplest one-ended interface; Deque adds the other end; RingBuf adds a size bound and the no-allocation guarantee. Pick the one whose constraints you actually need, so the type documents the constraint for the reader.
+
+16.7 PriorityQueue<T>
+
+A priority queue always hands you the smallest element, or, with a comparator that reverses the order, the largest. It is a binary heap over a Vec's worth of storage:
+
+    pub struct PriorityQueue<T> {
+        T* data;
+        usize len;
+        usize cap;
+        bool(T, T) less;
+    }
+
+    import(lib) std::collections::priorityqueue { PriorityQueue };
+
+    bool lessI32(i32 a, i32 b) { return a < b; }
+
+    PriorityQueue<i32> pq = PriorityQueue<i32>::new(lessI32);
+    pq.push(5);
+    pq.push(1);
+    pq.push(3);
+    i32 min = pq.pop();            // 1
+    i32 peeked = pq.peek();        // the next one out, without removing
+
+The comparator is `bool(T, T) less`, "is a strictly before b?", the same shape Vec's `sortBy` uses. To make a max-heap, hand it `bool greaterI32(i32 a, i32 b) { return a > b; }`. A priority queue is the engine of Dijkstra's algorithm, of event-driven simulation, and of scheduling; we use it for ranking in the worked example below.
+
+The implementation is a textbook binary heap stored flat: the children of index `i` are `2*i + 1` and `2*i + 2`, and the parent of `i` is `(i - 1) / 2`. `push` appends and sifts up; `pop` moves the last element to the root and sifts down. The backing array starts at capacity 16 and doubles in `_grow` when full. The method set is `new`, `dispose`, `count`, `isEmpty`, `push`, `pop`, `peek`, `clear`, plus `@drop`. `peek` and `pop` assert on emptiness, and there is no `decreaseKey` or arbitrary `remove`, so a decrease-key algorithm has to be expressed by pushing a duplicate entry and discarding stale pops, the usual "lazy deletion" pattern. `clear` only resets `len`; it does not free the backing array, which stays allocated for reuse.
+
+16.8 LinkedList<T>
+
+A linked list is a chain of nodes, each pointing at the next. It is the structure to reach for sparingly, an array beats it for almost every access pattern because of cache locality, but it is unbeatable when you need O(1) insertion and removal given a cursor, and it expresses an intrusive pointer-linked structure directly.
+
+    import(lib) std::collections.linkedlist { LinkedList };
+
+    LinkedList<i32> l = LinkedList<i32>::new();
+    l.pushBack(1);
+    l.pushBack(2);
+    l.pushFront(0);
+
+    i32 head = l.front();
+    i32 tail = l.back();
+    i32 popF = l.popFront();
+    i32 popB = l.popBack();
+    l.each(printI32);
+
+The node type is part of the interface, because `insertAfter` and `remove` take a cursor:
+
+    pub struct ListNode<T> {
+        T value;
+        ListNode<T>* prev;
+        ListNode<T>* next;
+    }
+
+The method set is `new`, `dispose`, `count`, `isEmpty`, `pushFront`, `pushBack`, `popFront`, `popBack`, `front`, `back`, `insertAfter`, `remove`, `each`, plus `@drop`. `insertAfter(null, val)` appends at the front, which is a documented convenience in the source rather than an accident. `remove(null)` does nothing. Every push allocates one node, so a `LinkedList` has no amortised capacity story: its memory use tracks `len` exactly, but every insertion is an allocation and every `at(i)`-style scan is O(n), and this type has no `at` at all, so random access means walking `each` and counting. `front`, `back`, `popFront`, and `popBack` assert on emptiness.
+
+The library provides it because some interfaces and some designs genuinely want it; it does not present it as the default list. The default list is Vec.
+
+16.9 Tree and Trie
+
+Two specialised structures round out the collection family.
+
+`Tree<T>` is a general tree, a node with children, the shape of a file system, a scene graph, an abstract syntax tree, an organisational chart. Its nodes hold a value and a vector of child pointers:
+
+    pub struct TreeNode<T> {
+        T value;
+        Vec<TreeNode<T>*> children;
+    }
+
+    pub struct Tree<T> {
+        TreeNode<T>* root;
+    }
+
+    import(lib) std::collections.tree { Tree };
+
+    Tree<str> root = Tree<str>::new();
+    TreeNode<str>* r = root.setRoot("root");
+    TreeNode<str>* docs = root.addChild(r, "docs");
+    TreeNode<str>* src  = root.addChild(r, "src");
+
+    usize kids = root.childCount(r);
+    Option<TreeNode<str>*> first = root.childAt(r, 0);
+    root.preOrder(printNodeValue);     // depth-first, parent first
+    root.postOrder(printNodeValue);    // depth-first, children first
+    usize d = root.depth(r);
+    usize total = root.size();
+    Vec<str> flat = root.toVec();
+
+Because a Tree is not a Vec, iteration is through `preOrder` and `postOrder`, which take a `void(T)` function. The method set is `new`, `dispose`, `isEmpty`, `setRoot`, `addChild`, `childCount`, `childAt`, `removeChild`, `preOrder`, `postOrder`, `depth`, `size`, `toVec`, plus `@drop`. Some behaviours are sharp edges worth naming. `setRoot` is also the way to *replace* a tree: called on a tree that already has a root, it first disposes the entire old tree and frees every node. `addChild(null, val)` returns `null` rather than trapping, so a caller that lost its parent pointer gets a null child and a null result rather than a crash. `removeChild(parent, i)` does not just unlink the i-th child; it disposes that child's whole subtree and frees it. `childAt` returns an `Option`, while `childCount` returns a plain count. `depth(node)` is the height of the subtree rooted at `node` (a leaf is 1, a null node is 0), and `size()` counts every node in the tree, not the depth. `toVec` produces values in pre-order, matching `preOrder`. `Tree` is generic over any `T`, and it never drops `T`: dispose frees the node objects and their child arrays, and it is the caller's job to clean up owned values first.
+
+`Trie` is the prefix tree, keyed on the bytes of a string. It is ideal for autocomplete, spell-check dictionaries, and routing tables, where the query is "all keys with this prefix":
+
+    import(lib) std::collections.trie { Trie };
+
+    Trie dict = Trie::new();
+    dict.insert("car");
+    dict.insert("cart");
+    dict.insert("cat");
+
+    if (dict.contains("car")) { ... }
+    if (dict.startsWith("ca")) { ... }
+    bool removed = dict.remove("cart");
+    dict.each(printWord);
+
+Note what the trie stores: it is a set of keys, not an associative map, so `insert` takes only the key. If you need a payload per word, use the key to look the payload up in a companion Map. The method set is `new`, `dispose`, `size`, `isEmpty`, `insert`, `contains`, `startsWith`, `remove`, `each`, plus `@drop`. Each node is a `TrieNode` holding a `TrieNode* children[256]` array and a single `bool isEnd`; the key is walked one *byte* at a time (a `str` is bytes, so a multi-byte UTF-8 character is simply several edges). `contains` is true only when the walk ends on a node whose `isEnd` is set, which is what makes `contains("car")` different from `startsWith("car")`. `remove` clears the end marker and then prunes any branch that is left with no children and no end marker, so deleting a key reclaims its tail. `size()` is the number of stored keys, maintained in the `count` field.
+
+One subtlety is easy to miss in a worked example: `each` walks the trie with a scratch byte buffer sized to the deepest key and constructs each callback argument with `str::fromParts(buf, depth)`. That string *views the scratch buffer*, so it is valid only for the duration of the callback, copy it (for example with `String::from`) if you intend to keep it. Because the children are visited in index order 0..255, `each` yields keys in ascending byte order, which is lexicographic order for pure ASCII keys.
+
+16.10 Bitset and Cache
+
+`Bitset` is a fixed-width set of bits packed into 64-bit words. It is the right structure for a dense set of small non-negative integers, a set of visited nodes in a graph, an array of feature flags, where a `Set<usize>` would spend sixty-four bits storing what one bit could hold.
+
+    import(lib) std::collections.bitset { Bitset };
+
+    Bitset visited = Bitset::new(256);
+    visited.set(42);
+    visited.toggle(7);
+    if (visited.test(42)) { ... }
+    visited.clear(42);
+
+    u64 setBits   = visited.countOnes();
+    u64 clearBits = visited.countZeros();
+    bool any      = visited.hasAny();
+    bool allSet   = visited.all();
+
+Bitsets also do bitwise algebra in place, which is how they earn their keep in algorithms that operate on sets of nodes:
+
+    visited.and(&other);
+    visited.or(&other);
+    visited.xor(&other);
+    visited.not();
+    visited.setAll();
+    visited.clearAll();
+
+The method set is `new`, `dispose`, `count`, `wordCount`, `set`, `clear`, `toggle`, `test`, `setAll`, `clearAll`, `countOnes`, `countZeros`, `hasAny`, `none`, `all`, `and`, `or`, `xor`, `not`, plus `@drop`. Read `count()` carefully: it returns `numBits`, the width you asked for at construction, *not* the number of set bits, the population count is `countOnes()`. `wordCount()` returns the number of 64-bit words, `ceil(numBits / 64)`. `set`, `clear`, `toggle`, and `test` all assert `bit < numBits`, so an out-of-range bit index is a trap and not a silent no-op. The four bitwise operations `and`, `or`, `xor`, and `not` mutate the receiver in place; the first three assert that `other->numBits` equals the receiver's, so a 256-bit set cannot be combined with a 128-bit one. `not` and `setAll` mask off the unused high bits of the last word, so `all()` correctly reports true only when every one of the `numBits` bits is set, never the padding. There is no `get` alias outside `test`, and no way to grow a Bitset: its width is fixed at construction.
+
+`Cache<K, V>` is a bounded, eviction-aware map, the standard tool when a map must not grow without limit. Right now the eviction policy is a true LRU: on every hit the entry is moved to the most-recently-used end, and when the cache is full the coldest entry is dropped. Because it also needs a hash and an equality for keys, the constructor takes all three:
+
+    import(lib) std::collections.cache { Cache };
+
+    Cache<str, Page> pages = Cache<str, Page>::new(128, hashStr, eqStr);
+
+    pages.insert(url, fetch(url));      // may evict the coldest
+    Option<Page> hot = pages.get(url);  // a hit moves it to the hot end
+    Option<Page*> p  = pages.getPtr(url);
+    bool here = pages.contains(url);
+    pages.remove(url);
+    pages.each(visitPage);
+    pages.resize(256);
+
+The structure is a `HashMap<K, CacheEntry<K, V>*>` plus an intrusive doubly-linked recency list anchored at `head` (most recently used) and `tail` (least recently used). The method set is `new`, `dispose`, `count`, `maxSizeValue`, `insert`, `get`, `getPtr`, `contains`, `remove`, `clear`, `each`, `resize`, plus `@drop`. There is no `isEmpty`, use `count() == 0`. `new` clamps a non-positive maximum to 64 and `resize` clamps to at least 1, so the cache can never be configured with zero capacity and then divide by it. `insert` on a new key adds the entry at the head and then evicts from the tail while `count() > maxSize`, so a single insert can trigger more than one eviction after a resize. `get` and `getPtr` both move the touched entry to the head; `contains` deliberately does *not*, so a membership probe is not a use. `each` walks from head to tail, i.e. most-recently-used first. As with every container in this chapter, `dispose` and `_evict` free the entry objects but do not drop the key or value they hold.
+
+Having an LRU cache in the standard library means you do not rebuild it, subtly differently, in every project. We use it in the second worked example.
+
+16.11 iter and sort
+
+Two utilities cut across every container.
+
+`std::collections::sort` implements the ordering algorithms on Vecs, with typed entry points for the common element types and a generic one for the rest:
+
+    import(lib) std::collections::sort {
+        sortI32, sortF64, sortusize,
+        sortBy, isSortedI32, binarySearchI32,
+        binarySearchBy, reverse
+    };
+
+    Vec<i32> v = Vec<i32>::new();
+    v.push(3); v.push(1); v.push(2);
+    sortI32(&v);                            // ascending
+
+    bool ordered = isSortedI32(&v);
+    isize idx = binarySearchI32(&v, 2);     // index, or -1
+
+For any other element type, `sortBy` takes the "less than" predicate, and `binarySearchBy` takes the three-way comparator:
+
+    sortBy(&v, lessSomeType);
+    isize where = binarySearchBy(&v, key, cmpSomeType);
+
+`std::collections.iter` provides the adaptors that make bulk operations read as transformations rather than loops. Each takes a pointer to a Vec and a function, and each returns a new Vec or a folded value:
+
+    import(lib) std::collections::iter {
+        map, filter, reduce, forEach, find, findIndex,
+        hasAny, all, take, skip, slice, zip,
+        countIf, minBy, maxBy, unique, flatten,
+        enumerate, sum, average
+    };
+
+    Vec<i32> doubled = map(&v, double);
+    Vec<i32> evens   = filter(&v, isEven);
+    i32 total        = reduce(&v, 0, add);
+    i32 biggest      = maxBy(&v, lessI32);
+    usize howMany    = countIf(&v, isEven);
+    Vec<i32> firstTwo = take(&v, 2);
+    Vec<i32> rest     = skip(&v, 2);
+    Vec<usize> indices = enumerate(&v);
+    i32 s            = sum(&v);
+    f64 avg          = average(&f64v);
+
+The pipeline reads in the order the operations happen, which is the property a loop with a temporary variable loses. Note the names precisely: the folder is `reduce`, not `fold`; the typed sorts are `sortI32` and friends rather than a bare `sort`; and every adaptor wants a pointer, so you call `map(&v, f)` and not `map(v, f)`.
+
+Simply put, these adaptors turn a loop into a sentence. `map` means "do this to every element and collect the results," `filter` means "keep only the elements this test approves of," and `reduce` means "boil the whole list down to one value." Reading `map(&v, double)` aloud gives the meaning without any index variable to track.
+
+The fine print of `iter` is where correct programs are won, so here it is, function by function. `map`, `filter`, `take`, `skip`, `slice`, `zip`, `unique`, `flatten`, and `enumerate` *allocate and return new Vecs*; the caller owns them and must let them drop. `reduce`, `forEach`, `find`, `findIndex`, `hasAny`, `all`, `countIf`, `minBy`, `maxBy`, `sum`, and `average` return a scalar and allocate nothing. `find` is the trap: it returns the element if found and `T()`, the zero/default value of `T`, if not, so `find` on `Vec<i32>` returning `0` is ambiguous between "found a zero" and "found nothing". Use `findIndex`, which returns an `isize` index or `-1`, when you need to distinguish. `minBy`, `maxBy`, and `sum` assert that the vector is non-empty; `average` returns `0.0` for an empty vector instead. `slice(v, start, end)` is half-open and clamps `end` to `count()`; if `start >= end` or `start >= count()` it returns an empty Vec. `zip` stops at the shorter input and yields `Vec<Pair<T, U>>`, where `Pair` has the fields `first` and `second`. `enumerate` is not what its name suggests if you are used to other languages: it returns a `Vec<usize>` of the indices `0..count()`, and you pair those with values yourself (conventionally via `zip`). `unique` is O(n^2) because it scans the result for each element; it is a convenience, not a set, and it takes an equality function rather than hashing. `flatten` is the one adaptor whose parameter type is `Vec<Vec<T>>*`.
+
+`sort` is a quicksort with a median-of-three pivot, exactly as the earlier `Vec::sortBy` uses internally, and the typed entry points call the corresponding partition routine. `sortI32`, `sortusize`, `sortF64`, `sortBy`, and `reverse` mutate the vector in place and take a non-const `Vec<T>*`; `isSortedI32`, `isSortedusize`, `isSortedBy`, `binarySearchI32`, `binarySearchusize`, and `binarySearchBy` only read and take `const Vec<T>*`. The typed sorts compare with `<` directly, so `sortF64` inherits whatever floats do with `NaN`; the generic `sortBy` uses the `less` predicate you supply. `binarySearchBy` takes a three-way comparator `i32(T, T) cmp`, *not* a `less` predicate, and all three binary searches return an `isize` index or `-1` when the key is absent, so they are not stable-two-way and cannot tell you an insertion point.
+
+16.12 Ownership, Allocation, and Who Frees What
+
+Two questions get run together under the word "ownership", and the library answers them differently. The first is who frees the *container's own storage*. The second is who frees the things the *elements* point at. Getting the first right and the second wrong is the most common leak you can write with this chapter's types.
+
+Start with the storage. Every container that allocates does so through the process-wide default allocator in `std::memory::mman`, `alloc<T>`, `dealloc<T>`, `realloc<T>`, which forward to `defaultAllocator`. That is the whole story of allocation: there is no allocator template parameter, no per-container policy, and no field you set to make a particular Vec use an arena. When you call `dispose()` it frees exactly the container's own backing storage and nothing else:
+
+    - Vec<T> deallocates its element array (never touching the elements).
+    - Arr<T, N> owns inline storage; it has no dispose and nothing to free.
+    - Map<K, V> walks the tree and frees each MapEntry node.
+    - HashMap<K, V> deallocates its entries array.
+    - UnorderedMap forwards to its inner HashMap; Set<T> to its HashMap<T, bool>.
+    - Deque, Queue, RingBuf, and PriorityQueue deallocate their backing arrays.
+    - LinkedList frees each ListNode.
+    - Tree frees each TreeNode and each node's child Vec (the arrays only),
+      walking children before parents.
+    - Trie frees each TrieNode; Bitset deallocates its word array.
+    - Cache frees each CacheEntry and disposes its inner HashMap.
+
+Now the second question, which that table deliberately does not answer. None of those disposals calls a destructor on an element. `Vec<String>::dispose` frees the array of `String` headers but does not call `String::free` on any of them, so every character buffer leaks. `Map<str, String>::dispose` frees the nodes and leaks every value. `Cache<str, Page>::dispose` frees the entries and leaks every `Page` and whatever it owns. There is no cascade, because the element type is arbitrary and the container cannot know what cleaning one up means. Two things reinforce this. First, every collection file opens with the file attribute `#[[no_drop_all]]`, which turns off drop-trait auto-RAII for the file and rides on each declaration when the library is merged into a build (Chapters6, 10, and 11 explain it); the library frees by hand. Second, even the `@drop` conformances the containers carry do no more than call the same `dispose` you would call yourself. So whether or not a destructor runs for a container, it never frees elements.
+
+The correct pattern for a container of owning values is to clean up before you dispose, exactly as `std::parser::ini` does. `IniSection` holds a `HashMap<String, String>`; its dispose walks the map entry by entry, frees both the key and the value, and then frees the table:
+
+    void freeEntry(HashMapEntry<String, String>* e) {
+        e->key.free();
+        e->value.free();
+    }
+    void dispose() {
+        self.entries.eachEntry(freeEntry);   // free every owned key and value
+        self.entries.dispose();              // then free the table's storage
+    }
+
+`eachEntry` exists for exactly this: it hands you a pointer to the live entry so you can free what it owns while it is still reachable. For a targeted removal, `HashMap::removeEntry` returns the entry by value for the same reason, free it before it is forgotten. On a `Vec<String>`, the analogous loop is `for (usize i = 0; i < v.count(); i += 1) v.atPtr(i)->free();` before `v.dispose()`.
+
+Containers of pointers are the other half of the story. A `Vec<T*>` owns the array of pointers, not the pointees; disposing it does not free a single `T`. The `std::memory` module offers `SmartPtr<T>` (`init`, `dispose`, `get`, `data`, `constData`, `set`, `isValid`, `take`) and the reference-counted `SharedPtr<T>` (`init`, `dispose`, `get`, `data`, `constData`, `refCount`, `isValid`), both of which conform to `@drop`. But a smart pointer inside a container is not self-managing by itself: because the container will not drop its elements, you must still walk the container and dispose each smart pointer, or scope the elements so their own destructor runs. `SharedPtr<T>` has no `retain`/`clone`, so its count rises only by copying the `SharedPtr` value and falls by letting a copy go; the last one frees the object.
+
+Allocation strategy is the last piece, and it is a separate facility rather than a knob on the containers above. When you need something other than the global allocator, an arena you reset all at once, a pool of same-sized nodes, a fixed buffer with no heap behind it, `std::memory` provides it. The interface is `Allocator`, a struct of a context pointer plus three function pointers (`alloc`, `free`, `realloc`), and concrete allocators that fill it in:
+
+    import(lib) std::memory::mman {
+        AllocError, alloc, dealloc, realloc,
+        FixedBufferAllocator, StackFallbackAllocator, ArenaAllocator,
+        PoolAllocator, ScopeAlloc, LoggingAllocator,
+        libcAllocator, miAllocator, cAllocator, pageAllocator, defaultAllocator,
+        initDefaultAllocator, ensureDefaultAllocator, deinitDefaultAllocator
+    };
+    import(lib) std::memory::allocators::allocator { Allocator };  // ctx + alloc/free/realloc fn ptrs
+    import(lib) std::memory::pool { Pool };
+
+`Pool<T>` is a fixed-size object pool for a single `T`. `initDefaultAllocator()` and `deinitDefaultAllocator()` set up and tear down the global allocator the containers use; `ensureDefaultAllocator()` is the idempotent form. The standard containers are written against that global allocator, so a program that wants a different strategy uses these types directly, an arena for a parse tree, a pool for nodes, rather than supplying an allocator to a `Vec`, which is not possible in the current library. The allocator interface and its error variant `AllocError` are covered in Chapter11 and Appendix A.
+
+16.13 A Worked Example: Word Frequency
+
+Put the collections to work on a task that needs several at once: count how often each word appears in a text and print the ten most frequent. Three containers cooperate, a hashed map to count, its key list to fan out, and a priority queue to rank. The example also has to honour the ownership rules of 16.12, because a word read from a line is a borrowed `str` view that dies with the next line: the map has to own its keys, and the program has to free them.
+
+    import(lib) std::io::ios { println, readLine };
+    import(lib) std::text::strutil { splitVec, trim };
+    import(lib) std::collections.hashmap { HashMap, HashMapEntry };
+    import(lib) std::collections.priorityqueue { PriorityQueue };
+    import(lib) std::text::string { String };
+
+    // The keys are owned Strings, so hash and compare their bytes (FNV-1a).
+    usize hashString(String s) {
+        str v = s.asView();
+        u64 h = 14695981039346656037u;
+        for (usize i = 0; i < v.len; i += 1) {
+            h ^= (u64)(u8)v.ptr[i];
+            h *= 1099511628211u;
+        }
+        return h;
+    }
+    bool eqString(String a, String b) { return a.asView().equals(b.asView()); }
+
+    struct WordCount {
+        str word;            // a view; valid while the map that owns it lives
+        i32 count;
+    }
+
+    bool moreFrequent(WordCount a, WordCount b) {
+        return a.count > b.count;          // under `less`, larger counts pop first
+    }
+
+    void freeEntry(HashMapEntry<String, i32>* e) { e->key.free(); }
+
+    void main() {
+        HashMap<String, i32> counts = HashMap<String, i32>::new(hashString, eqString);
+
+        String line = String::new();
+        while (readLine(&line)) {
+            if (line.isEmpty()) break;
+            for (str raw : splitVec(line.asView(), ' ')) {
+                str trimmed = trim(raw);
+                if (trimmed.len == 0) continue;
+
+                String key = String::from(trimmed);   // take a copy we can own
+                key.toLower();
+                Option<i32*> slot = counts.getPtr(key);
+                if (slot.isSome()) {
+                    i32* p = slot.unwrap();
+                    *p = *p + 1;
+                    key.free();                       // already present; drop the probe
+                } else {
+                    (void)counts.insert(key, 1).unwrap();   // the map keeps this buffer
+                }
+            }
+        }
+
+        PriorityQueue<WordCount> top = PriorityQueue<WordCount>::new(moreFrequent);
+        Vec<String> words = counts.keys();            // shallow copies sharing the map's buffers
+        for (usize i = 0; i < words.count(); i += 1) {
+            String w = words.at(i);
+            top.push(WordCount { .word = w.asView(), .count = counts.get(w).unwrap() });
+        }
+
+        for (i32 i = 0; i < 10 && !top.isEmpty(); i += 1) {
+            WordCount wc = top.pop();
+            println("{}: {}", wc.word, wc.count);
+        }
+
+        counts.eachEntry(freeEntry);   // free every key buffer the map owns ...
+        counts.dispose();              // ... then the hash table's storage
+        words.dispose();
+        top.dispose();
+    }
+
+Five moving parts, each doing what it is for. The HashMap accumulates counts by key, and it owns each key because the program copied the borrowed word into a `String` before inserting it. Its `keys` method produces a Vec of the distinct words to fan out over, and the `WordCount` views are safe because the map's key buffers outlive the ranking loop. The PriorityQueue orders the entries by a comparator so the top ten are simply the first ten pops. A small struct packages the pair. Then, because the map does not free its keys for you, `eachEntry(freeEntry)` releases every key buffer before `dispose` releases the table, the same pattern `std::parser::ini` uses. No container does another's job, and the whole program is a page. That is the shape a good standard library enables: the data structures are right, so the algorithm is short, and the cleanup is three lines rather than a mystery.
+
+16.14 A Worked Example: An LRU Page Cache
+
+The second example uses the Cache container for the task it exists for, then shows what it would cost to build by hand.
+
+    import(lib) std::collections.cache { Cache };
+    import(lib) std::text::string { String };
+
+    usize hashStr(str k) { ... }        // as above
+    bool eqStr(str a, str b) { return a.equals(b); }
+
+    struct Page { String contents; }
+
+    Cache<str, Page> pages = Cache<str, Page>::new(256, hashStr, eqStr);
+
+    Page* fetchPage(str url) {
+        Option<Page*> hot = pages.getPtr(url);
+        if (hot.isSome()) {
+            return hot.unwrap();        // touched; stays hot
+        }
+        Page fresh = loadFromNetwork(url);
+        pages.insert(url, fresh);       // may evict the coldest
+        return pages.getPtr(url).unwrap();
+    }
+
+The eviction policy is the container's business: `insert` adds an entry and, if the cache is full, removes the least-recently-used one; `get` and `getPtr` move a hit to the hot end so a frequently used page survives. A hand-rolled version of this is thirty lines of doubly-linked-list-plus-map bookkeeping, with a classic bug, forgetting to move an element on a get, that shows up only under load. The library's version has that bug fixed once. Using it is not just less code; it is the difference between a cache that is correct and a cache that is almost correct.
+
+Two honest caveats come straight from 16.12. First, the keys here are `str` views, and the cache stores them as-is; if `url` points into a caller's buffer, that buffer must outlive the cache, or the keys dangle. A production version whose URLs come and go would key the cache on an owned `String` (and free each key with a `eachEntry` pass, as the word-frequency example does) rather than on a borrowed view. Second, `Cache` offers no eviction callback: `_evict` frees the `CacheEntry` and removes it from the map, and neither it nor `dispose` touches the key or the value. So a `Page` that owns a `String` would leak that buffer at every eviction and at shutdown, and there is no hook to prevent it from inside the cache. The type is at its best when the value is a handle, a pointer, an index, a small struct of plain data, whose lifetime is managed elsewhere, and the honest way to use it with an owning value is to key on an owned `String` and sweep before `dispose`. This is the one place in the chapter where the container's convenience outruns its ownership story.
+
+16.15 Exercises
+
+1. Comprehension. You need to look up values by string key and iterate in sorted order. Which map type do you choose, and what extra thing must you supply that a HashMap does not need? Could you use HashMap and sort the keys yourself? What does each approach cost?
+
+2. Comprehension. Why does Vec expose `data`, `len`, and `cap` as public fields rather than hiding them? Give one advantage and one risk this creates.
+
+3. Implementation. Write a function that, given a `Vec<i32>`, returns a new `Vec<i32>` containing each element doubled and the zeros removed. Use the `iter` adaptors `map` and `filter`, then rewrite it with an explicit loop and compare the two.
+
+4. Containers. Build an LRU cache by hand using a `HashMap` and a `LinkedList`. Then replace it with `Cache`. How many lines does each version take, and which operations were easy to get wrong?
+
+5. Signatures. `Map::new`, `HashMap::new`, `Set::new`, and `Cache::new` all take functions. Write the exact parameter lists of each from memory, then check them against Appendix A. Why does the ordered map take a single `i32(K, K)` while the hashed ones take a `usize(K)` and a `bool(K, K)`?
+
+6. Ownership. Declare a `Vec<T*>` of pointers you allocated. Free the Vec and then try to free each pointee. What is the correct order? What happens if you free the pointees first? Then rewrite it with `SmartPtr<T>` elements and explain why the container still does not release them for you, and what you have to write instead.
+
+7. Sets. Given two `Vec<str>` of names, compute their intersection as a `Set<str>`. What is the running time of your approach, and why is it better than the nested-loop version? Then do the same with `Set::difference`.
+
+8. Priority. Modify the word-frequency program to print the ten least frequent words instead of the most frequent. What changes, and what does not? Watch the comparator carefully.
+
+9. Between. A circular buffer of audio samples is written fast and read slower than it is written, and it must never allocate. Which container do you use, and why not Deque? What happens to the oldest samples when it fills?
+
+10. Bitset. Represent the adjacency of a graph with 512 nodes as a `Bitset`. How much storage does this save versus a `Set<usize>` or a `Vec<bool>`? Then use `and`, `or`, and `countOnes` to count the common neighbours of two nodes.
+
+11. Trie. Build a `Trie` of a few hundred words. Write a function that, given a prefix, returns how many stored words have it. (Hint: `startsWith` tells you presence; to count, you may need a `Vec<str>` and an `each` pass.)
+
+12. Meta. The library offers Map, HashMap, and UnorderedMap, and separately Queue, Deque, and RingBuf. Argue for and against this proliferation of types. Where is the line between a useful distinction and a choice the programmer should make once?
+
+13. Ownership. A `HashMap<String, String>` local goes out of scope and its `dispose` runs. What exactly is freed, and what leaks? Write the `eachEntry` pass that fixes it, and explain why `dispose` cannot do it for you. (Compare with `std::parser::ini`.)
+
+14. Allocation. A parser allocates thousands of small nodes and frees them all at once when it finishes. Which `std::memory` facility fits, an arena or a pool, and why? Then explain why you cannot pass that allocator to `Vec::new`, and what you would use instead. What does `#[[no_drop_all]]` have to do with any of this?
+
+15. Traps. `std::collections::iter::find` returns `T()` when nothing matches, and `Bitset::count` returns the bit width rather than the number of set bits. Explain each behaviour, name the method or function that gives you the answer you actually wanted, and write a few lines that avoid both traps. Then say what you use in place of a `HashSet`, and why.
+
+16. Comparing containers. You need a structure with O(1) average membership, a defined iteration order, and a bound on size. Can any single container in this chapter give you all three? If not, which combination would you assemble, and what is the cost of the assembly?

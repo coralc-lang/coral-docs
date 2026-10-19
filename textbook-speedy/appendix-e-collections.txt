@@ -1,0 +1,514 @@
+Appendix E, Collections
+
+This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A, A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.
+
+---
+
+## std::collections
+
+Imported via `std::collections`. `Vec<T>` is also re-exported as `std::vec` and
+prelude-imported; `Arr<T, N>` as `std::arr`.
+
+### 7. `std::collections::arr`, `Arr<T, N>`
+
+```coral
+pub struct Arr<T, N>
+{
+    T data[N];
+
+    #[[inline]] T*       ptr()
+    #[[inline]] const T* constPtr()
+    #[[inline]] usize    count()          // == N
+    bool        isEmpty()
+    T           at(usize i)
+    void        set(usize i, T val)
+    T*          atPtr(usize i)
+    T           front()
+    T           back()
+    void        fill(T val)
+    void        copyTo(T* dst)
+    void        copyFrom(const T* src)
+}
+```
+
+### 8. `std::collections::vec`, `Vec<T>` (aka `std::vec`)
+
+```coral
+pub struct Vec<T>
+{
+    T* data;
+    usize len;
+    usize cap;
+
+    static Vec<T> new()
+    static Vec<T> withCap(usize capacity)
+    void   reserve(usize newCap)
+    void   reserveExact(usize newCap)
+    void   push(T val)
+    T      pop()
+    usize  count()
+    T*     atPtr(usize i)
+    const T* atConst(usize i)
+    T      at(usize i)
+    T*     ptr()
+    bool   isEmpty()
+    const T* constPtr()
+    void   set(usize i, T val)
+    T      front()
+    T      back()
+    void   insert(usize i, T val)
+    void   removeAt(usize i)
+    void   removeRange(usize start, usize end)
+    bool   contains(T val)
+    void   fill(T val)
+    void   shrinkToFit()
+    void   clear()
+    void   reverse()
+    bool   isSortedBy(bool(T, T) less)
+    void   sortBy(bool(T, T) less)
+    i64    binarySearchBy(T key, i32(T, T) cmp)
+    void   dispose()
+}
+// helper: void _sortByRange(usize lo, usize hi, bool(T, T) less)
+//         usize _partitionBy(usize lo, usize hi, bool(T, T) less)
+pub extend<T> Vec<T> : @drop { void drop(); }
+```
+
+### 9. `std::collections::bitset`, `Bitset`
+
+```coral
+pub struct Bitset
+{
+    u64* words;
+    u64  numBits;
+    u64  numWords;
+
+    static Bitset new(u64 numBits)
+    void dispose()
+    u64  count()          // numBits
+    u64  wordCount()
+    void set(u64 bit)
+    void clear(u64 bit)
+    void toggle(u64 bit)
+    bool test(u64 bit)
+    void setAll()
+    void clearAll()
+    u64  countOnes()
+    u64  countZeros()
+    bool hasAny()
+    bool none()
+    bool all()
+    void and(Bitset* other)
+    void or(Bitset* other)
+    void xor(Bitset* other)
+    void not()
+    void _maskPadding()
+}
+pub extend Bitset : @drop { void drop(); }
+```
+
+### 10. `std::collections::cache`, LRU `Cache<K, V>`
+
+```coral
+pub struct CacheEntry<K, V>
+{
+    K key;
+    V value;
+    CacheEntry<K, V>* prev;
+    CacheEntry<K, V>* next;
+}
+
+pub struct Cache<K, V>
+{
+    HashMap<K, CacheEntry<K, V>*> map;
+    CacheEntry<K, V>* head;
+    CacheEntry<K, V>* tail;
+    usize maxSize;
+    usize(K) hashFn;
+    bool(K, K) eqFn;
+
+    static Cache<K, V> new(usize max, usize(K) hf, bool(K, K) ef)
+    void   dispose()
+    usize  count()
+    usize  maxSizeValue()
+    Result<V, CollectionError> insert(K key, V value)
+    Option<V>  get(K key)
+    Option<V*> getPtr(K key)
+    bool   contains(K key)
+    void   remove(K key)
+    void   clear()
+    void   each(void(K, V) fn)
+    void   resize(usize newMax)
+    // helper: void _moveToFront(CacheEntry<K, V>* entry); void _evict();
+}
+pub extend<K, V> Cache<K, V> : @drop { void drop(); }
+```
+
+### 11. `std::collections::deque`, `Deque<T>`
+
+```coral
+pub struct Deque<T>
+{
+    T* data;
+    usize head;
+    usize tail;
+    usize cap;
+    usize mask;
+
+    static Deque<T> new()
+    void   dispose()
+    usize  count()
+    bool   isEmpty()
+    usize  capacity()
+    void   pushFront(T val)
+    void   pushBack(T val)
+    T      popFront()
+    T      popBack()
+    T      front()
+    T      back()
+    T      at(usize i)
+    void   set(usize i, T val)
+    void   clear()
+    void   _grow()
+}
+pub extend<T> Deque<T> : @drop { void drop(); }
+```
+
+### 12. `std::collections::hashmap`, `HashMap<K, V>`
+
+```coral
+pub variant CollectionError { AllocFailed { str msg; } }
+
+pub struct HashMapEntry<K, V>
+{
+    K key;
+    V value;
+    bool occupied;
+}
+
+pub struct HashMap<K, V>
+{
+    HashMapEntry<K, V>* entries;
+    usize cap;
+    usize len;
+    usize(K) hashFn;
+    bool(K, K) eqFn;
+
+    static HashMap<K, V> new(usize(K) hf, bool(K, K) ef)
+    void   dispose()
+    usize  count()
+    Result<V, CollectionError> insert(K key, V value)
+    Option<V>   get(K key)
+    bool        contains(K key)
+    Option<V*>  getPtr(K key)
+    void        remove(K key)
+    Option<HashMapEntry<K, V>> removeEntry(K key)   // backward-shift deletion
+    void        clear()
+    Vec<K>      keys()
+    Vec<V>      values()
+    void        each(void(K, V) fn)
+    void        eachEntry(void(HashMapEntry<K, V>*) fn)
+}
+pub extend<K, V> HashMap<K, V> : @drop { void drop(); }
+```
+
+### 13. `std::collections::iter`, Generic iteration helpers
+Free functions over `Vec<T>`.
+
+```coral
+pub Vec<U> map<T, U>(const Vec<T>* v, U(T) fn)
+pub Vec<T> filter<T>(const Vec<T>* v, bool(T) pred)
+pub T      reduce<T>(const Vec<T>* v, T init, T(T, T) fn)
+pub void   forEach<T>(const Vec<T>* v, void(T) fn)
+pub T      find<T>(const Vec<T>* v, bool(T) pred)
+pub isize  findIndex<T>(const Vec<T>* v, bool(T) pred)
+pub bool   hasAny<T>(const Vec<T>* v, bool(T) pred)
+pub bool   all<T>(const Vec<T>* v, bool(T) pred)
+pub Vec<T> take<T>(const Vec<T>* v, usize n)
+pub Vec<T> skip<T>(const Vec<T>* v, usize n)
+pub Vec<T> slice<T>(const Vec<T>* v, usize start, usize end)
+pub usize  countIf<T>(const Vec<T>* v, bool(T) pred)
+pub T      minBy<T>(const Vec<T>* v, bool(T, T) less)
+pub T      maxBy<T>(const Vec<T>* v, bool(T, T) less)
+pub Vec<T> unique<T>(const Vec<T>* v, bool(T, T) eq)
+pub Vec<T> flatten<T>(const Vec<Vec<T>>* v)
+pub Vec<usize> enumerate<T>(const Vec<T>* v)
+pub T      sum<T>(const Vec<T>* v)
+pub f64    average(const Vec<f64>* v)
+
+pub struct Pair<T, U> { T first; U second; }
+pub Vec<Pair<T, U>> zip<T, U>(const Vec<T>* a, const Vec<U>* b)
+```
+
+### 14. `std::collections::linkedlist`, `LinkedList<T>`
+
+```coral
+pub struct ListNode<T>
+{
+    T value;
+    ListNode<T>* prev;
+    ListNode<T>* next;
+}
+
+pub struct LinkedList<T>
+{
+    ListNode<T>* head;
+    ListNode<T>* tail;
+    usize len;
+
+    static LinkedList<T> new()
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  pushFront(T val)
+    void  pushBack(T val)
+    T     popFront()
+    T     popBack()
+    T     front()
+    T     back()
+    void  insertAfter(ListNode<T>* node, T val)
+    void  remove(ListNode<T>* node)
+    void  each(void(T) fn)
+}
+pub extend<T> LinkedList<T> : @drop { void drop(); }
+```
+
+### 15. `std::collections::map`, Ordered AVL `Map<K, V>`
+
+```coral
+pub variant CollectionError { AllocFailed { str msg; } }
+
+pub struct MapEntry<K, V>
+{
+    K key;
+    V value;
+    i32 height;
+    MapEntry<K, V>* left;
+    MapEntry<K, V>* right;
+}
+
+pub struct Map<K, V>
+{
+    MapEntry<K, V>* root;
+    usize len;
+    i32(K, K) cmpFn;
+    bool failed;
+
+    static Map<K, V> new(i32(K, K) cmp)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    Result<V, CollectionError> insert(K key, V value)
+    Option<V>  get(K key)
+    Option<V*> getPtr(K key)
+    bool  contains(K key)
+    void  remove(K key)
+    void  clear()
+    void  each(void(K, V) fn)
+    // helpers: _max _height _balance _rotateRight _rotateLeft _insert
+    //          _findMin _remove _find _eachInOrder _disposeNode
+}
+pub extend<K, V> Map<K, V> : @drop { void drop(); }
+```
+
+### 16. `std::collections::priorityqueue`, `PriorityQueue<T>`
+
+```coral
+pub struct PriorityQueue<T>
+{
+    T* data;
+    usize len;
+    usize cap;
+    bool(T, T) less;      // constructor takes `cmp`
+
+    static PriorityQueue<T> new(bool(T, T) cmp)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  push(T val)
+    T     pop()
+    T     peek()
+    void  clear()
+    // helpers: _grow _siftUp _siftDown
+}
+pub extend<T> PriorityQueue<T> : @drop { void drop(); }
+```
+
+### 17. `std::collections::queue`, FIFO `Queue<T>`
+
+Wraps `Deque<T>`.
+
+```coral
+pub struct Queue<T>
+{
+    deque::Deque<T> inner;
+
+    static Queue<T> new()
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  enqueue(T val)
+    T     dequeue()
+    T     peek()
+    void  clear()
+}
+pub extend<T> Queue<T> : @drop { void drop(); }
+```
+
+### 18. `std::collections::ringbuf`, `RingBuf<T>`
+
+```coral
+pub struct RingBuf<T>
+{
+    T* data;
+    usize cap;
+    usize head;
+    usize tail;
+    bool full;
+
+    static RingBuf<T> new(usize capacity)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    bool  isFull()
+    usize capacity()
+    void  push(T val)
+    T     pop()
+    T     front()
+    T     back()
+    T     at(usize i)
+    void  clear()
+}
+pub extend<T> RingBuf<T> : @drop { void drop(); }
+```
+
+### 19. `std::collections::set`, `Set<T>`
+
+```coral
+pub struct Set<T>
+{
+    HashMap<T, bool> inner;
+    usize(T) hashFn;
+    bool(T, T) eqFn;
+
+    static Set<T> new(usize(T) hf, bool(T, T) ef)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    void  insert(T val)
+    bool  contains(T val)
+    void  remove(T val)
+    void  clear()
+    Vec<T> toVec()
+    void  each(void(T) fn)
+    Set<T> union(const Set<T>* other)
+    Set<T> intersection(const Set<T>* other)
+    Set<T> difference(const Set<T>* other)
+    bool  isSubset(const Set<T>* other)
+    bool  isSuperset(const Set<T>* other)
+}
+pub extend<T> Set<T> : @drop { void drop(); }
+```
+
+### 20. `std::collections::sort`, Sorting and searching
+Free functions; `*Range`/`partition*` variants are internal helpers.
+
+```coral
+pub void  sortI32(Vec<i32>* v)
+pub void  sortusize(Vec<usize>* v)
+pub void  sortF64(Vec<f64>* v)
+pub void  sortBy<T>(Vec<T>* v, bool(T, T) less)
+pub bool  isSortedI32(const Vec<i32>* v)
+pub bool  isSortedusize(const Vec<usize>* v)
+pub bool  isSortedBy<T>(const Vec<T>* v, bool(T, T) less)
+pub isize binarySearchI32(const Vec<i32>* v, i32 key)
+pub isize binarySearchusize(const Vec<usize>* v, usize key)
+pub isize binarySearchBy<T>(const Vec<T>* v, T key, i32(T, T) cmp)
+pub void  reverse<T>(Vec<T>* v)
+```
+
+### 21. `std::collections::tree`, `Tree<T>` (n-ary)
+
+```coral
+pub struct TreeNode<T>
+{
+    T value;
+    Vec<TreeNode<T>*> children;
+}
+
+pub struct Tree<T>
+{
+    TreeNode<T>* root;
+
+    static Tree<T> new()
+    void dispose()
+    bool isEmpty()
+    TreeNode<T>* setRoot(T val)
+    TreeNode<T>* addChild(TreeNode<T>* parent, T val)
+    usize childCount(TreeNode<T>* node)
+    Option<TreeNode<T>*> childAt(TreeNode<T>* node, usize idx)
+    void removeChild(TreeNode<T>* parent, usize idx)
+    void preOrder(void(T) fn)
+    void postOrder(void(T) fn)
+    usize depth(TreeNode<T>* node)
+    usize size()
+    Vec<T> toVec()
+    // helpers: _disposeNode _preOrder _postOrder _count _toVec
+}
+pub extend<T> Tree<T> : @drop { void drop(); }
+```
+
+### 22. `std::collections::trie`, `Trie` (byte-keyed)
+
+```coral
+const u32 TRIE_FANOUT = 256;
+
+pub struct TrieNode
+{
+    TrieNode* children[TRIE_FANOUT];
+    bool isEnd;
+}
+
+pub struct Trie
+{
+    TrieNode* root;
+    usize count;
+
+    static Trie new()
+    void dispose()
+    usize size()
+    bool  isEmpty()
+    void  insert(str key)
+    bool  contains(str key)
+    bool  startsWith(str prefix)
+    bool  remove(str key)
+    void  each(void(str) fn)
+    // helpers: _disposeNode _remove _maxDepth _each
+}
+pub extend Trie : @drop { void drop(); }
+```
+
+### 23. `std::collections::unordered_map`, `UnorderedMap<K, V>`
+Thin wrapper over `HashMap<K, V>`.
+
+```coral
+pub struct UnorderedMap<K, V>
+{
+    HashMap<K, V> inner;
+
+    static UnorderedMap<K, V> new(usize(K) hf, bool(K, K) ef)
+    void dispose()
+    usize count()
+    bool  isEmpty()
+    Result<V, CollectionError> insert(K key, V value)
+    Option<V>   get(K key)
+    Option<V*>  getPtr(K key)
+    bool        contains(K key)
+    void        remove(K key)
+    void        clear()
+    Vec<K>      keys()
+    Vec<V>      values()
+    void        each(void(K, V) fn)
+}
+pub extend<K, V> UnorderedMap<K, V> : @drop { void drop(); }
+```

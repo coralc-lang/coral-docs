@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A Compiler&#x27;s Second Job" />
+  <meta name="robots" content="index, follow" />
+  <title>Chapter 23 · Diagnostics and the Error Catalogue | Coral Speed Edition</title>
+  <link rel="canonical" href="https://coralc-lang.github.io/coral-docs/speed/23-diagnostics-and-the-error-catalogue/index.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Chapter 23 · Diagnostics and the Error Catalogue | Coral Speed Edition" />
+  <meta property="og:description" content="A Compiler&#x27;s Second Job" />
+  <meta property="og:url" content="https://coralc-lang.github.io/coral-docs/speed/23-diagnostics-and-the-error-catalogue/index.html" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="stylesheet" href="../../textbook/book.css" />
+  <script src="../../assets/js/script.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand-wrap" href="../../speed/index.html" style="color:inherit;text-decoration:none">
+      <span class="brand-mark">C</span><span><span class="brand-name">Coral</span><br /><span class="brand-subtitle">speed edition</span></span>
+    </a>
+    <nav class="topnav" aria-label="Main navigation">
+      <a href="../../speed/index.html">Speed contents</a><a href="../../textbook/index.html">Lengthy edition</a><a href="../../coral-docs/index.html">Coral Docs</a>
+    </nav>
+  </header>
+  <main class="content">
+    <article class="article">
+      <p class="chapter-kicker">Speed Edition · Chapter 23</p>
+      <h1>Diagnostics and the Error Catalogue</h1>
+      <p class="lead">A Compiler's Second Job</p>
+      <p>You have had a compiler error that told you nothing. Everyone has. You stared at a single line, <code>expected expression</code> or <code>invalid token</code>, with a caret pointing somewhere unhelpful, and you spent twenty minutes hunting for a mistake the compiler could see in full. It knew exactly what was wrong, it just did not say. That experience is the reason this chapter exists, because a compiler has two jobs, and the one people forget is the second.</p>
+<p>A compiler's first job is to translate correct programs. Its second job, and the one that determines whether the first is usable, is to explain incorrect ones. A diagnostic is not a failure message; it is a piece of writing whose reader is a person who has just made a mistake and wants to know what it was and how to fix it. Getting that wrong is expensive. A vague error sends a programmer on a search; a good one ends the search in ten seconds. Coral's diagnostics are organised around this idea, and the organisation shows in two things: every diagnostic carries a stable code, and every code has a defined audience, from a lexical typo at one end to a subtle lifetime violation at the other.</p>
+<p>An analogy: a bad error is a car alarm blaring in a full parking lot, you know something is wrong somewhere. A good diagnostic is a note under your windscreen wiper that says which tyre is flat and where the spare is kept. Coral aims for the note.</p>
+<p>This chapter is a tour of the catalogue. It is organised by what kind of mistake each range catches, with a worked example of the shape each one takes. It also covers how the compiler is invoked to surface them, and what makes a diagnostic good, because the conventions here are part of the language, not an implementation detail, and code that reads well is code whose mistakes read well too.</p>
+<section><h2 id="s23-1">How Diagnostics Are Invoked</h2></section>
+<p>The compiler surfaces diagnostics through three flags and the build subcommands that pass them along.</p>
+<p>The default build reports errors and a core set of warnings. <code>--strict</code> promotes warnings to errors, which is the setting a release build should use so that nothing questionable ships. unused-variable warnings are always on (the old <code>--warn-unused</code> flag was removed as redundant), so a new project hears about dead bindings immediately. <code>--explain CODE</code> prints a longer explanation of a single code, the way a man page explains a command:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">$ coralc --explain E0608</code></pre>
+<p>The build subcommands compose with these; a project that wants strict checking sets the flags in the build file so that every build, and every developer, gets the same standard. That consistency is the point. A lint that is on for one developer and off for another is worse than a lint that is off everywhere, because the codebase drifts toward whatever the least-strict configuration allows, and the drift is invisible until someone reviews a file they did not write.</p>
+<section><h2 id="s23-2">What Makes a Diagnostic Good</h2></section>
+<p>The conventions for a Coral diagnostic are worth stating explicitly, because they are checkable, you can hold a message up against them and see whether it passes.</p>
+<p>A diagnostic names the problem in a sentence a person would say. Not "invalid token" but "identifier contains a non-ASCII lookalike character (U+0430) that mimics ASCII 'a' (U+0061)." The second sentence tells the reader what happened, where, and why it is a problem; the first makes them guess. The test is simple: could you read the message aloud to a colleague and have them understand the bug without seeing the code?</p>
+<p>A diagnostic points at a location, and when it can, at the related location too. A non-exhaustive switch points at the switch and names the missing case. A signature mismatch points at both the trait's declaration and the implementation. The extra location is often the difference between "there is an error somewhere" and "these two things disagree," and disagreement is the actual problem.</p>
+<p>A diagnostic carries a code, and the code is stable. A code can be searched, discussed in a review, added to a list of ignored warnings, and used to find the same class of mistake elsewhere. A message without a code cannot be referenced; a message with one becomes a shared vocabulary. The code is not the whole message, a code without a sentence is not a diagnostic, but a sentence without a code is not referenceable, and referenceability is what turns one person's fix into the whole team's understanding.</p>
+<p>A diagnostic suggests a fix when the fix is mechanical. An unknown attribute suggests the nearest known attribute by edit distance. An unknown format specifier suggests the closest specifier. A typo in a function name suggests the function that was probably meant. A suggestion is worth a paragraph of explanation because it converts a diagnostic from a puzzle into an edit.</p>
+<p>And a diagnostic generated by user code, a <code>@compileError</code>, or a format-string mismatch raised inside a comptime block, must be structured like any other. This is the commitment the catalogue makes to itself, and it is worth stating as bluntly as the compiler's own source does. It must not be a debug string like this:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">src[mono] evalComptimeBody FAILED decl=4106 name=println
+  msg=&quot;print: placeholder/argument count mismatch
+  (more placeholders than arguments)&quot;
+coral: compile failed, errors=1</code></pre>
+<p>That is not a diagnostic; it is the compiler leaking its own internals. The <code>[mono]</code>, the <code>decl=4106</code>, the internal phase name, none of it belongs in front of a person. A compile-time error raised by library code is still read by a person, and it should carry a code, a location, and a sentence, exactly like every other error:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">src/main.crl:12:5: error E0901: format string has 2 placeholders
+  but 1 argument was provided
+  |
+12|     println(&quot;{} {}&quot;, a)
+  |     ^^^^^^^^^^^^^^^^^^^ expected 2 arguments, found 1</code></pre>
+<p>The compiler may not have two classes of diagnostic, one for its own mistakes and one, uglier, for the ones it surfaces on behalf of a library. If the format machinery detects that a print has more placeholders than arguments, that is a formatted diagnostic with a location, not a debug line. The catalogue is uniform, and the uniformity is what makes it learnable. A reader should never have to learn a second, secret error format for library mistakes.</p>
+<p>Why this matters: the moment a compiler has two error formats, a reader has to work out which one they are looking at before they can understand it. One format, one vocabulary, one place to look when something goes wrong.</p>
+<p>The same rule covers build output. A line like <code>modules.map written (1 modules, 0 aliases)</code> printed on every compile is debug noise, not information; the module map is a hidden log-style artefact, and if it has no reader it should not be printed. Diagnostics earn their place by being read.</p>
+<section><h2 id="s23-3">E01xx, Lexical and Parse-Time</h2></section>
+<p>The E01xx range catches problems visible at the surface of the source: characters that are not what they look like, annotations in the wrong place, and comments in the wrong place.</p>
+<p>E0103, Unicode homoglyph confusable reference, is the flagship of the range and the model for the rest. A programmer pastes an identifier that contains a Cyrillic а (U+0430) where an ASCII a (U+0061) was meant. Both glyphs render identically on screen; only the byte values differ, and so the identifier the reader sees is not the identifier the compiler sees. A naive compiler reports "undeclared identifier," which sends the reader hunting for a scope bug that does not exist, the variable is clearly right there, in plain sight. Coral reports the actual problem, by codepoint:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// error E0103: identifier `cаche` contains a non-ASCII lookalike
+//   character (U+0430 CYRILLIC SMALL LETTER A) that mimics ASCII &#x27;a&#x27; (U+0061)</code></pre>
+<p>The message names the character, its codepoint, and the ASCII character it imitates, which is exactly what the reader needs to fix it in one edit. This is the standard the whole catalogue aims for: say what is actually wrong, not the first downstream symptom of it.</p>
+<p>E0104, misplaced attribute target, fires when an attribute like <code>#[[inline]]</code> is attached to a statement or expression where it has no meaning, rather than to a function or struct definition:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void setup() {
+    #[[inline]]             // error E0104: #[[inline]] does not apply to
+    x = compute();          //   a statement
+}</code></pre>
+<p>The compiler knows which attributes are valid at which positions, a function attribute belongs on a function, a layout attribute on a type or field, a statement attribute on a statement, and it reports the mismatch rather than silently ignoring the annotation. This is the same principle as the unknown-attribute lint: an instruction that cannot mean what it appears to say is a bug, not a no-op.</p>
+<p>E0105, doc-comment on an expression statement, fires when a documentation comment (<code>///</code> or <code>/**</code>) is attached to an arbitrary line of execution code inside a block rather than to a structural declaration:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void process() {
+    /// This comment documents what?
+    x = x + 1;              // error E0105: doc-comment on an
+}                           //   expression statement</code></pre>
+<p>Documentation comments are meant to travel with a declaration, a function, a type, a field, and be collected into the generated documentation. Attached to a line of executable code, the comment has nowhere to go, which usually means the author meant it for the declaration above or below and it drifted. Reporting it is the compiler asking, gently, "did you mean this to document something?"</p>
+<section><h2 id="s23-4">E02xx, Type Layout</h2></section>
+<p>The E02xx range concerns how values occupy memory, and its most important member is the one that stops a program from being impossible.</p>
+<p>E0201, cyclic type layout of infinite size, catches a struct or variant case that contains itself directly, with no indirection:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Node {
+    i32 data;
+    Node next;      // error E0201: Node contains itself
+}</code></pre>
+<p>The compiler cannot compute Node's size because Node's size depends on Node's size, and the recursion never bottoms out. To know how big a Node is, you would need to know how big its <code>next</code> is, which is another Node, forever. The fix is an indirection, a <code>Node* next</code>, or a boxed pointer, which makes the size finite because a pointer's size is known regardless of what it points at:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Node {
+    i32 data;
+    Node* next;     // fine: a pointer is one machine word
+}</code></pre>
+<p>The message explains the cycle and names the field that closes it. This is not merely a limitation; it is the compiler refusing to emit a type that has no bytes. Note that the same error appears for recursive variants, which is why the interpreter of <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> stores its sub-expressions behind pointers.</p>
+<p>Simply put, the compiler is being asked to size a box that is defined to contain itself, and it can never finish the sum. A pointer is the escape: it does not contain the other box, it only says where to find it, and a piece of paper with an address on it has a size no matter how big the building is.</p>
+<p>E0202 catches a zero-sized field in a position that forces it to overlap adjacent data, a hardware reference, or pointer arithmetic on a zero-sized type that the language would have to give a distinct address it does not have. E0203 catches a representation that conflicts with the target's alignment rules: <code>#[[align(N)]]</code>, say, or a C-compatible layout on a struct whose fields demand an alignment the target cannot honour. E0204 catches bitfields that exceed their backing storage, more bitfield bits than the underlying integer has room for. E0205 catches an attempt to cast a composite type, a union or struct, directly to a primitive with no explicit serialisation pattern:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Color { u8 r; u8 g; u8 b; u8 a; }
+Color c = ...;
+u32 packed = (u32)c;    // error E0205: cast truncates composite layout</code></pre>
+<p>Each is a layout question, and each is answered at compile time rather than at a crash. The unifying rule is that the compiler will not guess at what bytes you meant; if a layout is ambiguous or impossible, it says so.</p>
+<section><h2 id="s23-5">E03xx, Constant Evaluation</h2></section>
+<p>The E03xx range catches mistakes the compiler can see because they happen during constant evaluation, whether in a comptime block or in a const initialiser. These are the errors that would be runtime crashes in a less careful language, moved to build time.</p>
+<p>E0304, dereferencing a raw pointer inside compile-time const evaluation, catches a comptime block attempting to read a hardware address:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const val = @comptime {
+    rawptr p = (rawptr)0xDEADBEEF;
+    return *p;          // error E0304: cannot read an address at comptime
+};</code></pre>
+<p>The value at that address is not known until the program runs on a particular machine, so it cannot be part of a constant. The rule is that only deterministic memory values are permitted during const evaluation; an address that depends on the loader is not deterministic.</p>
+<p>E0305, division by zero in constant evaluation, fires when constant code divides by a literal zero, the compiler catches at build time what would be a crash at runtime:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const ratio = 10 / 0;   // error E0305: division by zero in const evaluation</code></pre>
+<p>E0306, integer literal overflows declared type, fires when a literal fits no value of its declared type:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u8 x = 300;             // error E0306: 300 does not fit in u8</code></pre>
+<p>The type is eight bits, the value needs nine, and no truncation or wraparound is chosen for you; the literal is simply not a legal <code>u8</code>.</p>
+<p>E0307, constant array index out of bounds, fires when a fixed-size array is indexed with a constant that is outside its bounds:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 a[4];
+a[7] = 1;               // error E0307: index 7 out of bounds for [4]</code></pre>
+<p>This is the compile-time half of the bounds-safety story. A constant index into a fixed array is checked at build time, so the corresponding runtime check can disappear for the common case where the index is known. A bounds error in a fixed-size array with a constant index should be impossible, the compiler has the array's length and the index in hand, and it reports rather than emitting a read past the end. Each of these four errors is a program that would have misbehaved, caught before it ran.</p>
+<section><h2 id="s23-6">E04xx, Inline Assembly</h2></section>
+<p>The E04xx range guards hand-written assembly, where the compiler's model of the machine must match the programmer's. These checks exist because assembly mistakes are silent and catastrophic: the program links, runs, and produces wrong answers with no hint of where.</p>
+<p>E0401, invalid inline assembly register constraint allocation, catches an output bound to a register class whose size does not match the variable, asking for a 64-bit value in a 32-bit register, or binding a floating-point value to a general-purpose register. The constraint and the operand size must agree, and the compiler checks them against the target.</p>
+<p>E0402, clobbered register listed as a live input or output operand, catches a contradiction: the programmer told the compiler the assembly block modifies a register, and also passed an input that the compiler placed in that same register. The two statements cannot both be true; the input would be destroyed before the block reads it. The compiler reports the conflict rather than generating code that depends on which one it believes.</p>
+<p>E0403, volatile memory write flushed by non-volatile read optim, catches a structural race: a write marked volatile is immediately overridden by a standard non-volatile read, which the optimiser is entitled to remove or reorder, defeating the volatile write the programmer intended as a signal. The check is a warning that the code's memory model does not say what the author thinks it says.</p>
+<p>Assembly is the deepest end of the language, and these three checks are the compiler holding up its side of the bargain: if you are going to write raw machine instructions, the tool will at least verify that the register discipline you described is coherent.</p>
+<section><h2 id="s23-7">E05xx and the Build Diagnostics, Linking and Modules</h2></section>
+<p>The E05xx range catches problems at the boundary between Coral and the linker or among modules.</p>
+<p>E0501, duplicate symbol conflicting with the target export map, catches a symbol that conflicts with a reserved ABI name. If you define an internal function with a <code>#[[no_mangle]]</code> name, or an external name, that already belongs to an operating-system dynamic hook or an ABI symbol reserve, the linker would have two definitions for one name. The diagnostic names the symbol and the reservation it collides with.</p>
+<p>E0502, cyclic external module initialization chain, catches a cycle in module startup state: module A's global setup relies on module B's, while module B's relies on A's, so neither can finish initialising before the other starts. This is an initialization deadlock expressed as a build error, with the trace showing the loop, rather than a hang at runtime.</p>
+<p>E0503, mismatched linkage convention for function pointer, catches passing a standard native function pointer to an external API that demands a different calling convention, a <code>extern "stdcall"</code> or <code>extern "C"</code> boundary. The pointer types differ in more than name; the calling convention is part of the type, and passing the wrong one is a bug the compiler can see.</p>
+<p>Module resolution produces its own build-time diagnostics, distinct from the source-level catalogue because they are the builder's findings rather than the compiler's. An unresolved re-export, a missing module, a duplicate module identity, an alias pointing at a nonexistent module, an unresolved module import, and a cycle in the module graph are each reported with a code and, for a cycle, with the trace that shows the loop. These are the diagnostics of <a href="../21-build-system-and-tooling/index.html">Chapter 21</a>'s pipeline: the builder reads the module surfaces and the source imports, and anything it cannot resolve is a build error rather than a compiler crash. The value of separating them from the source-level codes is that "your imports do not resolve" and "your code has a type error" are different problems with different fixes, and the catalogue keeps them distinguishable. Note also that cyclic imports themselves are resolved by the module system rather than being an error, the initialization-cycle case, E0502, is the one that remains a genuine problem.</p>
+<section><h2 id="s23-8">E06xx, Control Flow, Switch, and Data Flow</h2></section>
+<p>The E06xx range is the largest and the most frequently met, because it catches the mistakes a program makes about its own control flow and the flow of its data.</p>
+<p>E0608, switch not exhaustive and missing else, is the one the earlier chapters promised. A switch over an enum or variant that lists some cases, has no else, and does not cover every case is an error:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (shape) {
+    Shape::Circle { r } =&gt; area = pi * r * r,
+    // error E0608: non-exhaustive switch; missing Shape::Square, Shape::Point
+}</code></pre>
+<p>The message names the missing cases, so the fix is immediate. This single diagnostic is why the variant-and-switch style of <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> is safe: forgetting a case is not a silently wrong program but a build failure with a list. When someone later adds a case to the enum, every switch that did not anticipate it stops compiling and hands you the list of places to update.</p>
+<p>E0609, unreachable switch case, catches a duplicate case value or a variant already covered by an earlier arm:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (c) {
+    Color::Red =&gt; ...,
+    Color::Red =&gt; ...,      // error E0609: unreachable case
+}</code></pre>
+<p>It is the compiler's way of saying "this arm can never run, you probably meant something else," and it catches the copy-paste mistake where you meant to change the case and forgot, as well as overlapping ranges such as <code>0..=10</code> and <code>5..=15</code>.</p>
+<p>E0610, fallthrough attribute on last arm, catches a leftover <code>#[[fallthrough]]</code> at the end of a switch, where there is nothing left to fall into. It is almost always a copy-paste vestige from an arm that used to have a successor, and the compiler treats it as the mistake it is.</p>
+<p>The rest of the range concerns data flow across branches. E0601, branch reaches end of non-void block without value yield, catches a branch in a conditional or switch that skips returning a value while all the other paths yield one:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 pick(bool c) {
+    if (c) {
+        return 1;
+    }
+    // error E0601: this path reaches the end without returning a value
+}</code></pre>
+<p>E0602, use of partially moved or deallocated stack memory, catches passing a struct into a function that consumes it and then reading one of its remaining fields:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">File f = File::open(&quot;x&quot;);
+consume(f);             // f is moved here
+log(f.name);            // error E0602: use of partially moved value</code></pre>
+<p>E0603, unreachable code after diverging statement, catches statements after <code>return</code>, <code>break</code>, or <code>continue</code> in the same block, which can never run. E0604, non-void function reaches end without return, catches a function with a non-void return type that can fall off its end. E0606 catches a self-assignment that has no effect, such as <code>x = x;</code> or <code>x += 0</code>, which the programmer almost never meant. E0607, use of local before all paths initialize it, is definite-assignment analysis:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 x;
+if (c) {
+    x = 1;
+}
+return x;               // error E0607: x may be uninitialized here</code></pre>
+<p>Each of these is a class of bug that has shipped in every language that lacked the check, and Coral's position is that the compiler can see them, so it should. None of them requires running the program; all of them are visible in the shape of the control flow.</p>
+<p>Definite-assignment analysis reads like a careful proofreader: it walks every path the program could take and asks, on each one, "is this variable certainly set by now?" If even one path skips the assignment, it stops you. A common beginner surprise is that assigning inside <code>if (c) { ... }</code> does not count as assigned afterwards, because the branch might not have run.</p>
+<section><h2 id="s23-9">E07xx, Parse Ambiguities</h2></section>
+<p>The E07xx range is unusual and worth understanding, because it is about grammar rather than semantics: it catches places where a piece of C-like syntax has two readings and the compiler must choose one.</p>
+<p>E0701 is the classic most-vexing-parse. The code <code>Time Keeper(Timer());</code> can read as either a function call or a variable declaration, and a recursive-descent parser must pick one. Coral picks one and tells the programmer exactly how it resolved the ambiguity:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Time Keeper(Timer());
+// warning E0701: parsed as a variable declaration `Keeper` of type
+//   `Time`, initialized with a temporary `Timer`; if you meant to call
+//   `Keeper`, wrap the argument: `Time Keeper((Timer()));`</code></pre>
+<p>Rather than leaving the reader to discover the unexpected reading later, the diagnostic states the choice and shows the fix.</p>
+<p>E0702, missing <code>typename</code> or <code>template</code> keyword in dependent scope, catches a name like <code>T::InternalType* ptr;</code> where the parser cannot tell whether <code>InternalType</code> is a static variable being multiplied or a type being pointed to. It flags the assumption it made, "I assumed a value; if you meant a type, say so", so the ambiguity is surfaced at parse time instead of producing a mysterious downstream error.</p>
+<p>E0703, tentative parse rollback limit exceeded, is a safety valve for a handwritten parser. If a malformed expression forces speculative parsing down too many branches without hitting a synchronising token such as a semicolon or brace, the parser kills the branch rather than overflowing its stack, and reports that it did. The alternative is a compiler crash, and a reported parse failure is always better than a crash.</p>
+<p>E0704 is the dangling else, where a nested <code>if</code> without braces binds the else to the innermost condition, and the compiler reports the binding it chose so the programmer can add braces if that was not the intent:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">if (a)
+    if (b)
+        doX();
+else                    // warning E0704: this `else` binds to `if (b)`
+    doY();</code></pre>
+<p>This range is the compiler being honest about its choices. Silent disambiguation is where languages acquire their reputations for surprising behaviour; stating the resolution is where they lose it.</p>
+<section><h2 id="s23-10">E08xx, Lints</h2></section>
+<p>The E08xx range is the advisory family: things that are legal but almost certainly not what was meant. They are warnings by default and errors under <code>--strict</code>.</p>
+<p>E0801, unused variable, is the one people meet first, and the one they appreciate after the first time it catches a real mistake, a value that was computed and then never used, which usually means a line was deleted or a name was mistyped. E0802, unused import, keeps a file's dependency list honest. E0803, unused parameter, catches a parameter never read in the body; the convention is that a leading underscore opts out, for the callback whose signature requires an argument it does not use:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void onEvent(Event e, _context ctx) { ... }   // _context opts out</code></pre>
+<p>E0804, binding never mutated but declared mutable, catches a variable declared mutable that is never assigned after initialisation, and so could have been const, a small but real clarity gain. E0805, use of deprecated item, is generated by the <code>#[[deprecated]]</code> attribute and names the replacement:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">connect(&quot;example.com&quot;);
+// warning E0805: `connect` is deprecated: use connect_v2(host, port) instead</code></pre>
+<p>E0806 and E0807 are the attribute lints from <a href="../22-attributes-and-compile-time-metaprogramming/index.html">Chapter 22</a>. An unknown attribute name is reported with a nearest-match suggestion, so a typo becomes a fix rather than a silent no-op:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[inlne]]
+// warning E0806: unknown attribute `inlne`; did you mean `#[[inline]]`?</code></pre>
+<p>A duplicate attribute is reported so that a repeated or contradictory instruction is never quietly dropped. These two matter more than their size suggests, because attributes are how a programmer tells the compiler what they intend, and a dropped instruction is a divergence between intent and result.</p>
+<section><h2 id="s23-11">E09xx, Format Strings</h2></section>
+<p>The E09xx range checks the format strings of <a href="../17-text-unicode-formatting-and-parsing/index.html">Chapter 17</a>, and it exists because the compiler can see both the format and the arguments.</p>
+<p>E0901, format string argument count mismatch, fires when the number of placeholders does not match the number of arguments:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">println(&quot;{} {}&quot;, a);    // error E0901: 2 placeholders, 1 argument</code></pre>
+<p>E0902, format placeholder type mismatch, fires when a specifier demands an integer and receives a type with no such rendering, such as a pointer or a struct with no formatting path. E0903, unknown format specifier, fires on a specifier outside the set, with the closest known specifier suggested:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">println(&quot;{q}&quot;, value);  // error E0903: unknown specifier `q`; did you mean `{}`?</code></pre>
+<p>This range is the payoff of the comptime machinery: because the format string and the arguments are both visible at compile time, a class of error that is a runtime crash in C and a runtime surprise in many dynamic languages is a build failure in Coral. And as the chapter opener insisted, when this check fires, including in a library's own comptime code, it is reported as a normal E09xx diagnostic with a location, not as an internal failure string. The trade, as <a href="../17-text-unicode-formatting-and-parsing/index.html">Chapter 17</a> noted, is that a format string built at runtime cannot be checked; but the overwhelming majority of format strings are literals, and for those the check is free.</p>
+<p>Simply put, because Coral can see the format string and the values together before the program runs, it treats a wrong number of values the same way it treats a typo: a build error, not a surprise at three in the morning.</p>
+<section><h2 id="s23-12">E10xx, Const and Mutation</h2></section>
+<p>The E10xx range catches mutation of things that must not change. E1001, mutation through a const-qualified pointer, fires when a function takes a <code>const T*</code> and writes through the pointee:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void overwrite(const i32* p) {
+    *p = 0;             // error E1001: cannot mutate through const i32*
+}</code></pre>
+<p>This is const's teeth. The promise a const parameter makes to its caller is that the pointed-to value will not change; a violation of the promise is a bug in the callee, and the compiler catches it at the store rather than at the caller's surprise. It is a member of the same family as the const method check, and the two together are what make const worth writing: without an enforcing compiler, a const annotation is a comment that drifts out of date.</p>
+<section><h2 id="s23-13">E11xx, Compile-Time Execution</h2></section>
+<p>The E11xx range guards the comptime machinery of <a href="../07-generics-and-comptime/index.html">Chapter 7</a>, where code runs during the build.</p>
+<p>E1101, comptime leak of runtime-dependent address, catches a comptime block that reads or stores an address only known when the binary is loaded, a heap allocation or a thread-local, which cannot be a compile-time constant:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const addr = @comptime { return (usize)&amp;globalHeap; };
+// error E1101: address is only known at load time</code></pre>
+<p>E1102, comptime mutation of immutable static memory, catches a comptime write to a global constant or a frozen read-only segment that a prior comptime pass established. E1103, comptime evaluation loop limit exceeded, is the tripwire: a comptime loop or recursion running without bound is cut off, with the macro call-stack depth shown, so an accidental infinite loop in a type generator is a diagnostic rather than a compiler hang:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">@comptime {
+    while (true) { }
+    // error E1103: comptime evaluation exceeded its budget
+    //   (loop/recursion depth limit); call stack: genVector -&gt; genVector ...
+}</code></pre>
+<p>E1104, non-comptime type emitted by generic factory, catches a function intended to generate types at compile time that attempts to return a runtime-constructed instance or an evaluated variable rather than a concrete type definition token. Its counterpart, the unbounded-comptime case, is why a comptime block is not simply "run the interpreter forever"; it has a budget, and exceeding it is reported.</p>
+<section><h2 id="s23-14">E12xx, Methods and Traits</h2></section>
+<p>The E12xx range checks the trait machinery of <a href="../06-traits-extend-and-polymorphism/index.html">Chapter 6</a>.</p>
+<p>E1201, overlapping method definitions across blocks, catches a method defined twice for the same type across different extend blocks. The method blocks may be separate, but a signature may be defined only once, and the compiler points at both definitions:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">extend Shape { f64 area() { ... } }
+extend Shape { f64 area() { ... } }
+// error E1201: `area` defined twice for `Shape` across extend blocks</code></pre>
+<p>E1202, trait method signature mismatch, catches an implementation whose method does not match the trait's declaration in parameters or return type, reporting both the trait's declaration and the implementation. E1203, missing required trait method, catches a type that claims a trait implementation but does not supply a required method:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">extend Circle : @shape { }
+// error E1203: `Circle` implements `@shape` but is missing `area()`</code></pre>
+<p>Together these three make a trait conformance trustworthy: a type that says it implements Shape either does, or does not compile. In a language with abstract types this is the "cannot instantiate abstract class" check, moved to the conformance site and stated plainly.</p>
+<section><h2 id="s23-15">E13xx, Drop and Bounds</h2></section>
+<p>The final range guards the interaction of ownership with traits and generics, and it is the most subtle family in the catalogue.</p>
+<p>E1301, explicit call to a drop method disallowed, catches a programmer writing <code>x.drop()</code>:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">String s = String::from(&quot;hi&quot;);
+s.drop();               // error E1301: cannot call drop() explicitly
+//   note: `drop` runs automatically when `s` goes out of scope;
+//   for manual cleanup use #[[no_drop]] and clear()/free()</code></pre>
+<p>Because drop is driven by scope termination, calling it explicitly invites a double free when the value's scope also ends. The compiler blocks the manual call and suggests the built-in clean-up function. This is the counterpart to the <code>no_drop</code> attributes: when you want manual cleanup, you use the attributes and a normal cleanup function; when you want automatic cleanup, you let the scope end the value's life. What you may not do is both.</p>
+<p>E1302, drop trait implemented on type with comptime bounds, catches a drop implementation on a type whose size or structure varies entirely with comptime conditions, where a fixed-layout destructor cannot be sound. E1303, linear field capture outlives drop execution, catches a field moved out of a struct before the struct's drop runs, which would let drop execute on partially uninitialised memory:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Holder : @drop { Payload p; ... }
+Holder h = ...;
+Payload taken = h.p;    // moves p out
+// ... later, h goes out of scope and drop() runs on the moved-out field
+// error E1303: field `p` was moved out; drop cannot run on a partial value</code></pre>
+<p>E1304, a capability missing at a generic's instantiation, catches a generic function that uses an operation on its type parameter and is then instantiated with a type that does not supply it, for example, printing a <code>T</code> (which needs <code>@toStr</code>) and calling the function with a type that has no <code>@toStr</code>. Each of these four is a lifetime or capability mistake that a systems language must catch to be sound, and each is caught at compile time with a location and a sentence. They are the deepest part of the catalogue, and a reader who understands why each fires understands the language's ownership model.</p>
+<section><h2 id="s23-16">A Worked Example: Reading a Diagnostic Trail</h2></section>
+<p>A single mistake often produces several diagnostics, and the skill of reading them in order is worth practising. Consider a function with a non-exhaustive switch inside a non-void function, with an unused variable above it:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str label(Shape s) {
+    i32 unused = 0;
+    switch (s) {
+        Shape::Circle { r } =&gt; return &quot;circle&quot;,
+    }
+}</code></pre>
+<p>The compiler reports, in order. First E0801: unused variable <code>unused</code>. Next E0608: non-exhaustive switch over Shape, missing Shape::Square and Shape::Point. Then, because the switch may not return on every path, E0604: non-void function <code>label</code> can reach its end without returning. Three diagnostics, one root cause in two places: a forgotten unused variable and a switch that is not total.</p>
+<p>Read the order as a dependency graph, not a to-do list. E0604 is a consequence of E0608, once the switch is exhaustive, every path returns, and the missing-return error vanishes. Fixing the missing cases therefore clears both E0608 and E0604, and a reader who understands the dependency fixes the cause rather than chasing the symptom. Removing the unused variable clears E0801 independently. The catalogue rewards a reader who asks, of each diagnostic, "is this the problem, or the shadow of the problem?"</p>
+<p>The worked example also shows why stable codes are worth the trouble. A message like "control reaches end of non-void function" and a code E0604 are the same finding, and the code lets a reader search for the pattern, add a consistent suppression, or find the reference in this chapter. The catalogue is not a list of strings; it is the compiler's vocabulary, and the vocabulary is part of the language.</p>
+<section><h2 id="s23-17">Exercises</h2></section>
+<section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>Why does every diagnostic carry a code? Give two things a code makes possible that a bare message does not.</li><li><span class="ex-label">Comprehension</span>E0201 prevents a type of infinite size. Explain why a pointer breaks the cycle, and give a self-referential type that is legal.</li><li><span class="ex-label">Comprehension</span>A user-raised <code>@compileError</code> and a library-detected format mismatch are both diagnostics. Explain why neither may be reported as a debug string, using the <code>evalComptimeBody FAILED decl=4106</code> line as your example of what to avoid.</li><li><span class="ex-label">Implementation</span>Write a program that triggers E0608, then fix it three ways: add the missing arms, add an else, and add a fallthrough. Which fix is right, and when?</li><li><span class="ex-label">Implementation</span>Trigger E0307 with a constant index and with a runtime index. Which fires at compile time, and which does not? Explain the difference in terms of what the compiler knows.</li><li><span class="ex-label">Lints</span>Count the unused-variable warnings in a program of yours. Fix them. Which warned about a real bug and which were noise?</li><li><span class="ex-label">Format</span>Write three calls that trigger E0901, E0902, and E0903. Then write the corrected calls.</li><li><span class="ex-label">Traits</span>Trigger E1203 by declaring a trait conformance and omitting a method. What does the diagnostic name, and what is the fix?</li><li><span class="ex-label">Drop</span>Trigger E1301 by calling drop directly. What does the compiler suggest instead, and why is the manual call unsafe?</li><li><span class="ex-label">Ordering</span>Write a program with a missing switch case inside a non-void function. List the diagnostics in order and identify which are causes and which are consequences.</li><li><span class="ex-label">Meta</span>The catalogue is organised by mistake kind rather than by compiler pass. Argue for and against this. Would you group E06xx differently, and why?</li><li><span class="ex-label">Writing</span>Take E0701, the most-vexing-parse diagnostic, and write the message you think it should produce for the example <code>Time Keeper(Timer());</code>. Aim for the standard of E0103: what happened, where, and why.</li></ol></section>
+      <nav class="chapter-nav"><a href="../../speed/22-attributes-and-compile-time-metaprogramming/index.html">← Previous</a><a href="../../speed/24-live-examples-warm-up-and-fundamentals/index.html">Next →</a></nav>
+    </article>
+  </main>
+</body>
+</html>

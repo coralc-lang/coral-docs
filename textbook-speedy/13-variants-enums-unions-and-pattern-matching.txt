@@ -1,0 +1,514 @@
+Chapter13
+
+Variants, Enums, Unions, and Pattern Matching
+
+The Shape of "One of Several Things"
+
+Imagine you are building a program that talks to a payment system. A payment, it turns out, is never just "a payment." It is a card payment, or a bank transfer, or a gift card, or maybe a refund. Each of those carries different information. A card payment has a card number and an expiry. A bank transfer has an account number and a routing code. A gift card has a code and a remaining balance. A refund points back at the original payment it is undoing.
+
+Here is the trouble. You want to write code that handles a payment. But which payment? A card payment and a bank transfer do not even have the same fields. If you give them all the same struct, half the fields are meaningless for any given value, the route number sits empty on every card payment, the card number sits empty on every transfer, and nothing stops a careless line of code from reading the empty one. This is the single most common modelling problem in programming: a value that is one of several different things, where each thing has its own data.
+
+Coral gives you three different tools for this problem, and they are not interchangeable variants of the same idea. They are genuinely different, and choosing among them is a statement about how much the compiler is allowed to know and how much safety you want.
+
+They are:
+
+    enum     a closed, named set of integers, with no extra data attached
+    variant  a "tagged union", one of several cases, each carrying its own data
+    union    a raw, unsafe overlapping of storage, with no tag at all
+
+Read that table again slowly, because the rest of the chapter unpacks it. An enum is a label. A variant is a label plus cargo. A union is no label at all, just a spot on the floor where different things take turns standing.
+
+Let us start with the simplest one, the one you have probably already wanted without having a name for it.
+
+13.1 Plain Enums: Giving Integers Names
+
+Think about a traffic light. It can be red, yellow, or green. Nothing else. There is no fourth colour, no "slightly red," no empty state. If you were writing this in C, you would probably do one of two things, and both of them are quietly dangerous.
+
+The first is to use raw integers, with a comment pretending they are names:
+
+    i32 light = 0;      // 0 = red, 1 = yellow, 2 = green
+    ...
+    if (light == 3)     // oops, there is no 3, but this compiles
+
+The comment is not a type. Nothing stops the 3. Nothing stops a function from returning 17 because a branch went wrong. The comment is a wish, and the compiler does not read wishes.
+
+The second is to define constants:
+
+    const i32 RED = 0;
+    const i32 YELLOW = 1;
+    const i32 GREEN = 2;
+
+This is better, at least the names exist, but it changes nothing about the checking the type system provides. A constant is a name for a number; it is not a distinct type. You can still assign 3 to a variable meant to hold a light, and you can still pass a light where an age is expected, because both are just i32 underneath.
+
+An enum fixes both problems at once. It creates a genuinely new type, and it lists, once and for all, the only values it can hold:
+
+    enum TrafficLight {
+        Red,
+        Green,
+        Yellow,
+    }
+
+Notice three things about this. First, TrafficLight is now a type, as real as i32, and a value of one type cannot be silently used where another is expected, a TrafficLight is not an i32 and an i32 is not a TrafficLight. Second, there are exactly three legal values, and the compiler knows all three. Third, and this is the part that pays off later, the compiler can now reason about sets of lights. When you write a switch over a TrafficLight, the compiler can check whether you have covered every case, because it knows the complete list.
+
+You write an enum value with two colons:
+
+    TrafficLight light = TrafficLight::Red;
+
+    if (light == TrafficLight::Red) {
+        stop();
+    } else if (light == TrafficLight::Green) {
+        go();
+    } else {
+        slowDown();
+    }
+
+The double colon :: is just "the case Red of the type TrafficLight." It is how you reach inside a named set.
+
+In plain words, `TrafficLight::Red` reads as "the `Red` member of the `TrafficLight` family." The double colon is the same operator that reaches into a module (`std::io`) or a type's static method (`Vec::new`); the left side is the container, and the right side is the item inside it.
+
+Why this matters: the moment a value's legal choices have names, the compiler can hold you to them. A function that takes a `TrafficLight` can never be handed a stray `3`, and a switch over it can be checked for completeness. The enum converts a fact that used to live only in a comment, "these are the only three lights", into something the compiler reads and enforces.
+
+    switch (light) {
+        TrafficLight::Red    => stop(),
+        TrafficLight::Green  => go(),
+        TrafficLight::Yellow => slowDown(),
+    }
+
+Three arms, no `else`, and the compiler is satisfied because all three lights are covered. Add a fourth light tomorrow and this switch stops building until the new case is handled.
+
+A Layer Behind: the actual integers
+
+Now, here is the "hold on a moment" part. Underneath, an enum really is an integer. Red is 0, Green is 1, Yellow is 2. The compiler picks the numbering for you, starting at zero and counting up in the order you wrote the cases. Most of the time you should not care and should not rely on which number is which, the whole point of the enum is that you refer to it by name, not by number.
+
+But sometimes the number matters, and when it does, the language lets you say so. Consider file types coming out of an operating system, where the numbers are fixed by the system and are not sequential:
+
+    enum FileType : u8 {
+        Unknown   = 0,
+        Regular   = 1,
+        Directory = 2,
+        Symlink   = 7,
+        Socket    = 12,
+    }
+
+Two new pieces of syntax are doing work here. The `: u8` says the underlying storage is one byte, not the default four. That matters when this enum is a field in a struct and you care whether the struct is eight bytes or thirty-two, a FileType that occupies one byte instead of four can shrink a struct that holds several of them. And the `= N` on each case pins the numeric value, which is what you want when the numbers are dictated by something outside your program, such as an on-disk format or a system call.
+
+One rule covers the pins: a case with an explicit value takes it, and a case without one takes the previous case's value plus one. So in the example above, there is no case after Socket; if there were, and it had no `=`, it would be 13.
+
+A rule of thumb, then. Reach for an enum when you have a small, closed, unchangeable set of options with no extra data per option. Traffic lights, the days of a week, the states of a connection (Connecting, Open, Closing, Closed), the four suits of a card, the levels of a log (Debug, Info, Warn, Error, Fatal), the kinds of a token in a lexer. These are the values that want names, not numbers.
+
+And a warning worth putting in bold: never let a raw integer sneak into an enum-typed variable from the outside world without a check. If a byte arrives from a file or a socket and you cast it to a FileType, and the byte happens to be 5, you have manufactured an illegal FileType::5 that does not exist in your list, and every switch over FileType will behave as though the case were impossible. Coral treats the integer-to-enum direction as a checked conversion for exactly this reason. When a value comes from outside, you convert it deliberately and handle the "not one of mine" case, rather than trusting it. Chapter23 lists the diagnostic that fires for the switch that forgot a case, which is the compiler side of the same concern.
+
+13.2 Variants: When Each Case Carries Its Own Data
+
+Enums are for options with nothing attached. Now suppose each option carries something, and different options carry different things. This is where you have, at some point in your life, really wanted something and did not have the tool for it.
+
+Picture a shape. You are writing a drawing program. A shape is a circle, or a rectangle, or a point. A circle has a radius. A rectangle has a width and a height. A point has nothing; it is just a location. You want a single variable, `shape`, that can be any of these, and you want to compute its area without ever accidentally reading a rectangle's width off a circle.
+
+You cannot use an enum here, because an enum cannot carry the radius. You could try to bolt the data on, storing a radius and a width and a height in the same struct and using a separate enum to say which fields are meaningful this time:
+
+    enum ShapeKind { Circle, Rectangle, Point }
+
+    struct Shape {
+        ShapeKind kind;
+        f64 radius;     // only valid if kind == Circle
+        f64 width;      // only valid if kind == Rectangle
+        f64 height;     // only valid if kind == Rectangle
+    }
+
+This is the C way, and it works, and it is a trap. The comment "only valid if kind == Circle" is again a wish. Nothing prevents code from reading shape.radius on a rectangle, and it will get zero, silently, and draw the wrong thing. The three fields and the kind are four pieces of data that must always agree with each other, and nothing in the language enforces the agreement. Every function that takes a Shape must remember the convention, and every new field added must be threaded through every place that touches a Shape.
+
+A variant removes the trap. It says, in one declaration, "a Shape is one of these cases, and each case brings its own fields into existence":
+
+    variant Shape {
+        Circle { f64 radius; }
+        Rectangle { f64 width; f64 height; }
+        Point,
+    }
+
+The line that made you pause was this one: "a variant value is exactly one of its cases, and each case brings its own fields into existence." Let us take it apart with a concrete picture.
+
+Think of a job application form that can be for one of several roles. The form is the same piece of paper. But if you are applying to be a driver, it has a field for a licence number. If you are applying to be a chef, it has a field for a food-safety certificate. If you are applying to be a cashier, it has neither. The form is "one of several forms," and which fields it has depends on which role it is for. You cannot ask a driver-application for a food-safety certificate, because that field does not exist on that form.
+
+A variant value is exactly like that. When you make a Circle, the value contains a radius and does not contain a width or a height. When you make a Rectangle, it contains a width and a height and does not contain a radius. It is not that the other fields are there but empty; they are not there at all. The value is the shape of exactly one case, the one you chose. Underneath, the compiler stores a tiny hidden integer, the tag, that records which case this particular value is, plus enough room for the largest case's fields. When you later look at the value and ask "which case are you?", that tag is how the compiler answers, and it will not let you read the radius of something tagged Rectangle because, as far as the type system is concerned, that radius is not part of this value. This is the same idea as the labelled-box analogy: the box has a label on the outside, and inside it has exactly the cargo for that label and no other.
+
+Now the syntax. You build a variant value by naming the case and giving its fields:
+
+    Shape a = Shape::Circle { .radius = 1.0 };
+    Shape b = Shape::Rectangle { .width = 3.0, .height = 4.0 };
+    Shape c = Shape::Point;
+
+The `{ .radius = 1.0 }` is the same "designated field" syntax you would use to initialise a struct: name the field, `=`, give the value. A case with no fields is written as just the case name, `Shape::Point`, optionally with empty braces.
+
+A common beginner mistake is to leave off the case name and write just `{ .radius = 1.0 }`. That reads as a bare struct literal, not a `Shape` value: it carries no tag, so the compiler cannot tell which case it is and will refuse it where a `Shape` is expected. The case name `Shape::Circle` is what places the value in the right family.
+
+Here is the same model for a system that sends messages over a network. A message might be a login, a logout, or a piece of data. Each carries different things:
+
+    variant Message {
+        Login  { str username; str password; }
+        Logout { str reason; }
+        Data   { u32 sequence; u8[] payload; }
+        Ping,
+    }
+
+Every message is exactly one of those four. A Ping carries nothing. A Login carries a username and a password. You cannot send a message that is half Login and half Data. If you need a fifth kind of message later, you add a case, and, this is the payoff, every switch that handles messages will refuse to compile until it handles the new case too. We will see why in a moment.
+
+Simply put, a variant is a labelled box: the label on the outside says which case this is, and inside the box is exactly the cargo for that label and nothing else. A `Login` box holds a username and a password and has no room for a payload; a `Data` box holds a sequence number and a payload and no password. Because the label is part of the value, the compiler can always tell you which cargo is truly there, which is the difference between a variant and a bare union of the same bytes.
+
+The recursive example: JSON, and why it matters
+
+One class of variant deserves a long look, because it is where the feature stops being a convenience and becomes a way to model entire domains. A JSON document is a value that is one of: null, a boolean, a number, a string, an array of more JSON, or an object mapping strings to more JSON. Read that description again and notice that it is already a variant, and that two of its cases refer back to JSON itself:
+
+    variant Json {
+        Null,
+        Bool   { bool value; }
+        Number { f64 value; }
+        Str    { str value; }
+        Array  { Vec<Json> items; }
+        Object { Map<str, Json> fields; }
+    }
+
+This is a tree whose shape is defined by the variant. An array of JSON holds more JSON, which might themselves be arrays, down as deep as the document goes. The type is self-referential, Json mentions Json, and the variant is what makes that expressible cleanly. If you have ever written a JSON parser in C, you know the alternative: a struct with a `type` field, a `void*` payload, and a pile of casts at every use site. The variant turns the casts into a language feature, and the compiler does the bookkeeping of which type the payload is. The standard library's `std::parser::json` module is built on precisely this declaration.
+
+Variants can have methods, just like structs, either written inline or in an extend block. Here is the shape example given an area method:
+
+    pub extend Shape {
+        f64 area() {
+            switch (self) {
+                Shape::Circle { radius }         => 3.14159 * radius * radius,
+                Shape::Rectangle { width, height } => width * height,
+                Shape::Point                     => 0.0,
+            }
+        }
+    }
+
+Inside `area`, `self` is the whole Shape value. The `switch` asks which case it is, and the pattern `Shape::Circle { radius }` both checks that it is a circle and binds the circle's radius to a local name `radius` that the arm's body can use. This `switch` is called pattern matching, and the second half of this chapter is dedicated to it, because it is how a variant is taken apart and it is the reason variants are pleasant rather than merely possible.
+
+13.3 Unions: Overlapping Storage, and Why You Rarely Want It
+
+The third tool is the raw union, and it is worth understanding even though you will reach for it rarely, because it explains what a variant is not.
+
+Picture a single parking spot. On Monday a car is parked there. On Tuesday a motorcycle is parked there. On Wednesday a bicycle. The spot is one piece of pavement, but what occupies it changes, and the thing occupying it on a given day is the only valid thing to look at. If you walk up on Wednesday expecting a car, you are wrong, and the pavement does not stop you from measuring the bicycle as though it were a car.
+
+A union is that parking spot. It overlaps its fields in the same bytes:
+
+    union Bits {
+        u32 whole;
+        struct {
+            u8 b0; u8 b1; u8 b2; u8 b3;
+        } bytes;
+    }
+
+    Bits b;
+    b.whole = 0x01020304;
+    u8 low = b.bytes.b0;      // which byte is this? depends on your machine
+
+Writing `b.whole` fills all four bytes with one number. Reading `b.bytes.b0` looks at the same four bytes as if they were four separate bytes. That is a type pun, reinterpreting the same memory as a different type, and it is occasionally exactly what you want, and most of the time it is exactly what you should not do. The critical difference from a variant is right there in the declaration: a union has no tag. There is no hidden integer recording which field you wrote. So when you read `b.bytes.b0`, nothing knows whether you last wrote `whole` or `bytes`; the language simply lets you read whatever bytes are there, reinterpreted. Get it wrong and you do not get an error; you get a number that looks plausible and is meaningless.
+
+So when is a union the right tool? Three honest jobs, and almost nothing else:
+
+    - Implementing a tagged union by hand at an ABI boundary where you
+      genuinely cannot use Coral's variant (for instance, a C library's
+      struct layout that you must match byte for byte).
+    - Deliberate, endian-aware type punning, reading an integer as bytes or
+      the reverse, in code that is explicitly about representation.
+    - Laying out hardware registers or wire-protocol headers where fields
+      are specified to share storage.
+
+Every one of those is a case where you are dealing with bytes as bytes, and you know the rules of the underlying system. For everything else, for the ninety-nine cases out of a hundred, you want a variant. If you find yourself writing a union and an enum side by side, and a struct that holds both, and code that checks the enum before touching the union, stop: you have reimplemented a variant, worse, and you should have used a variant in the first place.
+
+If you do use a union, two habits keep it from being a footgun. First, hide it behind a function or a method that documents the invariant and the endianness assumptions, never let raw union access spread across a codebase. Second, keep it private. A union crossing a module boundary as a bare field is a promise no reader can verify; expose a typed accessor instead.
+
+Why this matters: unions are the tool of last resort, the one you reach for when you are matching a layout the outside world dictated, a C struct, a network header, a hardware register. Every other time, the variant gives you the same compact storage with a label the compiler can check. Using a union where a variant would do is like shipping a parcel with no address on it and hoping the courier guesses.
+
+One more thing about memory layout, because it comes up with unions and with structs across a program. By default the compiler is free to insert padding between fields and to leave gaps for alignment, and it may reorder fields for efficiency. For a union that must match an external layout, you pin the layout with attributes. `#[[packed]]` removes the padding so the bytes lie exactly where you put them; `#[[reorder]]` gives the compiler explicit permission to permute fields for a tighter fit. These are covered properly in Chapter22, but know they exist, because the moment you care what the bytes look like, FFI, files, networks, you will need them.
+
+13.4 Pattern Matching: switch as a Decision Procedure
+
+We have been building values that are one of several things. Now we take them apart. The tool is `switch`, and in Coral it is both a statement and an expression, it can decide what to do, and it can compute a value.
+
+Here is the everyday shape. Suppose you have a command character typed by a user, and you want to do something different for each:
+
+    switch (command) {
+        'q' | 'Q' => quit(),
+        'h'      => help(),
+        else     => unknown(),
+    }
+
+Read it left to right as a sentence: for this command, if it is 'q' or 'Q', quit; if it is 'h', help; otherwise, unknown. Each line is called an arm. The thing on the left of `=>` is a pattern, a shape to match against, and the thing on the right is what to do when it matches. The first arm that matches wins, and the rest are not tried.
+
+Here is `switch` walked through with a concrete value. Suppose `command` is `'h'`. The switch tests the first arm, `'q' | 'Q'`: the value is neither, so it moves on. It tests the second arm, `'h'`: that matches, so it runs `help()` and the whole switch is done. The `else` arm is never reached. Now suppose `command` is `'z'`: neither of the first two arms matches, so the `else` arm runs `unknown()`.
+
+Notice the `else`. It is the catch-all, the "anything that did not match above." Notice also the missing piece you might expect from C: there is no `break` between arms. A Coral switch does not fall through from one arm to the next. Each arm is self-contained; when its body finishes, the whole switch is done. This is the opposite of C, and it is the opposite on purpose, because accidental fallthrough is one of the classic C bugs. If you genuinely want two cases to share a body, you list both patterns on one arm, joined by a vertical bar `|`, as `'q' | 'Q'` does above. The `|` reads as "or": this arm matches 'q' or 'Q'. It is the same separator you would use for a set of alternatives anywhere else, and it is what the standard library and the compiler's own back end (wallvm) use throughout, you will search a switch body and see `IrOpcode::Load | IrOpcode::Gep | IrOpcode::AtomicLoad => ...`, one arm covering several opcodes at once.
+
+The forms a pattern can take
+
+Patterns match against the shape of a value, and there are a few kinds worth naming.
+
+Literal patterns match a specific constant. Several literals joined with `|` mean "any of these":
+
+    switch (httpStatus) {
+        200            => println("OK"),
+        301 | 302 | 307 => println("redirect"),
+        404             => println("not found"),
+        500 | 502 | 503 => println("server error"),
+        else           => println("other"),
+    }
+
+Variant patterns match a variant case and pull that case's fields out into local names. This is the workhorse:
+
+    switch (message) {
+        Message::Login { username, password } => authenticate(username, password),
+        Message::Logout { reason }            => logOut(reason),
+        Message::Data { sequence, payload }   => store(sequence, payload),
+        Message::Ping                         => sendPong(),
+    }
+
+The names inside the braces, `username`, `password`, `reason`, and so on, are fresh local variables, scoped to that arm's body, holding the case's fields. You may name only the fields you actually need; `Message::Login { username } => ...` would bind just the username and ignore the password. You can write the shorthand `Some { value }` or the fully qualified `Option::Some { value }`; they mean the same thing.
+
+Tuple patterns match a tuple position by position, which Chapter12 covers in full. Here is a small one that is genuinely useful, deciding what a pair of signs means:
+
+    switch ((x >= 0.0, y >= 0.0)) {
+        (true, true)   => println("first quadrant"),
+        (false, true)  => println("second quadrant"),
+        (false, false) => println("third quadrant"),
+        (true, false)  => println("fourth quadrant"),
+    }
+
+Because the switch has exactly four possible combinations and all four are listed, this is exhaustive, and the compiler will confirm it. Encoding a decision as a tuple of small closed values and matching on the tuple is a recurring Coral idiom: it turns a chain of `if`s into a table the compiler can check for completeness.
+
+Binding patterns give a name to the whole value. A bare identifier in a pattern position is a binding, not a constant to compare against:
+
+    switch (point) {
+        (x, 0) => println("on the x-axis at {}", x),
+        (0, y) => println("on the y-axis at {}", y),
+        (x, y) => println("at ({}, {})", x, y),
+    }
+
+And the wildcard is written `else`, not an underscore. Coral uses `else` for "anything not matched above," which reads naturally.
+
+Guards: patterns with a condition
+
+Sometimes the shape is not enough, and you want to match "a key event, but only the escape key." A guard is an `if` clause between the pattern and the arrow. It is checked only after the pattern matches, and it may read the names the pattern bound:
+
+    switch (event) {
+        Event::Key { code } if code == ESC => quit(),
+        Event::Key { code }                => handleKey(code),
+        Event::Resize { width, height }    => onResize(width, height),
+        else                               => ignore(),
+    }
+
+The first arm matches any key event, binds its code, and then asks whether that code is ESC. If it is, quit; if not, this arm fails and the next one is tried, which handles all the other keys. Without guards you would have to write one arm per key or nest an `if` inside the body; with them, the condition lives where the pattern does, and the reader sees the whole decision at once.
+
+13.5 The Three Rules of a Coral switch
+
+This is where Coral's switch stops being cosmetic sugar and becomes a safety feature. A switch over an enum or a variant is governed by three rules, and together they mean that forgetting a case is not a runtime surprise but a compiler error.
+
+The first rule: be exhaustive. A switch over an enum or variant must either cover every case, or include an `else`. If a case is missing and there is no `else`, the compiler reports it, and it names the missing cases:
+
+    enum Color { Red, Green, Blue }
+
+    str name(Color c) {
+        switch (c) {
+            Color::Red   => return "red",
+            Color::Green => return "green",
+            // Color::Blue is missing!
+        }
+    }
+
+    // error E0608: non-exhaustive switch over Color;
+    //   missing cases: Color::Blue
+
+The error tells you exactly what is missing, so the fix is one line. And this is the property that makes the whole variant style worth adopting. When someone later adds a Color::Purple case to the enum, every switch that did not anticipate it stops compiling, and the compiler hands you the list of every place that needs updating. "I forgot a place" has gone from a silent bug that ships to a build failure that ends in a minute.
+
+In plain words, exhaustiveness means the compiler will not let you leave a case unhandled. Imagine a form that must be filled in completely: instead of a clerk silently accepting a blank box, the compiler hands the form back and points at the missing line. That is why adding a case to a variant is a safe change, the compiler visits every switch and makes each one decide what to do.
+
+The second rule: be reachable. An arm that can never run is an error too. If you list a duplicate case, or a variant that an earlier arm already covered, the compiler tells you:
+
+    switch (c) {
+        Color::Red   => ...,
+        Color::Red   => ...,      // error E0609: unreachable case
+    }
+
+This catches the copy-paste mistake where you meant to change the case and forgot, and it catches overlapping ranges (which we will see below).
+
+The third rule: fallthrough must be deliberate. Coral's arms do not fall through by default, but sometimes you actually want the C behaviour, a case that runs its own code and then continues into the next case. When you want that, you say so with the attribute `#[[fallthrough]]`:
+
+    switch (mode) {
+        Mode::Initialize => {
+            setup();
+            #[[fallthrough]]
+        }
+        Mode::Run => {
+            run();
+        }
+        else => {},
+    }
+
+The `#[[fallthrough]]` on the last statement of the Initialize arm tells the compiler "yes, I meant to fall into Run." Without it, the compiler warns you that the case falls through, because a case that falls through by accident is almost always a bug. With it, you have recorded the intent, and a reader sees it too. Putting `#[[fallthrough]]` on the very last arm of a switch, where there is nothing to fall into, is itself an error (E0610), because it is always a leftover from copying an arm.
+
+So the three rules, together, say this: every case is either handled, or caught by `else`, or deliberately fallen through to the next, and someone must have said so on purpose in every instance. The language refuses to let a case slip through the cracks quietly.
+
+A common beginner mistake is to assume a missing case is only a warning. It is not: a non-exhaustive switch over an enum or variant is an error (E0608) and the program will not build. The compiler is not being fussy, it is telling you that some value could reach the switch and fall through with nothing to do, and it would rather stop you now than let that value surprise you at runtime.
+
+13.6 switch That Computes a Value
+
+Because the arms produce values, a switch can be the right-hand side of an assignment, the argument to a call, or the body of a function. When every arm yields a value of the same type and the switch is exhaustive, the switch has that type. This is where the construct stops being a statement with a side effect and becomes a way to compute.
+
+    str severityLabel(LogLevel level) {
+        return switch (level) {
+            LogLevel::Debug => "DEBUG",
+            LogLevel::Info  => "INFO",
+            LogLevel::Warn  => "WARN",
+            LogLevel::Error => "ERROR",
+            LogLevel::Fatal => "FATAL",
+        };
+    }
+
+Each arm is an expression, and because all the arms are strings and the switch covers every LogLevel, the whole switch is a string, which the `return` returns. When an arm's body is a block, the block's final expression is the arm's value:
+
+    f64 area(Shape s) {
+        return switch (s) {
+            Shape::Circle { radius } => 3.14159 * radius * radius,
+            Shape::Rectangle { width, height } => {
+                f64 a = width * height;
+                return a;
+            }
+            Shape::Point => 0.0,
+        };
+    }
+
+A switch used purely for its side effects is a statement and takes a semicolon like any other. A switch used for a value is written where a value is expected.
+
+Why this matters: a switch that computes a value lets you turn a label into a result without a chain of temporary variables. The compiler still checks exhaustiveness, so the function that returns `switch (level) { ... }` cannot silently miss a level, the value it promises is guaranteed for every case in the type.
+
+13.7 Matching on Ranges and the Exhaustiveness Check Applied
+
+Literal patterns cover exact values. For the very common "between these bounds" case, Coral has range patterns, and the compiler checks them for overlap just as it checks literals for duplicates.
+
+    char grade;
+    switch (score) {
+        90..=100 => grade = 'A',
+        80..=89  => grade = 'B',
+        70..=79  => grade = 'C',
+        60..=69  => grade = 'D',
+        0..=59   => grade = 'F',
+        else     => grade = '?',
+    }
+
+The `..=` is an inclusive range, "from 90 up to and including 100." There is also `..`, the exclusive range. If two of your ranges overlap, the compiler reports the second one as unreachable (E0609), which is exactly the class of bug that slips past a chain of if-statements.
+
+The reason to reach for ranges and enums and tuples rather than long if-chains is always the same: the compiler can check a closed, structured decision for completeness and for overlap, and it cannot check a chain of `if`s at all. Every time you can express a decision as a match over a closed set, you are handing work to the compiler that you would otherwise have to do by reading carefully, late at night, with tired eyes.
+
+13.8 A Worked Example: An Arithmetic Interpreter
+
+The classic use of variants and matching is building a little language, and it is worth doing once in full because it shows how the shape of the data and the shape of the code mirror each other. Suppose we want to represent and evaluate arithmetic expressions like `(3 + 4) * -(2)`.
+
+Start by defining what an expression is. An expression is a number, or the sum of two expressions, or the product of two expressions, or the negation of one expression. That sentence is already a variant:
+
+    variant Expr {
+        Num { f64 value; }
+        Add { Expr left; Expr right; }
+        Mul { Expr left; Expr right; }
+        Neg { Expr operand; }
+    }
+
+Now evaluate one. To evaluate a number, return it. To evaluate a sum, evaluate both sides and add. To evaluate a product, evaluate both sides and multiply. To evaluate a negation, evaluate the operand and negate. Each of those sentences is one arm:
+
+    f64 eval(Expr e) {
+        return switch (e) {
+            Expr::Num { value }       => value,
+            Expr::Add { left, right } => eval(left) + eval(right),
+            Expr::Mul { left, right } => eval(left) * eval(right),
+            Expr::Neg { operand }     => -eval(operand),
+        };
+    }
+
+Two things are happening that are worth noticing. First, `eval` is total: it covers all four cases, so the compiler guarantees no shape of Expr is forgotten. If someone adds `Expr::Div`, `eval` stops compiling until it handles division. Second, the structure of the code mirrors the structure of the data. `eval` recurses on the children; the `Num` case, which has no children, stops the recursion. This correspondence, one function per operation, one case per shape, is sometimes called the functional style, and the variant is what makes it natural.
+
+Here is `(3 + 4)` evaluated, step by step. `eval` sees `Expr::Add { left, right }`, so it binds `left` to `Num { .value = 3.0 }` and `right` to `Num { .value = 4.0 }`, then computes `eval(left) + eval(right)`. Evaluating `left` matches the `Num` arm and returns `3.0`; evaluating `right` returns `4.0`; the sum is `7.0`. The recursion bottoms out at the `Num` cases, which is what stops it.
+
+Now print one, to see the same mirroring from a different operation:
+
+    str show(Expr e) {
+        return switch (e) {
+            Expr::Num { value }       => formatFloat(value),
+            Expr::Add { left, right } => "(" + show(left) + " + " + show(right) + ")",
+            Expr::Mul { left, right } => "(" + show(left) + " * " + show(right) + ")",
+            Expr::Neg { operand }     => "-" + show(operand),
+        };
+    }
+
+Two functions, two switches, both over the same variant. Add a new operation and you write a new switch; add a new case and you must update both switches, because the compiler insists. That trade, new operations are cheap, new cases touch every operation, is sometimes called the expression problem, and whether it is good depends on which direction you expect to change more. The variant makes the trade explicit and gives you the compiler's help either way.
+
+One last thing about this example, because it teaches a rule you will need again. `Expr::Add` stores two `Expr` values by value, and `Expr` is recursive, so a naive layout would be infinite in size: to know how big an Expr is, you would need to know how big its children are, forever. The compiler refuses to build such a type; it reports a cyclic type layout of infinite size (E0201). The fix is to put the recursion behind a pointer:
+
+    variant Expr {
+        Num { f64 value; }
+        Add { Expr* left; Expr* right; }
+        Mul { Expr* left; Expr* right; }
+        Neg { Expr* operand; }
+    }
+
+Now the size of an Expr is the size of a pointer plus the largest non-recursive case, and the tree links through the heap. Chapter11 covers the ownership and freeing of exactly this kind of data, and the standard library's smart pointers and arena allocator exist to make building trees like this manageable.
+
+13.9 A Second Worked Example: A State Machine
+
+Variants are not only for trees. Any value that changes what it is over time is often a state machine, and a state machine is a variant with methods that move between cases. Consider a network connection. It starts closed, opens, may be reading or writing, and closes again.
+
+    variant Connection {
+        Closed,
+        Connecting { str host; u16 port; },
+        Open       { i32 fd; },
+        Closed
+    }
+
+That is not quite right, and the mistake is instructive: you cannot have two cases named Closed. Let us model it more carefully, with the states a connection really has:
+
+    variant Connection {
+        Disconnected,
+        Connecting { str host; u16 port; },
+        Connected   { i32 fd; },
+        Error       { str reason; }
+    }
+
+Now the operations are methods that match on the current state and produce the next:
+
+    pub extend Connection {
+        Result<Connection, str> open(str host, u16 port) {
+            return switch (self) {
+                Connection::Disconnected => connectTo(host, port),
+                else => return Error::Err { .error = "already connecting or connected" },
+            }
+        }
+
+        void disconnect() {
+            switch (self) {
+                Connection::Connected { fd } => { closeFd(fd); self = Connection::Disconnected; },
+                else => { self = Connection::Disconnected; },
+            }
+        }
+    }
+
+The value's identity, Disconnected, Connecting, Connected, Error, is its case, and the data that matters for that case is attached to it. When you are Connected, you have a file descriptor and nothing else; when you are Connecting, you have a host and a port and no descriptor yet. The type stops you from reading the descriptor of a connection that is not yet connected, which is exactly the bug that plagues hand-rolled state machines with a `state` field and a pile of nullable fields.
+
+13.10 Exercises
+
+1. Comprehension. You need a value that is either a number or a string, and you must never read it as the wrong one. Which of the three tools do you use, and why are the other two wrong?
+
+2. Comprehension. In your own words, explain why a variant can store a circle's radius and a rectangle's width in overlapping space while still making it impossible to read the wrong one. What does the variant store that the union does not?
+
+3. Comprehension. Explain the three rules of a Coral switch (exhaustive, reachable, deliberate fallthrough) to someone who has only used C's switch. What does each rule protect against?
+
+4. Implementation. Define `variant Temperature { Celsius { f64 deg; }, Fahrenheit { f64 deg; }, Kelvin { f64 deg; } }` and write `toCelsius(Temperature) f64` with an exhaustive switch. Then add a `Rankine` case and list every place the compiler complains.
+
+5. Implementation. Add a `Div` case to the interpreter in 13.8. Decide what division by zero should do, return a `Result<f64, str>`, or abort with `@assertOut`, and justify your choice in two sentences.
+
+6. Patterns. Write `classify(Vec<i32>) str` returning "empty", "single", "sorted-ascending", "sorted-descending", or "unsorted", using at least one guard and as few `if`s as you can manage.
+
+7. Fallthrough. Write a switch where two cases genuinely need to share a tail of code, first with an `else`, then with `#[[fallthrough]]`. Which reads better, and when is each appropriate? What does the compiler say if you forget the attribute?
+
+8. Ranges. Write a switch over an `i32` with arms `0`, `1..=10`, `-5..=-1`, and `else`. Which values would be covered twice if you wrote `0..=10` instead of `1..=10`? Does the compiler catch it?
+
+9. Design. Model the events a text editor handles, a key press, a mouse click, a resize, a file-loaded notification, as a variant, then write the exhaustive switch that dispatches them.
+
+10. Meta. The interpreter separates `eval` (behaviour) and `show` (formatting) into two switches over the same variant. Describe what happens to the codebase when you add a new operation versus when you add a new case. Write one paragraph arguing for the variant approach and one arguing for the class-hierarchy approach, then say which you find more convincing.

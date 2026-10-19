@@ -1,0 +1,314 @@
+Appendix B
+
+Built-ins and Intrinsics
+
+Every language has a handful of names the compiler knows about personally. They are not declarations you can read in the standard library, because they are not written in the language at all; they are wired directly into the parser, the type checker, and the code generator. Coral calls these built-ins, and it spells most of them with a leading `@`, which is the language's marker for "this name belongs to the compiler."
+
+This appendix is the complete list of them, derived from the compiler's own source rather than from memory. For each one it gives the exact spelling, what it means, the constraints the compiler enforces, the type it produces, and an example you can type. It closes with a comparison table, the mistakes that catch people first, and a set of exercises. It is a reference, and like Appendix A it is honest about the edges: where a name looks like a built-in but is not one, this appendix says so.
+
+B.1 What "Built-in" Means Here
+
+Two different mechanisms get called "built-in," and it is worth separating them before the details.
+
+The first is the built-in *function* or *intrinsic*: a call, written `@name(args)` (or, for two of them, a bare keyword), that the compiler recognises and compiles specially. `@sizeof`, `alignof`, `@typeof`, `@assert`, `@assertOut`, `@compileError`, and `@isFormatLiteral` are the whole of this group. They are parsed into two AST shapes. `@sizeof` and `alignof` become their own expression kinds (`ExprKind::Sizeof`, `ExprKind::Alignof`); `@typeof`, `@assert`, `@assertOut`, `@compileError`, and `@isFormatLiteral` become a generic built-in call node, `ExprKind::BuiltinCall`, carrying the name and the argument list.
+
+The second is the built-in *trait*: a capability the compiler wires in automatically, spelled with `@` in trait position, most importantly `@drop` and `@toStr`. A trait is not a call. You conform to it with an ordinary `extend` block, and the compiler invokes the method for you at the one moment it matters. The appendix covers both, but keeps them clearly apart, because their syntax and their failure modes are different.
+
+A closing distinction that prevents a whole family of confusion: built-ins are not attributes. Attributes are written `#[[name]]` and annotate a declaration or statement. Built-ins are written `@name(...)` (or a bare keyword) and are expressions or trait names. `#[[generate(...)]]` is an attribute, not a built-in, and `@generate` does not exist. When you see a `#`, it is an attribute; when you see a bare `@` in expression position, it is a built-in call; when you see `@` in trait position after a `:`, it is a built-in trait.
+
+B.2 @sizeof(T)
+
+Syntax:
+
+    @sizeof(T)
+
+Semantics. The size, in bytes, of the type `T` as the compiler lays it out. It is a compile-time constant, so it may appear in a `comptime` block, as a value-generic argument, or anywhere a constant is expected.
+
+Constraints. The `@` is required. The compiler lexes `sizeof` as a dedicated token, and if it sees the bare word it raises a parse error whose text is exactly "sizeof must be written @sizeof(T)". There is no expression form: the argument is a type, not a value. For the size of a value, you take the size of its type.
+
+Return type. `usize`.
+
+Example. The classic use is to assert a wire layout so that a field added later cannot silently break the protocol:
+
+    struct Header {
+        u32 magic;
+        u32 len;
+        u64 seq;
+    }
+
+    comptime {
+        if (@sizeof(Header) != 16) {
+            @compileError("Header must be exactly 16 bytes on the wire");
+        }
+    }
+
+A plain measurement is just as direct:
+
+    usize bytes = @sizeof(i32);   // 4
+
+B.3 alignof(T)
+
+Syntax:
+
+    alignof(T)
+
+Semantics. The alignment, in bytes, that the type `T` requires. This is the boundary the hardware wants an object of that type to start on, and it is what you consult when you place things in memory by hand, a buffer, a pool, an arena.
+
+Constraints. This one is written *without* the `@`. The word `alignof` is lexed as its own built-in token, and the parser consumes it directly; the `@` prefix machinery knows only `sizeof`, `assert`, `assertOut`, and `typeof`, so `@alignof(T)` does not parse. Write `alignof(T)`. The argument is a type.
+
+Return type. `usize`.
+
+Example:
+
+    usize slotSize  = @sizeof(Header);
+    usize alignment = alignof(Header);   // 8 on x86_64
+
+    // place data on the boundary the type asks for:
+    usize stride = alignUp(count * @sizeof(Item), alignof(Item));
+
+`@sizeof` and `alignof` sit side by side here, one with the prefix, one without, and that asymmetry is not a typo. It is exactly how the compiler is built.
+
+B.4 @typeof(x)
+
+Syntax:
+
+    @typeof(x)
+
+Semantics. The type of `x`, produced as a compile-time value that a `comptime` block can switch on. This is the workhorse of the standard library's printing machinery: the dispatch that decides how to render a value is a `switch` over `@typeof(T)`, and by the time the switch is compiled every arm but one has been discarded.
+
+Constraints. Three of them, all enforced. First, `@typeof` is legal *only inside a `comptime {}` block*; anywhere else the type checker reports "@typeof is only allowed inside a comptime block". Second, it takes *exactly one* argument. Third, that argument must be a *type name*, a *variable*, or an *int, float, bool, null, str, or char literal*, not an arbitrary expression. `@typeof(a + b)`, `@typeof(f(x))`, and `@typeof(*p)` are all rejected with "@typeof argument must be a type, variable, or literal". (The bare keyword `typeof(x)`, without the `@`, is a separate parser path that produces `ExprKind::Typeof`; it is an internal form the code generator does not support, so always write `@typeof`.)
+
+Return type. A type, delivered to the enclosing `comptime` block. The expression itself is typed as the u64 "type-of-types" placeholder so it can flow into a `comptime` switch arm.
+
+Example. A generic function that reports what it was handed:
+
+    void describe<comptime T>(T value) {
+        comptime {
+            switch (@typeof(T)) {
+                i32 => { println("a 32-bit integer: {}", value); },
+                f64 => { println("a double: {}", value); },
+                bool => { println("a boolean: {}", value); },
+                str => { println("text: {}", value); },
+                else => { @compileError("describe: unsupported type"); },
+            }
+        }
+    }
+
+The literal and variable forms work the same way inside a `comptime` block:
+
+    comptime {
+        var n = 3;             // @typeof(n) is i32
+        // @typeof(3.5) is f64, @typeof(true) is bool, @typeof('x') is char
+    }
+
+B.5 @assert(cond)
+
+Syntax:
+
+    @assert(cond)
+
+Semantics. A runtime check. If `cond` is false, the program aborts with an assertion failure at that line. Use it for an internal invariant, a condition whose violation means a bug in the program, not bad input from the outside world.
+
+Constraints. The condition must be a `bool`. At the code generator, `@assert` is recognised with *exactly one* argument: `@assert(cond)`. The bare keyword `assert(cond)` also parses to the same built-in, but the `@` form is the canonical one the book uses. There is no message argument: `@assert(cond, "msg")` is not supported, use `@assertOut` when you want the failure to name itself.
+
+Return type. None useful. It is used as a statement; the generated code is a C `assert` call, and its expression value is discarded.
+
+Example:
+
+    i32 checkedDiv(i32 a, i32 b) {
+        @assert(b != 0);
+        return a / b;
+    }
+
+B.6 @assertOut(cond) and @assertOut(cond, "msg")
+
+Syntax:
+
+    @assertOut(cond)
+    @assertOut(cond, "msg")
+
+Semantics. The same runtime check as `@assert`, but it lets you attach a message that appears in the failure output. It is what a library uses to report a violated precondition in a way that names the problem instead of merely pointing at it.
+
+Constraints. The bare word `assertOut(...)` does not parse, `assertOut` is lexed as a built-in token, but the parser handles that token only behind the `@` prefix. Write `@assertOut(...)`. The first argument is the `bool` condition; the second, optional, is the message. At the code generator the first argument is asserted, and a string message is rendered into the failure.
+
+Return type. None useful; used as a statement.
+
+Example:
+
+    T pop<T>(Vec<T>* v) {
+        @assertOut(v->count() > 0, "pop() on an empty Vec");
+        return v->pop();
+    }
+
+B.7 @compileError("msg")
+
+Syntax:
+
+    @compileError("msg")
+
+Semantics. A hard error raised during compilation, carrying your message. Where `@assert` stops a running program, `@compileError` stops the *build*, which is strictly better when the problem is knowable before the program exists. It is how a generic rejects an instantiation it cannot support, turning a hopeless call into a sentence at the call site.
+
+Constraints. Outside a `comptime` block the type checker reports it immediately, using the string literal as the message (if the message is not a string literal it falls back to "@compileError tripped"). Inside a `comptime` block the compile-time evaluator decides reachability, and this is the important subtlety: a `@compileError` in an arm that is *not taken* never fires. That is what lets the standard library's type switches end with `else => { @compileError("unsupported type") }` without breaking every supported call, only the arm that actually matches is evaluated, so the error arm is inert unless nothing else matched.
+
+Return type. Formally `bool`; in practice it does not return, because reaching it ends the build.
+
+Example. A zero-sized type has no first element, so reject it before the body is generated:
+
+    T first<T>(Vec<T> v) {
+        comptime {
+            if (@sizeof(T) == 0) {
+                @compileError("first: a zero-sized type has no first element");
+            }
+        }
+        return v.at(0);
+    }
+
+And as the fallback arm of a `comptime` switch, where a matched arm keeps it silent:
+
+    comptime {
+        switch (@typeof(T)) {
+            i32 => { /* generate the integer path */ },
+            f64 => { /* generate the float path */ },
+            else => { @compileError("only i32 and f64 are supported here"); },
+        }
+    }
+
+B.8 @isFormatLiteral(expr)
+
+Syntax:
+
+    @isFormatLiteral(expr)
+
+Semantics. A compile-time test that answers whether the argument is a string literal the compiler can see. When it is true, the whole format string can be checked against the arguments before the program exists, the placeholder count, the specifiers, and the argument kinds. When it is false, the format string was assembled at runtime, the compiler cannot see it, and the call is routed down the "treat the first argument as a value" path instead. This is the gate that makes checked printing possible in `println`.
+
+Constraints. It yields `bool`. It is true *only* when the argument is a string literal (in the comptime evaluator, a compile-time-known string value); everything else, including a runtime `str` variable, is false. It is evaluated during compilation and is idiomatically used inside a `comptime` block.
+
+Return type. `bool`.
+
+Example. The shape the standard library uses, fork on whether the format is a literal:
+
+    void logLine<comptime T>(T fmt, ...) {
+        comptime {
+            if (@isFormatLiteral(fmt)) {
+                // the literal format is visible: check it against the args
+            } else {
+                // a runtime string: render it as an ordinary value
+            }
+        }
+    }
+
+A direct measurement reads plainly:
+
+    bool checked = @isFormatLiteral("value = {}");   // true
+
+B.9 The Built-in Traits: @drop and @toStr
+
+These two are not calls. They are traits the compiler knows by name, spelled with `@` in trait position after the `:` of an `extend` block. You conform to them the ordinary way; the compiler supplies the invocation.
+
+`@drop` is the RAII trait. A type that conforms must provide `void drop()`, and the compiler inserts the call automatically when a value of that type goes out of scope, on every exit path, once, with no call site written:
+
+    pub struct FileHandle {
+        i32 fd;
+    }
+
+    pub extend FileHandle : @drop {
+        void drop() {
+            close(self.fd);
+        }
+    }
+
+`@toStr` is the formatting trait. A type that conforms must provide `str toStr()`, and the printing machinery finds the implementation when it must render a value of that type:
+
+    pub struct Point {
+        f64 x;
+        f64 y;
+    }
+
+    pub extend Point : @toStr {
+        str toStr() {
+            return "Point(" + formatFloat(self.x) + ", " + formatFloat(self.y) + ")";
+        }
+    }
+
+With that conformance, `println("{}", point)` works, because the formatter's final prong, `any toStr`, matches any type implementing the trait. Neither `drop` nor `toStr` is declared anywhere in the library; both names are known to the compiler.
+
+The constraint that matters most: you never call a drop method by hand. Writing `f->drop()` (or `x.drop()`) is refused with error E1301, "explicit call to drop is not allowed; drop runs automatically at scope exit", because the value's scope will end and the automatic drop will run too, so a manual call invites a double free. Let the scope do it, or opt the value out of RAII with `#[[no_drop]]` and give it a normal cleanup method. And note that `@drop` and `@toStr` are trait names, not functions: `@drop(x)` is not a callable intrinsic.
+
+B.10 Names That Look Built-in but Are Not
+
+A reference that overstates its list is worse than one that admits its edges, so here is what is *not* a built-in function.
+
+`@arch` is not implemented. Architecture selection in Coral is done with the `flag` form, which is an expression and a type position, not a call. The library's own `cchar` is the canonical example:
+
+    pub distinct cchar = flag (arch) { x86_64 => { i8 }, else => { u8 } };
+
+The `flag(NAME) { key => { value }, else => { value } }` form picks an arm by comparing `NAME` against the build-time flag table (the `--flag arch=...` / `--flag platform=...` values). Internally the compiler carries a `targetArch` field and matches the flag named `arch`, which is where the `@arch` spelling in a parser comment comes from, the concept exists, the callable built-in does not. When you need per-platform code, reach for the `flag` form, or for the `#[[cfg(target_os = linux)]]` attribute, which is an attribute and not a built-in either.
+
+`@name` is not a built-in. The only hit for it in the compiler is a comment that describes how built-in traits are spelled: "a trait after `:` is either a user name or `@name` for a builtin (`@drop`, `@toStr`)." In that sentence `@name` is a placeholder meaning "the name of a built-in trait," not a built-in called `@name`. There is no `@name` function.
+
+`@generate` is not a built-in. The derive-style generator is the attribute `#[[generate(Drop, Eq)]]`, and it is planned rather than implemented. Attributes live behind `#[[ ... ]]`, not `@(...)`.
+
+Finally, the whole `@drop`, `@toStr`, `@compileError`, `@assertOut` family that library code writes, and the `toStr` conformance machinery, are compiler-known names, not standard-library declarations. You will not find them in any `.crl` file, because they are the language, not the library.
+
+B.11 Comparison Table
+
+    Spelling                     Kind      When         Result    Notes
+    @sizeof(T)                   intrinsic compile time usize     @ is required; bare sizeof is a parse error
+    alignof(T)                   intrinsic compile time usize     no @; @alignof does not parse
+    @typeof(x)                   intrinsic comptime     type      x must be a type, variable, or literal
+    @assert(cond)                intrinsic runtime      none      exactly one bool argument
+    @assertOut(cond[, "msg"])    intrinsic runtime      none      optional message; bare assertOut does not parse
+    @compileError("msg")         intrinsic compile time never     hard build error; reachable arm only
+    @isFormatLiteral(x)          intrinsic compile time bool      true only for a string literal
+    @drop                        trait     scope exit   none      void drop(); never call it by hand (E1301)
+    @toStr                       trait     print site   str       str toStr(); auto-wired by the formatter
+
+B.12 Common Mistakes
+
+1. `sizeof(T)` without the `@`. Parse error: "sizeof must be written @sizeof(T)". Write `@sizeof(T)`.
+
+2. `@alignof(T)` with the `@`. It does not parse. `alignof` is the one of the three layout queries that is written bare: `alignof(T)`.
+
+3. `@typeof(x)` outside a `comptime {}` block. Rejected. `@typeof` is meaningful only where the type is known during the build, so put it in a `comptime` block.
+
+4. `@typeof(a + b)` or `@typeof(f(x))`. Rejected. The argument must be a type name, a variable, or a literal, not an arbitrary expression.
+
+5. `@typeof(x)` with more than one argument. Rejected; it takes exactly one.
+
+6. `f->drop()` or `x.drop()`. Error E1301. Drop is driven by scope termination; a manual call risks a double free. Let the scope do it, or opt out with `#[[no_drop]]`.
+
+7. Treating `@drop` or `@toStr` as callable functions, as in `@drop(x)`. They are traits. You conform with `extend T : @drop { void drop() { ... } }`, and the compiler calls the method.
+
+8. `@assert(cond, "msg")`. `@assert` takes exactly one argument. If you want a message, use `@assertOut(cond, "msg")`.
+
+9. Bare `assertOut(cond)`. It does not parse; `assertOut` needs the `@`: `@assertOut(cond)`.
+
+10. Using `@compileError` where a runtime assertion is meant. Outside a `comptime` block it fails the build immediately. If the condition is only decidable while the program runs, use `@assert` or `@assertOut`.
+
+11. Expecting `@compileError` in a non-matching switch arm to fire. Inside `comptime`, only the matching arm is evaluated, so the `else` arm is inert unless nothing else matched. That is a feature, not a bug.
+
+12. Reaching for `@arch()`. There is no such built-in. Use `flag(arch) { ... }`, or the `#[[cfg(...)]]` attribute.
+
+13. Confusing an attribute with a built-in: `#[[generate(...)]]` is an attribute; `#[[pub]]` is deliberately not one (`pub` is the visibility keyword); and there is no `@generate`.
+
+B.13 Exercises
+
+1. Spelling. For each of these, say whether it parses, and if not, give the correct form: `sizeof(i32)`, `@sizeof(i32)`, `alignof(i32)`, `@alignof(i32)`.
+
+2. Layout. Write a `comptime` block that asserts a struct called `Packet` is exactly twenty-four bytes and aligned to eight. What happens at build time if a field is added and the assertion is wrong?
+
+3. Dispatch. Write a generic `describe<comptime T>(T value)` that prints a different sentence for `i32`, `f64`, and `str`, and rejects every other type with `@compileError`. Explain why the `else` arm does not fire for the three supported types.
+
+4. The argument rule. Which of these are legal `@typeof` arguments, and why: a type name, a variable, an integer literal, a function call, an addition? What is the rule in one sentence?
+
+5. Contract versus input. You are writing `average(const i32[] data)`. Choose `@assert`, `@assertOut`, `@compileError`, or a `Result` return for each of: an empty slice from the user, an empty slice the caller contract forbids, and a zero-length fixed array known at compile time. Justify each.
+
+6. RAII. Give one type that should conform to `@drop` and one that should not, with a sentence each. For the one that should, write the conformance; then write the call you are *not* allowed to make on a value of that type, and name the error it would produce.
+
+7. Printing. Explain, in your own words, what `@isFormatLiteral(fmt)` buys the `println` implementation when it is true, and what is given up when it is false.
+
+8. The edges. Two of these names are built-ins and one is not, which is which, and what is the real mechanism for the odd one out: `@sizeof`, `@arch`, `@isFormatLiteral`?
+
+9. Cross-check the table. Open a file under `lib/std/`, search it for `@`, and list every built-in you find along with the form it was written in. This is not a trick; it is practice reading the language's real usage.
+
+(End of Appendix B)

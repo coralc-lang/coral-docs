@@ -1,0 +1,358 @@
+Appendix G, Input/Output and System Interaction
+
+This appendix is one volume of the Coral Standard Library API reference; for a guided tour of how these modules fit together, see Appendix A, A Tour of the Standard Library. Its companion volumes are Appendices D through K, each covering a group of the library.
+
+---
+
+## std::io
+
+### 40. `std::io::ios`, Console I/O and parsing (prelude)
+
+```coral
+// formatting / output
+pub void print<comptime T>(T fmt, ...)
+pub void println<comptime T>(T fmt, ...)
+pub void eprint<comptime T>(T fmt, ...)
+pub void eprintln<comptime T>(T fmt, ...)
+pub void vaprint(... args)
+pub void flush()
+
+// formatting helpers passed as arguments
+pub struct Spaces { u64 count; }
+pub struct Repeat { u8 ch; u64 count; }
+pub struct Hex    { u64 value; }
+pub struct Bin    { u64 value; }
+pub struct Fixed  { f64 value; u64 precision; }
+pub Spaces spaces(u64 count)
+pub Repeat repeat(u8 ch, u64 count)
+pub Hex    hex(u64 value)
+pub Bin    bin(u64 value)
+pub Fixed  fixed(f64 value, u64 precision)
+
+// parsing
+pub i64 parseI64(str sv, bool* ok)
+pub u64 parseU64(str sv, bool* ok)
+pub f64 parseF64(str sv, bool* ok)
+
+// input
+pub u8   readChar()
+pub bool readLine(String* out)
+pub void read<comptime T>(T* out)
+pub T    readVal<T>()
+```
+
+### 41. `std::io::fs`, Filesystem
+
+```coral
+pub variant IoError
+{
+    Os       { i32 code; str op; },   // errno / GetLastError
+    Eof      { str op; },             // stream ended early
+    BadUsage { str msg; }             // caller-side problem
+}
+pub extend IoError
+{
+    static IoError os(str op)
+}
+
+pub const i32 O_RDONLY = 0;   O_WRONLY = 1;  O_RDWR = 2;
+pub const i32 O_CREAT  = 64;  O_TRUNC  = 512; O_APPEND = 1024;
+pub const i32 S_IRWXU  = 448; S_IRUSR  = 256; S_IWUSR = 128; S_IXUSR = 64;
+pub const i32 SEEK_SET = 0;   SEEK_CUR = 1;   SEEK_END = 2;
+pub const i32 F_OK = 0; R_OK = 4; W_OK = 2; X_OK = 1;
+
+pub distinct File = i32;
+pub distinct Dir  = rawptr;
+
+pub struct Stat
+{
+    u64 st_dev; u64 st_ino; u64 st_nlink;
+    u32 st_mode; u32 st_uid; u32 st_gid; u32 pad0;
+    u64 st_rdev; i64 st_size; i64 st_blksize; i64 st_blocks;
+    i64 st_atime; i64 st_atimeNsec;
+    i64 st_mtime; i64 st_mtimeNsec;
+    i64 st_ctime; i64 st_ctimeNsec;
+    i64 reserved[3];
+}
+
+pub enum FileType { Unknown, Regular, Directory, CharDevice, BlockDevice, Fifo, Symlink, Socket }
+
+pub Result<File, IoError> fileOpen(str path, str mode)
+pub void   fileClose(File f)
+pub Result<isize, IoError> fileRead(File f, u8* buf, usize count)
+pub Result<isize, IoError> fileWrite(File f, const u8* buf, usize count)
+pub Result<isize, IoError> fileSeek(File f, isize offset, i32 whence)
+pub bool   fileExists(str path)
+pub Option<bool> statPath(str path, Stat* out)
+pub FileType getFileType(const Stat* s)
+pub Result<bool, IoError> createDir(str path, i32 mode)
+pub Result<bool, IoError> createDirRecursive(str path, i32 mode)
+pub Result<bool, IoError> removeDir(str path)
+pub Result<bool, IoError> deleteFile(str path)
+pub Result<bool, IoError> renameFile(str oldPath, str newPath)
+pub bool   canAccess(str path, i32 mode)
+pub Result<Dir, IoError> openDir(str path)
+pub rawptr readDir(Dir dir)
+pub void   closeDir(Dir dir)
+pub Result<String, IoError> readFileToString(str path)
+pub Result<bool, IoError>   writeFileFromString(str path, const String* data)
+
+pub struct Dirent
+{
+    u64 d_ino; i64 d_off; u16 d_reclen; u8 d_type; u8 d_name[256];
+}
+pub bool readDirEntry(Dir dir, Dirent* out)
+```
+
+### 42. `std::io::bio`, Binary readers/writers
+
+```coral
+const i32 SEEK_SET = 0;
+const i32 SEEK_CUR = 1;
+
+pub struct FileReader
+{
+    i32 fd;
+    static FileReader fromFd(File fd)
+    Result<bool, IoError> readBytes(u8* dst, u64 n)   // exactly n bytes
+    u8   readU8()
+    i8   readI8()
+    u16  readU16Le()  readU16Be()
+    i16  readI16Le()  readI16Be()
+    u32  readU32Le()  readU32Be()
+    i32  readI32Le()  readI32Be()
+    u64  readU64Le()  readU64Be()
+    i64  readI64Le()  readI64Be()
+    f32  readF32Le()  readF32Be()
+    f64  readF64Le()  readF64Be()
+    void skip(u64 n)
+}
+
+pub struct FileWriter
+{
+    i32 fd;
+    static FileWriter fromFd(File fd)
+    void writeU8(u8 v)
+    void writeI8(i8 v)
+    void writeU16Le(u16 v)  writeU16Be(u16 v)
+    void writeI16Le(i16 v)  writeI16Be(i16 v)
+    void writeU32Le(u32 v)  writeU32Be(u32 v)
+    void writeI32Le(i32 v)  writeI32Be(i32 v)
+    void writeU64Le(u64 v)  writeU64Be(u64 v)
+    void writeI64Le(i64 v)  writeI64Be(i64 v)
+    void writeF32Le(f32 v)  writeF32Be(f32 v)
+    void writeF64Le(f64 v)  writeF64Be(f64 v)
+    Result<bool, IoError> writeBytes(const u8* src, u64 n)   // exactly n bytes
+}
+
+pub u16 bswapU16(u16 v)
+pub u32 bswapU32(u32 v)
+pub u64 bswapU64(u64 v)
+```
+
+### 43. `std::io::fios`, `FILE*`-based I/O
+
+```coral
+pub distinct FileHandle = rawptr;
+
+pub Result<FileHandle, IoError> fileOpen(str path, str mode)
+pub void   fileClose(FileHandle fh)
+pub Result<usize, IoError> fileWrite(FileHandle fh, str data)
+pub Result<usize, IoError> fileRead(FileHandle fh, u8* buf, usize maxLen)
+pub bool   fileEof(FileHandle fh)
+pub bool   fileError(FileHandle fh)
+pub void   fileFlush(FileHandle fh)
+pub Result<usize, IoError> fileWriteString(FileHandle fh, const String* s)
+pub Result<bool, IoError>  fileReadAll(str path, String* out)
+```
+
+### 44. `std::io::log`, `Logger`
+
+```coral
+pub variant LogLevel { Debug, Info, Warn, Error, Fatal }
+
+pub struct Logger
+{
+    LogLevel minLevel;
+    String name;
+
+    static Logger new(str name, LogLevel minLevel)
+    void dispose()
+    void setLevel(LogLevel level)
+    bool enabled(LogLevel level)
+    void debug(str msg)
+    void info(str msg)
+    void warn(str msg)
+    void error(str msg)
+    void fatal(str msg)
+    // helper: void _log(LogLevel level, str msg)
+}
+```
+
+### 45. `std::io::net`, TCP/UDP sockets
+
+```coral
+const i32 AF_INET = 2;  SOCK_STREAM = 1;  SOCK_DGRAM = 2;
+const i32 IPPROTO_TCP = 6; IPPROTO_UDP = 17;
+const i32 SOL_SOCKET = 1; SO_REUSEADDR = 2;
+
+pub struct sockaddr_in
+{
+    u16 sinFamily; u16 sinPort; u32 sinAddr; u8 sinZero[8];
+}
+
+pub distinct TcpSocket = i32;
+pub Result<TcpSocket, IoError> tcpConnect(str ip, u16 port)
+pub Result<TcpSocket, IoError> tcpListen(u16 port)
+pub Result<TcpSocket, IoError> tcpAccept(TcpSocket server)
+pub Result<isize, IoError>     tcpSend(TcpSocket sock, const u8* buf, usize len)
+pub Result<isize, IoError>     tcpRecv(TcpSocket sock, u8* buf, usize len)
+pub void tcpClose(TcpSocket sock)
+
+pub struct UdpSocket { i32 fd; }
+pub Result<UdpSocket, IoError> udpSocket()
+pub Result<bool, IoError>      udpBind(UdpSocket* s, u16 port)
+pub Result<isize, IoError>     udpSendTo(UdpSocket* s, const u8* buf, usize len, str ip, u16 port)
+pub Result<isize, IoError>     udpRecvFrom(UdpSocket* s, u8* buf, usize len)
+pub void udpClose(UdpSocket* s)
+```
+
+### 46. `std::io::path`, Path manipulation
+
+```coral
+const u8 SEP = '/';
+const u8 ALT_SEP = '\\';
+
+pub usize  findLastSep(str p)
+pub bool   isAbsolute(str p)
+pub bool   hasExtension(str p)
+pub str    extension(str p)
+pub str    stem(str p)
+pub str    parent(str p)
+pub str    filename(str p)
+pub String join(str a, str b)
+pub String normalize(str p)
+pub String absolute(str base, str rel)
+pub String changeExtension(str p, str newExt)
+```
+
+### 47. `std::io::process`, Subprocesses
+
+```coral
+pub struct Process
+{
+    i32 pid;
+    i32 stdinFd;
+    i32 stdoutFd;
+    i32 stderrFd;
+}
+
+pub struct ProcessResult
+{
+    i32  exitCode;
+    bool signaled;
+    i32  termSignal;
+}
+
+pub struct pollfd { i32 fd; i16 events; i16 revents; }
+
+pub Result<Process, IoError>       spawn(str cmd, Vec<str>* args)
+pub Result<ProcessResult, IoError> waitFor(Process* p)
+pub Result<isize, IoError>         writeStdin(Process* p, const cchar* data, usize len)
+pub Result<isize, IoError>         readStdout(Process* p, u8* buf, usize maxLen)
+pub Result<isize, IoError>         readStderr(Process* p, u8* buf, usize maxLen)
+pub Result<i32, IoError>           run(str cmd, Vec<str>* args)
+pub void                           exit(i32 code)
+```
+
+### 48. `std::io::temp`, Temporary files/dirs
+
+```coral
+pub struct TempFile
+{
+    i32 fd;
+    String path;
+    bool autoDelete;
+    static Result<TempFile, IoError> create(str prefix, str suffix)
+    void dispose()
+    File fd()
+    str  pathStr()
+    void setAutoDelete(bool ad)
+}
+
+pub struct TempDir
+{
+    String path;
+    bool autoDelete;
+    static Result<TempDir, IoError> create(str prefix)
+    void dispose()
+    str  pathStr()
+    void setAutoDelete(bool ad)
+    bool isValid()
+}
+
+pub extend TempFile : @drop { void drop(); }
+pub extend TempDir  : @drop { void drop(); }
+```
+
+### 49. `std::io::term`, ANSI terminal control
+
+```coral
+pub void reset()
+pub void bold()   dim()   italic()   underline()   blink()   reverse()
+pub void hidden() strikethrough()
+
+pub void black()  red()  green()  yellow()  blue()  magenta()  cyan()  white()
+pub void bgBlack() bgRed() bgGreen() bgYellow() bgBlue() bgMagenta() bgCyan() bgWhite()
+pub void brightBlack() brightRed() brightGreen() brightYellow()
+pub void brightBlue() brightMagenta() brightCyan() brightWhite()
+
+pub void cursorUp(u64 n)
+pub void cursorDown(u64 n)
+pub void cursorRight(u64 n)
+pub void cursorLeft(u64 n)
+pub void cursorPos(u64 row, u64 col)
+
+pub void clearScreen()
+pub void clearLine()
+pub void clearToEnd()
+pub void clearLineEnd()
+pub void saveCursor()
+pub void restoreCursor()
+pub void hideCursor()
+pub void showCursor()
+// helpers: bool _isTty(); void _writeCSI(str code); void _writeStr(str s);
+//           u64 _clampN(u64 n)
+```
+
+### 50. `std::io::cmd`, `ArgParser`
+
+```coral
+pub struct ArgParser
+{
+    Vec<String> positional;
+    bool   error;
+    String errMsg;
+    usize  pos;
+
+    static ArgParser new()
+    void dispose()
+    void parse(i32 argc, cchar** argv)
+    bool hasFlag(i32 argc, cchar** argv, str shortFlag, str longFlag)
+    bool getOption(i32 argc, cchar** argv, str shortFlag, str longFlag, String* out)
+    usize count()
+    str   get(usize idx)
+    // helper: bool _afterDoubleDash(i32 argc, cchar** argv, i32 idx)
+}
+pub Option<str> commandLine()
+```
+
+### 51. `std::io::env`, Environment variables
+
+```coral
+pub Option<String> get(str name)
+pub bool getInto(str name, String* out)
+pub Result<bool, IoError> set(str name, str value)
+pub Result<bool, IoError> unset(str name)
+pub usize all(Vec<String>* out)
+```
