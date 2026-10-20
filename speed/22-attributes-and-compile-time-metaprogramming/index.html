@@ -134,13 +134,13 @@ u32 maskFor(u32 bit) { return 1u &lt;&lt; bit; }</code></pre></div>
 <p>A large <code>inline_always</code> function copied into a thousand call sites bloats the binary and instruction cache. Accessors are the classic right use; hundred-line functions are the classic mistake. Reaching for it often usually means the cost model is right and you have not measured.</p>
 <p><code>#[[vectorise]]</code> asks the compiler to turn scalar loop operations into packed SIMD. It can apply to a function or one loop:</p>
 <div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[vectorise]]
-void addArrays(const f32[] a, const f32[] b, f32[] out) {
+void addArrays(const f32 a[], const f32 b[], f32 out[]) {
     for (usize i = 0; i &lt; a.len; i += 1) {
         out[i] = a[i] + b[i];
     }
 }
 
-void mix(f32[] a, f32[] b) {
+void mix(f32 a[], f32 b[]) {
     // ... scalar setup ...
     #[[vectorise]]
     for (usize i = 0; i &lt; a.len; i += 1) {
@@ -166,7 +166,7 @@ Result&lt;Order, str&gt; reportBadOrder(Order o) {
 <p>Marking the error path cold keeps it from crowding the hot path out of the instruction cache. That, not the error path's own speed, is the gain.</p>
 <p><code>#[[noalias]]</code> promises a pointer parameter aliases no other pointer the function receives. Without it, the compiler must assume writes through one may change what the other sees, forbidding many reorderings. The attribute can be a large win in numeric inner loops:</p>
 <div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[noalias]]
-void scale(f32[] out, const f32[] in, f32 k) {
+void scale(f32 out[], const f32 in[], f32 k) {
     for (usize i = 0; i &lt; out.len; i += 1) {
         out[i] = in[i] * k;
     }

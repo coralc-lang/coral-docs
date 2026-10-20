@@ -134,13 +134,13 @@ u32 maskFor(u32 bit) { return 1u &lt;&lt; bit; }</code></pre></div>
 <p>Use it rarely and with evidence. A function marked <code>inline_always</code> that is large, or that is called in a thousand places, will be copied into every one of them and make your binary, and your instruction cache, suffer. An accessor is the classic right use; a hundred-line function is the classic mistake. If you find yourself reaching for it often, the honest reading is that the compiler's cost model is probably right and you have not measured.</p>
 <p><code>#[[vectorise]]</code> asks the compiler to turn a loop's scalar operations into packed SIMD operations that work on several elements at once. It can go on a whole function, or on a single loop inside a function, which is the more surgical form:</p>
 <div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[vectorise]]
-void addArrays(const f32[] a, const f32[] b, f32[] out) {
+void addArrays(const f32 a[], const f32 b[], f32 out[]) {
     for (usize i = 0; i &lt; a.len; i += 1) {
         out[i] = a[i] + b[i];
     }
 }
 
-void mix(f32[] a, f32[] b) {
+void mix(f32 a[], f32 b[]) {
     // ... scalar setup ...
     #[[vectorise]]
     for (usize i = 0; i &lt; a.len; i += 1) {
@@ -166,7 +166,7 @@ Result&lt;Order, str&gt; reportBadOrder(Order o) {
 <p>Marking the error path cold is what keeps it from crowding the hot path out of the instruction cache, which is where the real speedup comes from, not from the error path itself being faster. The error path almost never runs, so its own speed barely matters; what matters is that it does not sit between the processor and the code that does run.</p>
 <p><code>#[[noalias]]</code> is a promise about pointers. When a function takes two pointer parameters, the compiler must assume they might point at the same memory, so a write through one could change what the other sees, and many reorderings are forbidden. <code>#[[noalias]]</code> on a pointer parameter asserts that it does not alias any other pointer the function receives, which unlocks those reorderings and can be a large win in a numeric inner loop:</p>
 <div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[noalias]]
-void scale(f32[] out, const f32[] in, f32 k) {
+void scale(f32 out[], const f32 in[], f32 k) {
     for (usize i = 0; i &lt; out.len; i += 1) {
         out[i] = in[i] * k;
     }
