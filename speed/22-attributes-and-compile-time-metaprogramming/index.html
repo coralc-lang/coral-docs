@@ -31,18 +31,18 @@
       <p class="lead">Talking to the Compiler in Its Own Language</p>
       <p>You have seen <code>#[[packed]]</code> and <code>#[[inline]]</code> and nodded without being sure what they did. These bracketed notes are how a Coral programmer talks directly to the compiler, and unlike comments, the compiler reads them.</p>
 <p>A comment is for the next human and is discarded early. An attribute is a machine-readable instruction about layout, code generation, safety checking, or scheduling. When you write</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[inline]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[inline]]
 i32 add(i32 a, i32 b) {
     return a + b;
-}</code></pre>
+}</code></pre></div>
 <p>you have handed the compiler a directive. It may decline, but it cannot pretend it did not read it, and it cannot silently accept a typo.</p>
 <p>A misspelled <code>#[[inlne]]</code> is not ignored. The compiler reports the unknown name and suggests <code>#[[inline]]</code>. The difference between silent ignoring and a suggested fix is the difference between a false belief and a one-line repair. The compiler never silently drops an instruction.</p>
 <p>A <code>//</code> comment is a note for the cleaning staff, swept away before anyone who matters reads it. An attribute is a note on the worker's desk: it is acted on or reported, never pretended away.</p>
 <p>Attributes are bracketed lists written above the item they modify:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[name]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[name]]
 #[[name(arg1, arg2, ...)]]
 #[[one, two]]
-#[[one]] #[[two]]</code></pre>
+#[[one]] #[[two]]</code></pre></div>
 <p>The double brackets let the lexer distinguish an attribute from an index expression <code>a[i]</code> without lookahead. A single bracket is an index; a double bracket is an annotation.</p>
 <p>The chapter has two jobs. First, catalogue every attribute by what it does, with the situation that calls for it. Second, explain the idea underneath: a small fixed set of directives plus the comptime machinery of <a href="../07-generics-and-comptime/index.html">Chapter 7</a> gives macro-level metaprogramming without a separate macro language. Coral prefers a directive to a preprocessor.</p>
 <section><h2 id="s22-1">The Bracket Forms</h2></section>
@@ -50,32 +50,32 @@ i32 add(i32 a, i32 b) {
 <p><code>#[[name]]</code> applies to the next declaration, statement, field, or file. A name-only attribute carries no arguments because its meaning is the whole of it; <code>#[[packed]]</code> means packed.</p>
 <p><code>#[[name(arg1, arg2, ...)]]</code> takes a small list of literals: a string, number, name, or list of names. Which are legal depends on the attribute: <code>#[[deprecated("use connect_v2 instead")]]</code>, <code>#[[align(16)]]</code>, <code>#[[generate(Drop, Eq, Debug)]]</code>, and <code>#[[cfg(target_os = linux)]]</code>.</p>
 <p>Several attributes can attach to one item. List them in one bracket group separated by commas:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[packed, generate(Eq, Debug)]]</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[packed, generate(Eq, Debug)]]</code></pre></div>
 <p>or chain separate groups:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[packed]]
-#[[generate(Eq, Debug)]]</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[packed]]
+#[[generate(Eq, Debug)]]</code></pre></div>
 <p>Both mean the same and are read left to right; choose whichever reads better. They may be mixed:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[cfg(target_os = linux), inline]]
-void flushCache();</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[cfg(target_os = linux), inline]]
+void flushCache();</code></pre></div>
 <p>Attributes must be compatible. Opposite directives cannot share a declaration, and the compiler will not pick a winner. <code>#[[packed]]</code> and <code>#[[reorder]]</code> are the canonical pair. An incompatible pair is a diagnostic, not a coin flip.</p>
 <p>File-level attributes such as <code>#[[no_drop_all]]</code> must appear before the first declaration. This is the one place an attribute is not attached to the item directly beneath it.</p>
 <section><h2 id="s22-2">Layout: Telling the Compiler What the Bytes Look Like</h2></section>
 <p>Some attributes control the exact bytes a value occupies. By default the compiler may insert padding and arrange fields for fast access. That freedom is good until bytes must match a network packet, on-disk record, register map, or C struct.</p>
 <p><code>#[[packed]]</code> removes padding and pins declaration order, so size is the sum of fields and bytes lie as written. Use it whenever an external contract specifies the layout:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[packed]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[packed]]
 struct PacketHeader {
     u8  version;
     u8  flags;
     u16 length;
     u32 checksum;
-}</code></pre>
+}</code></pre></div>
 <p>Without <code>#[[packed]]</code>, the compiler might insert two bytes after <code>flags</code> and two after <code>length</code>; the struct becomes twelve bytes instead of eight, and fields land at wrong offsets. Write it to a socket and the receiver reads nonsense after the first fields.</p>
 <p>The common mistake is forgetting <code>#[[packed]]</code> on a file-format struct: early fields work because they land naturally, and the first field needing padding breaks. When bytes are fixed by someone else, pack and stop guessing.</p>
 <p>Packing costs access speed because unaligned fields are more expensive on some architectures. Pack only structs whose bytes are a public contract; leave the rest to the compiler.</p>
 <p>A layout is a public contract when code outside your program, which you cannot change, depends on fixed bytes: a C library header, a 1980s file format, or an RFC protocol. Private structs have no such promise, and the compiler's freedom is free performance.</p>
 <p>A shipping box has a fixed order so the receiver can unpack by the label; that is <code>#[[packed]]</code>. A garage box can be rearranged; that is <code>#[[reorder]]</code>. You cannot promise both.</p>
 <p>A TGA header is a fixed sequence of little fields, and one wrong offset corrupts every image:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[packed]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[packed]]
 struct TgaHeader {
     u8  idLength;
     u8  colorMapType;
@@ -87,10 +87,10 @@ struct TgaHeader {
     u16 yOrigin;
     u16 width;
     u16 height;
-}</code></pre>
+}</code></pre></div>
 <p>Read against the file-format specification, the declaration and the specification are the same thing. Without the attribute, a later two-byte field would land wrong and produce a corrupted image rather than a compiler error.</p>
 <p><code>#[[reorder]]</code> grants explicit permission to permute fields for density. It can group small fields and pack a private in-memory struct tighter. It is wrong across a boundary, where field order is unspecified afterward:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[reorder]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[reorder]]
 struct Particle {
     f32  x;
     f32  y;
@@ -98,20 +98,20 @@ struct Particle {
     f32  vy;
     u8   kind;
     bool alive;
-}</code></pre>
+}</code></pre></div>
 <p>Nobody serializes a <code>Particle</code>; it lives and dies inside one loop, so shuffling <code>kind</code> and <code>alive</code> into padding costs nothing and may speed the loop. <code>packed</code> says the order is fixed and mine; <code>reorder</code> says it is yours and free. Asking for both is a conflicting-attribute error.</p>
 <p><code>#[[nonull]]</code> removes a null check. Ordinarily a pointer may be null, so dereferences are guarded and null comparisons are meaningful. The attribute promises a pointer field or variable is never null, letting the compiler drop guards and optimize. Put it on a guaranteed field:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct LinkedList {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct LinkedList {
     #[[nonull]] Node* head;   // past the first insert, head is never null
     usize len;
-}</code></pre>
+}</code></pre></div>
 <p>and on a variable once you know it points somewhere:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[nonull]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[nonull]]
 Device* dev = findDevice(&quot;gpu0&quot;);
-dev-&gt;reset();</code></pre>
+dev-&gt;reset();</code></pre></div>
 <p>A false <code>#[[nonull]]</code> promise is undefined behaviour. Use it only where you just checked the pointer or an invariant guarantees it. Leave it off where null is legitimate; an unbacked assertion is worse than none.</p>
 <p><code>#[[align(N)]]</code> forces a minimum alignment in bytes. Use it when hardware or an algorithm demands a boundary: SIMD vectors aligned to sixteen or thirty-two bytes, a DMA buffer on a page boundary, or an atomic that must not straddle a cache line:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[align(16)]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[align(16)]]
 struct Vec4f {
     f32 x;
     f32 y;
@@ -120,20 +120,20 @@ struct Vec4f {
 }
 
 #[[align(64)]]
-f32 accumulator[16];   // one full cache line, aligned</code></pre>
+f32 accumulator[16];   // one full cache line, aligned</code></pre></div>
 <p>Alignment can only be raised, never lowered, and must be a power of two. <code>#[[align(3)]]</code> is an error, not a silent rounding.</p>
 <p>The layout family: <code>packed</code> and <code>reorder</code> answer who decides field order, <code>nonull</code> lets the compiler delete a null check, and <code>align(N)</code> pins a hardware boundary. All four should be rare enough that seeing one makes a reader ask why.</p>
 <section><h2 id="s22-3">Code Generation and Optimisation Hints</h2></section>
 <p>Backend attributes do not change meaning, only how code is compiled. The surface is deliberately small because hard-to-reason hints get misused.</p>
 <p><code>#[[inline]]</code> hints that a function should be spliced into callers, removing call overhead and exposing the body to optimization. The compiler may decline if inlining would bloat the caller. Small, hot, non-recursive functions are candidates:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[inline]]
-i32 square(i32 x) { return x * x; }</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[inline]]
+i32 square(i32 x) { return x * x; }</code></pre></div>
 <p><code>#[[inline_always]]</code> overrides the cost model and insists. Use it rarely and with evidence:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[inline_always]]
-u32 maskFor(u32 bit) { return 1u &lt;&lt; bit; }</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[inline_always]]
+u32 maskFor(u32 bit) { return 1u &lt;&lt; bit; }</code></pre></div>
 <p>A large <code>inline_always</code> function copied into a thousand call sites bloats the binary and instruction cache. Accessors are the classic right use; hundred-line functions are the classic mistake. Reaching for it often usually means the cost model is right and you have not measured.</p>
 <p><code>#[[vectorise]]</code> asks the compiler to turn scalar loop operations into packed SIMD. It can apply to a function or one loop:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[vectorise]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[vectorise]]
 void addArrays(const f32[] a, const f32[] b, f32[] out) {
     for (usize i = 0; i &lt; a.len; i += 1) {
         out[i] = a[i] + b[i];
@@ -147,10 +147,10 @@ void mix(f32[] a, f32[] b) {
         a[i] = a[i] * b[i];
     }
     // ... other work ...
-}</code></pre>
+}</code></pre></div>
 <p>Attaching it to one loop points the compiler at the vectorizable part and leaves scalar work alone. Vectorization requires independent iterations; if each reads the previous result, the compiler refuses rather than producing wrong results. It is a request, and its payoff depends on target vector instructions.</p>
 <p><code>#[[hot]]</code> and <code>#[[cold]]</code> control code layout. Processors fetch instructions in blocks, so likely-next instructions should be nearby. <code>#[[hot]]</code> marks frequently executed code for speed; <code>#[[cold]]</code> marks rare paths (error handlers, failed assertions) for size and distance. The classic pair is a fast path and its error path:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[hot]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[hot]]
 Result&lt;Order, str&gt; submit(Order o) {
     if (!validate(o)) {
         return reportBadOrder(o);   // the #[[cold]] function below
@@ -162,67 +162,67 @@ Result&lt;Order, str&gt; submit(Order o) {
 Result&lt;Order, str&gt; reportBadOrder(Order o) {
     logBadOrder(o);
     return Error::Err { .error = &quot;invalid order&quot; };
-}</code></pre>
+}</code></pre></div>
 <p>Marking the error path cold keeps it from crowding the hot path out of the instruction cache. That, not the error path's own speed, is the gain.</p>
 <p><code>#[[noalias]]</code> promises a pointer parameter aliases no other pointer the function receives. Without it, the compiler must assume writes through one may change what the other sees, forbidding many reorderings. The attribute can be a large win in numeric inner loops:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[noalias]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[noalias]]
 void scale(f32[] out, const f32[] in, f32 k) {
     for (usize i = 0; i &lt; out.len; i += 1) {
         out[i] = in[i] * k;
     }
-}</code></pre>
+}</code></pre></div>
 <p>Like <code>nonull</code>, a false <code>noalias</code> is undefined behaviour. Assert it only when buffers genuinely do not overlap: one is freshly allocated, the API contract says so, or the types make overlap impossible. Otherwise leave it off.</p>
 <p><code>#[[noreturn]]</code> tells the compiler a function never returns normally: it exits, loops forever, or transfers control elsewhere. Code after the call is unreachable and need not be generated:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[noreturn]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[noreturn]]
 void fatal(str message) {
     eprintln(&quot;fatal: {}&quot;, message);
     exit(1);
-}</code></pre>
+}</code></pre></div>
 <p>Without it, a function that always calls <code>exit</code> appears to return, so the compiler generates code for whatever follows. With it, the compiler can also reject a <code>#[[noreturn]]</code> function that might return.</p>
 <p><code>#[[no_mangle]]</code> keeps a function's symbol name instead of mangling it with type information. Use it wherever something outside Coral finds a function by name: a C callback, exported shared-object function, or entry symbol:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_mangle]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[no_mangle]]
 pub extern(&quot;C&quot;) i32 coral_entry(i32 argc, cchar** argv) {
     return runMain(argc, argv);
-}</code></pre>
+}</code></pre></div>
 <p>Without it, the linker looks for <code>coral_entry</code> and finds <code>coral_entry_i32_...</code>, and the link fails with an unexplainable symbol. The attribute says the name is not the compiler's to rewrite.</p>
 <p><code>#[[section("...")]]</code> places a function, variable, or data in a named output section, for when the loader decides placement: a startup constructor table, read-only data, or a boot function at a fixed address:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[section(&quot;.init_array&quot;)]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[section(&quot;.init_array&quot;)]]
 void registerDrivers() { drivers.addAll(BUILTIN_DRIVERS); }
 
 #[[section(&quot;.rodata&quot;)]]
-const u8 MAGIC[8] = { &#x27;C&#x27;, &#x27;O&#x27;, &#x27;R&#x27;, &#x27;A&#x27;, &#x27;L&#x27;, 0, 0, 0 };</code></pre>
+const u8 MAGIC[8] = { &#x27;C&#x27;, &#x27;O&#x27;, &#x27;R&#x27;, &#x27;A&#x27;, &#x27;L&#x27;, 0, 0, 0 };</code></pre></div>
 <p>The section name is a string because the linker understands it, not Coral. A wrong name is a link-time problem, which is why the attribute takes an opaque string.</p>
 <p><code>#[[used]]</code> keeps a symbol the compiler believes unreferenced. A symbol in a runtime-scanned section, or one called by external code, is referenced by something the compiler cannot see:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[used]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[used]]
 #[[section(&quot;.init_array&quot;)]]
-void earlyInit() { ... }</code></pre>
+void earlyInit() { ... }</code></pre></div>
 <p><code>used</code> and <code>section</code> often travel together. A driver registrar in <code>.init_array</code> is called by the loader, not by Coral, so without <code>#[[used]]</code> the compiler would delete it and the driver would never register.</p>
 <p><code>#[[weak]]</code> gives a symbol weak linkage, so a strong definition elsewhere can override it. A library can provide a replaceable default allocator, panic handler, or platform hook:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[weak]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[weak]]
 void platformLog(str message) {
     eprintln(&quot;{}&quot;, message);
-}</code></pre>
+}</code></pre></div>
 <p>A strong <code>platformLog</code> wins; otherwise the weak default is used. This is "here is a reasonable default, override me if you know better," and it keeps a platform layer optional.</p>
 <section><h2 id="s22-4">The Drop Attributes: Opting Out of RAII</h2></section>
 <p>Two attributes change behaviour rather than performance, and they require understanding <code>@drop</code>. Coral implements RAII through <code>@drop</code>: when a value of a type implementing it goes out of scope, the compiler inserts the destructor once on every exit path. Most code wants this.</p>
 <p>Automatic cleanup costs tracking and unwind calls, and some code manages memory by hand. The standard library does exactly that, so two attributes turn automatic RAII off at two scopes.</p>
 <p><code>#[[no_drop_all]]</code> is file-level and unique in not modifying a declaration. It appears once before the first declaration and disables drop-trait RAII for the whole file:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_drop_all]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[no_drop_all]]
 
-pub struct Arr&lt;T, N&gt; { ... }</code></pre>
+pub struct Arr&lt;T, N&gt; { ... }</code></pre></div>
 <p>Every standard-library and compiler source file carries it; ordinary user files omit it and get automatic RAII. This lets library and application worlds coexist. The opt-out rides on each declaration, so a library file merged into a user build unit keeps its setting.</p>
 <p><code>#[[no_drop]]</code> is the scoped version and the one you will use. On a variable it excludes that variable from RAII; on a block it excludes every local inside, nested blocks included:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_drop]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[no_drop]]
 String keep = String::from(&quot;I manage my own lifetime&quot;);
 
 #[[no_drop]]
 {
     File f = File::open(&quot;tmp&quot;);
     // f is not closed automatically at the end of this block
-}</code></pre>
+}</code></pre></div>
 <p>It is the escape hatch for one value whose lifetime you manage by hand without disabling RAII for the file. With <code>defer</code> it says the allocation's lifetime is not the variable's. Used carelessly it says "I will remember to free this," and humans forget. Opting out turns cleanup into a manual obligation; use it only where nothing else will do.</p>
 <p>A worked example shows the narrow honest use:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void processInChunks(File* f) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void processInChunks(File* f) {
     #[[no_drop]]
     u8* buffer = alloc&lt;u8&gt;(65536);       // manual lifetime
 
@@ -235,25 +235,25 @@ String keep = String::from(&quot;I manage my own lifetime&quot;);
         if (n == 0) break;
         handle(buffer, n);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The buffer opts out because its lifetime is managed by <code>defer</code>, not by RAII on the variable. The attribute turns off automatic behavior for exactly this value, and the <code>defer</code> is the manual promise. A buffer that lives exactly as long as its variable should have no attribute.</p>
 <section><h2 id="s22-5">Const and Control-Flow Attributes</h2></section>
 <p>Three attributes govern behavior promises and control flow. Each replaces a convention with compiler enforcement.</p>
 <p><code>#[[const]]</code> marks a method or function as const: it may not mutate parameters or, for a method, <code>self</code>. It is equivalent to trailing <code>const</code>, and both spellings work:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[const]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[const]]
 i32 peek() { return self.top; }
 
 // identical meaning
-i32 peek() const { return self.top; }</code></pre>
+i32 peek() const { return self.top; }</code></pre></div>
 <p>Pick one spelling and be consistent; the promise is enforced either way. Mutating <code>self</code> or a parameter in a const method is E1001, reported at the assignment, not at a caller's surprise.</p>
 <p><code>#[[condassign]]</code> permits an assignment <code>=</code> at the top level of the next <code>if</code>, <code>while</code>, <code>for</code>, or <code>switch</code> condition:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[condassign]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[condassign]]
 while (line = nextLine(file)) {
     process(line);
-}</code></pre>
+}</code></pre></div>
 <p>An assignment in a condition is normally reported because <code>=</code> where <code>==</code> was meant is an old C bug. The attribute says "I meant it," as in a read-and-test loop. A real typo still errors. The attribute applies to the next statement's condition, not the body.</p>
 <p><code>#[[fallthrough]]</code> marks intentional fallthrough in a switch. Coral cases do not fall through by default; to share a tail, list both patterns on one arm or opt in:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (mode) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">switch (mode) {
     Mode::Initialize =&gt; {
         setup();
         #[[fallthrough]]
@@ -262,28 +262,28 @@ while (line = nextLine(file)) {
         run();
     }
     else =&gt; {},
-}</code></pre>
+}</code></pre></div>
 <p>The attribute on the last statement of an arm tells compiler and reader that continuation is intended. Without it the compiler warns. Putting <code>#[[fallthrough]]</code> on the last arm, with nothing to fall into, is E0610, usually a copy-paste leftover. When two cases share a body, <code>|</code> on one arm is usually clearer.</p>
 <section><h2 id="s22-6">Extending and Sealing</h2></section>
 <p>Two attributes control whether a type may be grown later, connecting to the trait and extend machinery of <a href="../06-traits-extend-and-polymorphism/index.html">Chapter 6</a>. <code>#[[extend]]</code> permits extend blocks; <code>#[[no_extend]]</code> forbids them.</p>
 <p>The ordinary case needs no attribute: a type is open by default. Explicit <code>#[[extend]]</code> is mostly redundant, for symmetry or to make openness clear:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[extend]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[extend]]
 struct Logger {
     i32 level;
-}</code></pre>
+}</code></pre></div>
 <p><code>#[[no_extend]]</code> is the interesting half. A sealed type cannot gain methods from later extend blocks:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_extend]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[no_extend]]
 struct Sealed {
     i32 hidden;
-}</code></pre>
+}</code></pre></div>
 <p>This lets a library seal a type so its behavior is exactly the methods it ships. A sealed type promises a closed interface: no third party can add a method, change an operation's meaning, or bolt on an unintended conversion. Sealing suits invariants that must not be circumvented: opaque handles, fixed state machines, security tokens. Most types want to be open, so sealing should require a deliberate annotation.</p>
 <section><h2 id="s22-7">Generate: Boilerplate That Writes Itself</h2></section>
 <p><code>#[[generate(...)]]</code> takes derived capabilities and writes their trait implementations and boilerplate from the field list:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[generate(Drop, Eq, Debug, Clone)]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[generate(Drop, Eq, Debug, Clone)]]
 struct Player {
     str name;
     i32 score;
-}</code></pre>
+}</code></pre></div>
 <p><code>Drop</code> frees fields. <code>Eq</code> compares field by field. <code>Debug</code> formats a named structure. <code>Clone</code> copies fields. <code>Ord</code> compares in declaration order. Adding a field is handled in one place, the declaration, and generated implementations stay in sync.</p>
 <p>These implementations are repetitive and hide bugs: a hand-written <code>Eq</code> that forgets a field, or a <code>Debug</code> that prints the wrong field, wastes an afternoon. The generator cannot forget or confuse fields because it reads them.</p>
 <p>Coral's answer to boilerplate without a macro system is a fixed, compiler-known set of derives. A general macro can write anything, including unreadable code; a fixed list writes only mechanical things. You cannot invent a derive, but every derive is familiar and predictable.</p>
@@ -292,17 +292,17 @@ struct Player {
 <section><h2 id="s22-8">Tooling, Platform, and the Entry Point</h2></section>
 <p>The final family configures building, testing, and starting. Each connects source to something outside it.</p>
 <p><code>#[[deprecated("...")]]</code> marks an item deprecated and names a replacement at each use:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[deprecated(&quot;use connect_v2(host, port) instead&quot;)]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[deprecated(&quot;use connect_v2(host, port) instead&quot;)]
 pub Socket connect(str host) {
     return connect_v2(host, 80);
-}</code></pre>
+}</code></pre></div>
 <p>Calling it warns with E0805 at the call site, quoting the replacement. One line turns a silent breaking change into a guided migration.</p>
 <p><code>#[[threadlocal]]</code> gives a static per-thread storage, so each thread sees its own copy. Use it for state that must not be shared: an error code, scratch buffer, or random seed:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[threadlocal]]
-static ErrorCode lastError = ErrorCode::Ok;</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[threadlocal]]
+static ErrorCode lastError = ErrorCode::Ok;</code></pre></div>
 <p>Each thread has its own <code>lastError</code>, so one thread's failure cannot corrupt another's. Without the attribute, the static is shared and writes race.</p>
 <p><code>#[[test]]</code> and <code>#[[bench]]</code> mark functions for the test and benchmark runners:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[test]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[test]]
 void testAddition() {
     @assert(square(3) == 9);
 }
@@ -310,24 +310,24 @@ void testAddition() {
 #[[bench]]
 void benchHash() {
     // the runner times this function
-}</code></pre>
+}</code></pre></div>
 <p>There is no registration list or test framework configuration; the attribute is the registration. A file of <code>#[[test]]</code> functions is a test suite.</p>
 <p><code>#[[cfg(...)]]</code> guards an item with a compile-time condition, so platform-specific code sits next to portable code and only the current target compiles:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[cfg(target_os = linux)]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[cfg(target_os = linux)]]
 void openSerial(str path) { /* termios setup */ }
 
 #[[cfg(target_os = windows)]]
 void openSerial(str path) { /* COM port setup */ }
 
 #[[cfg(target_os = linux, feature = &quot;tls&quot;)]]
-void startTls(Socket* s) { ... }</code></pre>
+void startTls(Socket* s) { ... }</code></pre></div>
 <p>The condition is evaluated at build configuration. A false declaration is absent from the program, as if never written. This is the single-source-tree-many-platforms mechanism at item level, and it prevents the two <code>openSerial</code> definitions from colliding.</p>
 <p><code>#[[link("...")]]</code> names a library to link. Where <code>extern</code> says a function exists, <code>link</code> says where to find it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[link(&quot;m&quot;)]
-pub extern f64 sqrt(f64 x);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[link(&quot;m&quot;)]
+pub extern f64 sqrt(f64 x);</code></pre></div>
 <p>The string goes to the linker, so <code>#[[link("m")]]</code> links the math library like <code>-lm</code>. The instruction lives next to the declaration that needs it, so they cannot drift apart.</p>
 <p><code>#[[simd]]</code> marks a type or operation as SIMD-intended, telling the compiler it may use the widest vector instructions. It pairs with <code>#[[vectorise]]</code>: <code>simd</code> says what the data is for, <code>vectorise</code> says how to generate the loop:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[simd]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[simd]]
 struct Vec4f {
     f32 x; f32 y; f32 z; f32 w;
 }
@@ -338,22 +338,22 @@ Vec4f add(Vec4f a, Vec4f b) {
         .x = a.x + b.x, .y = a.y + b.y,
         .z = a.z + b.z, .w = a.w + b.w,
     };
-}</code></pre>
+}</code></pre></div>
 <p><code>#[[entry]]</code> names the start function when <code>main</code> is not it. A bare-metal program, kernel, or freestanding binary has no OS to call <code>main</code>, and the entry takes the form the hardware uses:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[entry]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[entry]]
 #[[section(&quot;.text.boot&quot;)]
 void _start() {
     initialiseHardware();
     kmain();
     // never returns
-}</code></pre>
+}</code></pre></div>
 <p>On a hosted target <code>main</code> remains the entry and <code>#[[entry]]</code> is unnecessary; on a freestanding target it tells the compiler where the image begins.</p>
 <p>Platform and tooling attributes all connect source to an outside thing: a platform, build feature, library, test runner, or linker. They cluster at a file's top and tell you what world it expects.</p>
 <section><h2 id="s22-9">Unknown, Duplicate, and Conflicting Attributes</h2></section>
 <p>Attributes are instructions; a misspelled, repeated, or contradictory one must never be quietly dropped. Three diagnostics enforce this.</p>
 <p>An unknown attribute is E0806, with a nearest-name suggestion:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[inlne]]
-// warning E0806: unknown attribute `inlne`; did you mean `#[[inline]]`?</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[inlne]]
+// warning E0806: unknown attribute `inlne`; did you mean `#[[inline]]`?</code></pre></div>
 <p>A silently ignored typo is the worst outcome: the programmer believes an optimization happened. Reporting the unknown name and suggesting a close match turns a silent no-op into a one-line fix.</p>
 <p>A duplicate attribute is E0807. <code>#[[packed]] #[[packed]]</code>, or two spellings of one policy, is usually a copy-paste artifact, and the compiler says so.</p>
 <p>A conflicting pair is a separate error. <code>#[[packed]]</code> with <code>#[[reorder]]</code>, or <code>#[[align(4)]]</code> with <code>#[[align(8)]]</code>, cannot both be true, and the compiler refuses to choose. An annotation that cannot be honored is worse than none because it teaches a reader something false.</p>
@@ -361,7 +361,7 @@ void _start() {
 <p>An attribute is a sentence to the compiler, which must either act on it or say it could not. That is why misspellings are reported rather than ignored.</p>
 <section><h2 id="s22-10">A Worked Example: A Network Packet</h2></section>
 <p>A network packet needs several attributes at once: fixed wire layout, printable debugging, and comparable values for tests:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[packed]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[packed]]
 #[[generate(Debug, Eq)]]
 pub struct PacketHeader {
     u16 magic;
@@ -369,12 +369,12 @@ pub struct PacketHeader {
     u8  flags;
     u32 sequence;
     u32 length;
-}</code></pre>
+}</code></pre></div>
 <p>Three attributes, three jobs. <code>#[[packed]]</code> guarantees the wire layout, so bytes match the protocol and the struct is exactly twelve bytes. <code>#[[generate(Debug)]]</code> names each field in logs. <code>#[[generate(Eq)]]</code> gives field-by-field comparison for tests.</p>
 <p><code>packed</code> has consequences beyond convenience because the header's layout is a contract. Seeing it tells a reader why the struct looks as it does and that it must not be reordered. The attribute informs reader and compiler alike, which is the best argument for attributes over conventions. A private in-memory version might use <code>#[[reorder]]</code> instead, telling the reader nobody promised these bytes anything.</p>
 <section><h2 id="s22-11">A Second Worked Example: A Bare-Metal Boot File</h2></section>
 <p>The opposite end is a firmware entry file, where almost every platform attribute appears at once. It runs before any OS, so it chooses its own entry, memory placement, and defaults:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_drop_all]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[no_drop_all]]
 
 #[[entry]]
 #[[section(&quot;.text.boot&quot;)]]
@@ -398,7 +398,7 @@ struct BootInfo {
 #[[weak]]
 void platformLog(str message) {
     uartWrite(message);
-}</code></pre>
+}</code></pre></div>
 <p><code>#[[no_drop_all]]</code> disables RAII for firmware with a fixed static pool and no allocator. <code>#[[entry]]</code> names <code>_start</code> as the image start. <code>#[[section(".text.boot")]]</code> places it where the bootloader jumps. <code>#[[noreturn]]</code> says <code>_start</code> never returns. <code>#[[no_mangle]]</code> keeps <code>_start</code> findable by the reset vector. <code>#[[packed]]</code> fixes the layout the bootloader writes, and <code>#[[align(16)]]</code> promises its alignment. <code>#[[weak]]</code> gives <code>platformLog</code> a default that a larger image can override.</p>
 <p>Eight attributes in one small file, each doing a job the declaration alone cannot express. Expect this density in hardware-facing code: the more you depend on things outside, the more compiler assumptions you must correct explicitly.</p>
 <section><h2 id="s22-12">The Metaprogramming Bargain</h2></section>
@@ -410,7 +410,7 @@ void platformLog(str message) {
 <p>The bargain matches Coral's restraint: a closed vocabulary learnable in an afternoon plus ordinary code run early. You cannot always make the compiler do something new, but every Coral program speaks the same dialect and a reader can understand all of it.</p>
 <section><h2 id="s22-13">The Full Catalogue</h2></section>
 <p>The whole set, sorted by target. Everything here is real and honored, not a planned slot.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Attribute                 Target                  What it does
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Attribute                 Target                  What it does
 ------------------------  ----------------------  ------------------------------------------
 #[[packed]]               struct, union, field     remove padding; pin declaration order
 #[[reorder]]              struct                   let the compiler permute fields for density
@@ -442,13 +442,13 @@ void platformLog(str message) {
 #[[bench]]                function                 register with the benchmark runner
 #[[cfg(...)]]             any item                 compile only when the condition holds
 #[[link(&quot;lib&quot;)]]          extern declaration       name a library to link against
-#[[entry]]                function                 name a program entry other than main</code></pre>
+#[[entry]]                function                 name a program entry other than main</code></pre></div>
 <p>Forms that apply to every row:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[a]]                 one attribute
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[a]]                 one attribute
 #[[a, b]]              several in one group
 #[[a]] #[[b]]          several as chained groups
 #[[a(arg)]]            one with arguments
-#[[a, b(arg)]]         a group mixing both</code></pre>
+#[[a, b(arg)]]         a group mixing both</code></pre></div>
 <p>Chainable where compatible; <code>packed</code> and <code>reorder</code> are the canonical incompatible pair. Everything else composes, and contradictions are reported. The one deliberate absence is <code>#[[pub]]</code>, because <code>pub</code> is a keyword.</p>
 <section><h2 id="s22-14">Exercises</h2></section>
 <section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>Explain to someone who knows only comments why an attribute is not a comment. Give one thing the compiler can do with <code>#[[packed]]</code> that it cannot do with <code>// packed</code>.</li><li><span class="ex-label">Comprehension</span><code>#[[packed]]</code> and <code>#[[reorder]]</code> are mutually exclusive. Describe a struct where each is right and the other is a bug, and what the compiler says if you write both.</li><li><span class="ex-label">Implementation</span>Write a <code>#[[packed]]</code> struct for a three-byte record (type, length, value). Assert its size is three, remove the attribute, and predict the new size on a four-byte-aligned target.</li><li><span class="ex-label">Layout</span>Declare an <code>#[[align(32)]]</code> SIMD buffer and a <code>#[[nonull]]</code> pointer field whose container invariant guarantees it points somewhere. Explain what goes wrong if the invariant breaks.</li><li><span class="ex-label">Codegen</span>Mark a tiny accessor <code>#[[inline_always]]</code> and a large error handler <code>#[[cold]]</code>. Explain each choice and one cost of choosing wrong.</li><li><span class="ex-label">Vectorisation</span>Write a loop <code>#[[vectorise]]</code> can vectorize and one it cannot. Explain the difference and what the compiler does when it declines.</li><li><span class="ex-label">Drop</span>Write a function that allocates with <code>#[[no_drop]]</code> and frees with <code>defer</code>, then rewrite it with RAII. Which would a reader prefer here?</li><li><span class="ex-label">Sealing</span>Declare a <code>#[[no_extend]]</code> opaque handle with a private field and one public accessor. Why seal it, and what does the caller lose?</li><li><span class="ex-label">Derives</span>Put <code>#[[generate(Eq, Debug, Clone)]]</code> on a four-field struct, add a fifth field, and confirm the derives still agree. Name one capability you deliberately did not derive and why.</li><li><span class="ex-label">Tooling</span>Mark a function <code>#[[deprecated]]</code>, call it, and write down the warning. Then mark two platform versions with <code>#[[cfg(target_os = ...)]]</code> and explain what each build sees.</li><li><span class="ex-label">Meta</span>Coral uses a fixed attribute set plus comptime rather than macros. Argue for and against, naming one thing a macro could do that this cannot and one bug class the fixed set prevents.</li><li><span class="ex-label">Design</span>You are writing a plugin loader. Using only these attributes, describe how to place each plugin registration in a section, keep it from being stripped, let a program override a default implementation, and set the entry point.</li></ol></section>

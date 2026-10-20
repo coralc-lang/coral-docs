@@ -40,12 +40,12 @@
 <p>A closing distinction that prevents a whole family of confusion: built-ins are not attributes. Attributes are written <code>#[[name]]</code> and annotate a declaration or statement. Built-ins are written <code>@name(...)</code> (or a bare keyword) and are expressions or trait names. <code>#[[generate(...)]]</code> is an attribute, not a built-in, and <code>@generate</code> does not exist. When you see a <code>#</code>, it is an attribute; when you see a bare <code>@</code> in expression position, it is a built-in call; when you see <code>@</code> in trait position after a <code>:</code>, it is a built-in trait.</p>
 <p>B.2 @sizeof(T)</p>
 <p>Syntax:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">@sizeof(T)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">@sizeof(T)</code></pre></div>
 <p>Semantics. The size, in bytes, of the type <code>T</code> as the compiler lays it out. It is a compile-time constant, so it may appear in a <code>comptime</code> block, as a value-generic argument, or anywhere a constant is expected.</p>
 <p>Constraints. The <code>@</code> is required. The compiler lexes <code>sizeof</code> as a dedicated token, and if it sees the bare word it raises a parse error whose text is exactly "sizeof must be written @sizeof(T)". There is no expression form: the argument is a type, not a value. For the size of a value, you take the size of its type.</p>
 <p>Return type. <code>usize</code>.</p>
 <p>Example. The classic use is to assert a wire layout so that a field added later cannot silently break the protocol:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Header {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Header {
     u32 magic;
     u32 len;
     u64 seq;
@@ -55,30 +55,30 @@ comptime {
     if (@sizeof(Header) != 16) {
         @compileError(&quot;Header must be exactly 16 bytes on the wire&quot;);
     }
-}</code></pre>
+}</code></pre></div>
 <p>A plain measurement is just as direct:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize bytes = @sizeof(i32);   // 4</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize bytes = @sizeof(i32);   // 4</code></pre></div>
 <p>B.3 alignof(T)</p>
 <p>Syntax:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">alignof(T)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">alignof(T)</code></pre></div>
 <p>Semantics. The alignment, in bytes, that the type <code>T</code> requires. This is the boundary the hardware wants an object of that type to start on, and it is what you consult when you place things in memory by hand, a buffer, a pool, an arena.</p>
 <p>Constraints. This one is written <em>without</em> the <code>@</code>. The word <code>alignof</code> is lexed as its own built-in token, and the parser consumes it directly; the <code>@</code> prefix machinery knows only <code>sizeof</code>, <code>assert</code>, <code>assertOut</code>, and <code>typeof</code>, so <code>@alignof(T)</code> does not parse. Write <code>alignof(T)</code>. The argument is a type.</p>
 <p>Return type. <code>usize</code>.</p>
 <p>Example:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize slotSize  = @sizeof(Header);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize slotSize  = @sizeof(Header);
 usize alignment = alignof(Header);   // 8 on x86_64
 
 // place data on the boundary the type asks for:
-usize stride = alignUp(count * @sizeof(Item), alignof(Item));</code></pre>
+usize stride = alignUp(count * @sizeof(Item), alignof(Item));</code></pre></div>
 <p><code>@sizeof</code> and <code>alignof</code> sit side by side here, one with the prefix, one without, and that asymmetry is not a typo. It is exactly how the compiler is built.</p>
 <p>B.4 @typeof(x)</p>
 <p>Syntax:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">@typeof(x)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">@typeof(x)</code></pre></div>
 <p>Semantics. The type of <code>x</code>, produced as a compile-time value that a <code>comptime</code> block can switch on. This is the workhorse of the standard library's printing machinery: the dispatch that decides how to render a value is a <code>switch</code> over <code>@typeof(T)</code>, and by the time the switch is compiled every arm but one has been discarded.</p>
 <p>Constraints. Three of them, all enforced. First, <code>@typeof</code> is legal <em>only inside a <code>comptime {}</code> block</em>; anywhere else the type checker reports "@typeof is only allowed inside a comptime block". Second, it takes <em>exactly one</em> argument. Third, that argument must be a <em>type name</em>, a <em>variable</em>, or an <em>int, float, bool, null, str, or char literal</em>, not an arbitrary expression. <code>@typeof(a + b)</code>, <code>@typeof(f(x))</code>, and <code>@typeof(*p)</code> are all rejected with "@typeof argument must be a type, variable, or literal". (The bare keyword <code>typeof(x)</code>, without the <code>@</code>, is a separate parser path that produces <code>ExprKind::Typeof</code>; it is an internal form the code generator does not support, so always write <code>@typeof</code>.)</p>
 <p>Return type. A type, delivered to the enclosing <code>comptime</code> block. The expression itself is typed as the u64 "type-of-types" placeholder so it can flow into a <code>comptime</code> switch arm.</p>
 <p>Example. A generic function that reports what it was handed:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void describe&lt;comptime T&gt;(T value) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void describe&lt;comptime T&gt;(T value) {
     comptime {
         switch (@typeof(T)) {
             i32 =&gt; { println(&quot;a 32-bit integer: {}&quot;, value); },
@@ -88,66 +88,66 @@ usize stride = alignUp(count * @sizeof(Item), alignof(Item));</code></pre>
             else =&gt; { @compileError(&quot;describe: unsupported type&quot;); },
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The literal and variable forms work the same way inside a <code>comptime</code> block:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">comptime {
     var n = 3;             // @typeof(n) is i32
     // @typeof(3.5) is f64, @typeof(true) is bool, @typeof(&#x27;x&#x27;) is char
-}</code></pre>
+}</code></pre></div>
 <p>B.5 @assert(cond)</p>
 <p>Syntax:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">@assert(cond)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">@assert(cond)</code></pre></div>
 <p>Semantics. A runtime check. If <code>cond</code> is false, the program aborts with an assertion failure at that line. Use it for an internal invariant, a condition whose violation means a bug in the program, not bad input from the outside world.</p>
 <p>Constraints. The condition must be a <code>bool</code>. At the code generator, <code>@assert</code> is recognised with <em>exactly one</em> argument: <code>@assert(cond)</code>. The bare keyword <code>assert(cond)</code> also parses to the same built-in, but the <code>@</code> form is the canonical one the book uses. There is no message argument: <code>@assert(cond, "msg")</code> is not supported, use <code>@assertOut</code> when you want the failure to name itself.</p>
 <p>Return type. None useful. It is used as a statement; the generated code is a C <code>assert</code> call, and its expression value is discarded.</p>
 <p>Example:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 checkedDiv(i32 a, i32 b) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 checkedDiv(i32 a, i32 b) {
     @assert(b != 0);
     return a / b;
-}</code></pre>
+}</code></pre></div>
 <p>B.6 @assertOut(cond) and @assertOut(cond, "msg")</p>
 <p>Syntax:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">@assertOut(cond)
-@assertOut(cond, &quot;msg&quot;)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">@assertOut(cond)
+@assertOut(cond, &quot;msg&quot;)</code></pre></div>
 <p>Semantics. The same runtime check as <code>@assert</code>, but it lets you attach a message that appears in the failure output. It is what a library uses to report a violated precondition in a way that names the problem instead of merely pointing at it.</p>
 <p>Constraints. The bare word <code>assertOut(...)</code> does not parse, <code>assertOut</code> is lexed as a built-in token, but the parser handles that token only behind the <code>@</code> prefix. Write <code>@assertOut(...)</code>. The first argument is the <code>bool</code> condition; the second, optional, is the message. At the code generator the first argument is asserted, and a string message is rendered into the failure.</p>
 <p>Return type. None useful; used as a statement.</p>
 <p>Example:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">T pop&lt;T&gt;(Vec&lt;T&gt;* v) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">T pop&lt;T&gt;(Vec&lt;T&gt;* v) {
     @assertOut(v-&gt;count() &gt; 0, &quot;pop() on an empty Vec&quot;);
     return v-&gt;pop();
-}</code></pre>
+}</code></pre></div>
 <p>B.7 @compileError("msg")</p>
 <p>Syntax:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">@compileError(&quot;msg&quot;)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">@compileError(&quot;msg&quot;)</code></pre></div>
 <p>Semantics. A hard error raised during compilation, carrying your message. Where <code>@assert</code> stops a running program, <code>@compileError</code> stops the <em>build</em>, which is strictly better when the problem is knowable before the program exists. It is how a generic rejects an instantiation it cannot support, turning a hopeless call into a sentence at the call site.</p>
 <p>Constraints. Outside a <code>comptime</code> block the type checker reports it immediately, using the string literal as the message (if the message is not a string literal it falls back to "@compileError tripped"). Inside a <code>comptime</code> block the compile-time evaluator decides reachability, and this is the important subtlety: a <code>@compileError</code> in an arm that is <em>not taken</em> never fires. That is what lets the standard library's type switches end with <code>else =&gt; { @compileError("unsupported type") }</code> without breaking every supported call, only the arm that actually matches is evaluated, so the error arm is inert unless nothing else matched.</p>
 <p>Return type. Formally <code>bool</code>; in practice it does not return, because reaching it ends the build.</p>
 <p>Example. A zero-sized type has no first element, so reject it before the body is generated:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">T first&lt;T&gt;(Vec&lt;T&gt; v) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">T first&lt;T&gt;(Vec&lt;T&gt; v) {
     comptime {
         if (@sizeof(T) == 0) {
             @compileError(&quot;first: a zero-sized type has no first element&quot;);
         }
     }
     return v.at(0);
-}</code></pre>
+}</code></pre></div>
 <p>And as the fallback arm of a <code>comptime</code> switch, where a matched arm keeps it silent:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">comptime {
     switch (@typeof(T)) {
         i32 =&gt; { /* generate the integer path */ },
         f64 =&gt; { /* generate the float path */ },
         else =&gt; { @compileError(&quot;only i32 and f64 are supported here&quot;); },
     }
-}</code></pre>
+}</code></pre></div>
 <p>B.8 @isFormatLiteral(expr)</p>
 <p>Syntax:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">@isFormatLiteral(expr)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">@isFormatLiteral(expr)</code></pre></div>
 <p>Semantics. A compile-time test that answers whether the argument is a string literal the compiler can see. When it is true, the whole format string can be checked against the arguments before the program exists, the placeholder count, the specifiers, and the argument kinds. When it is false, the format string was assembled at runtime, the compiler cannot see it, and the call is routed down the "treat the first argument as a value" path instead. This is the gate that makes checked printing possible in <code>println</code>.</p>
 <p>Constraints. It yields <code>bool</code>. It is true <em>only</em> when the argument is a string literal (in the comptime evaluator, a compile-time-known string value); everything else, including a runtime <code>str</code> variable, is false. It is evaluated during compilation and is idiomatically used inside a <code>comptime</code> block.</p>
 <p>Return type. <code>bool</code>.</p>
 <p>Example. The shape the standard library uses, fork on whether the format is a literal:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void logLine&lt;comptime T&gt;(T fmt, ...) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void logLine&lt;comptime T&gt;(T fmt, ...) {
     comptime {
         if (@isFormatLiteral(fmt)) {
             // the literal format is visible: check it against the args
@@ -155,13 +155,13 @@ usize stride = alignUp(count * @sizeof(Item), alignof(Item));</code></pre>
             // a runtime string: render it as an ordinary value
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>A direct measurement reads plainly:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool checked = @isFormatLiteral(&quot;value = {}&quot;);   // true</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool checked = @isFormatLiteral(&quot;value = {}&quot;);   // true</code></pre></div>
 <p>B.9 The Built-in Traits: @drop and @toStr</p>
 <p>These two are not calls. They are traits the compiler knows by name, spelled with <code>@</code> in trait position after the <code>:</code> of an <code>extend</code> block. You conform to them the ordinary way; the compiler supplies the invocation.</p>
 <p><code>@drop</code> is the RAII trait. A type that conforms must provide <code>void drop()</code>, and the compiler inserts the call automatically when a value of that type goes out of scope, on every exit path, once, with no call site written:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct FileHandle {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct FileHandle {
     i32 fd;
 }
 
@@ -169,9 +169,9 @@ pub extend FileHandle : @drop {
     void drop() {
         close(self.fd);
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>@toStr</code> is the formatting trait. A type that conforms must provide <code>str toStr()</code>, and the printing machinery finds the implementation when it must render a value of that type:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Point {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Point {
     f64 x;
     f64 y;
 }
@@ -180,19 +180,19 @@ pub extend Point : @toStr {
     str toStr() {
         return &quot;Point(&quot; + formatFloat(self.x) + &quot;, &quot; + formatFloat(self.y) + &quot;)&quot;;
     }
-}</code></pre>
+}</code></pre></div>
 <p>With that conformance, <code>println("{}", point)</code> works, because the formatter's final prong, <code>any toStr</code>, matches any type implementing the trait. Neither <code>drop</code> nor <code>toStr</code> is declared anywhere in the library; both names are known to the compiler.</p>
 <p>The constraint that matters most: you never call a drop method by hand. Writing <code>f-&gt;drop()</code> (or <code>x.drop()</code>) is refused with error E1301, "explicit call to drop is not allowed; drop runs automatically at scope exit", because the value's scope will end and the automatic drop will run too, so a manual call invites a double free. Let the scope do it, or opt the value out of RAII with <code>#[[no_drop]]</code> and give it a normal cleanup method. And note that <code>@drop</code> and <code>@toStr</code> are trait names, not functions: <code>@drop(x)</code> is not a callable intrinsic.</p>
 <p>B.10 Names That Look Built-in but Are Not</p>
 <p>A reference that overstates its list is worse than one that admits its edges, so here is what is <em>not</em> a built-in function.</p>
 <p><code>@arch</code> is not implemented. Architecture selection in Coral is done with the <code>flag</code> form, which is an expression and a type position, not a call. The library's own <code>cchar</code> is the canonical example:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct cchar = flag (arch) { x86_64 =&gt; { i8 }, else =&gt; { u8 } };</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub distinct cchar = flag (arch) { x86_64 =&gt; { i8 }, else =&gt; { u8 } };</code></pre></div>
 <p>The <code>flag(NAME) { key =&gt; { value }, else =&gt; { value } }</code> form picks an arm by comparing <code>NAME</code> against the build-time flag table (the <code>--flag arch=...</code> / <code>--flag platform=...</code> values). Internally the compiler carries a <code>targetArch</code> field and matches the flag named <code>arch</code>, which is where the <code>@arch</code> spelling in a parser comment comes from, the concept exists, the callable built-in does not. When you need per-platform code, reach for the <code>flag</code> form, or for the <code>#[[cfg(target_os = linux)]]</code> attribute, which is an attribute and not a built-in either.</p>
 <p><code>@name</code> is not a built-in. The only hit for it in the compiler is a comment that describes how built-in traits are spelled: "a trait after <code>:</code> is either a user name or <code>@name</code> for a builtin (<code>@drop</code>, <code>@toStr</code>)." In that sentence <code>@name</code> is a placeholder meaning "the name of a built-in trait," not a built-in called <code>@name</code>. There is no <code>@name</code> function.</p>
 <p><code>@generate</code> is not a built-in. The derive-style generator is the attribute <code>#[[generate(Drop, Eq)]]</code>, and it is planned rather than implemented. Attributes live behind <code>#[[ ... ]]</code>, not <code>@(...)</code>.</p>
 <p>Finally, the whole <code>@drop</code>, <code>@toStr</code>, <code>@compileError</code>, <code>@assertOut</code> family that library code writes, and the <code>toStr</code> conformance machinery, are compiler-known names, not standard-library declarations. You will not find them in any <code>.crl</code> file, because they are the language, not the library.</p>
 <p>B.11 Comparison Table</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Spelling                     Kind      When         Result    Notes
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Spelling                     Kind      When         Result    Notes
 @sizeof(T)                   intrinsic compile time usize     @ is required; bare sizeof is a parse error
 alignof(T)                   intrinsic compile time usize     no @; @alignof does not parse
 @typeof(x)                   intrinsic comptime     type      x must be a type, variable, or literal
@@ -201,7 +201,7 @@ alignof(T)                   intrinsic compile time usize     no @; @alignof doe
 @compileError(&quot;msg&quot;)         intrinsic compile time never     hard build error; reachable arm only
 @isFormatLiteral(x)          intrinsic compile time bool      true only for a string literal
 @drop                        trait     scope exit   none      void drop(); never call it by hand (E1301)
-@toStr                       trait     print site   str       str toStr(); auto-wired by the formatter</code></pre>
+@toStr                       trait     print site   str       str toStr(); auto-wired by the formatter</code></pre></div>
 <p>B.12 Common Mistakes</p>
 <ol><li><code>sizeof(T)</code> without the <code>@</code>. Parse error: "sizeof must be written @sizeof(T)". Write <code>@sizeof(T)</code>.</li><li><code>@alignof(T)</code> with the <code>@</code>. It does not parse. <code>alignof</code> is the one of the three layout queries that is written bare: <code>alignof(T)</code>.</li><li><code>@typeof(x)</code> outside a <code>comptime {}</code> block. Rejected. <code>@typeof</code> is meaningful only where the type is known during the build, so put it in a <code>comptime</code> block.</li><li><code>@typeof(a + b)</code> or <code>@typeof(f(x))</code>. Rejected. The argument must be a type name, a variable, or a literal, not an arbitrary expression.</li><li><code>@typeof(x)</code> with more than one argument. Rejected; it takes exactly one.</li><li><code>f-&gt;drop()</code> or <code>x.drop()</code>. Error E1301. Drop is driven by scope termination; a manual call risks a double free. Let the scope do it, or opt out with <code>#[[no_drop]]</code>.</li><li>Treating <code>@drop</code> or <code>@toStr</code> as callable functions, as in <code>@drop(x)</code>. They are traits. You conform with <code>extend T : @drop { void drop() { ... } }</code>, and the compiler calls the method.</li><li><code>@assert(cond, "msg")</code>. <code>@assert</code> takes exactly one argument. If you want a message, use <code>@assertOut(cond, "msg")</code>.</li><li>Bare <code>assertOut(cond)</code>. It does not parse; <code>assertOut</code> needs the <code>@</code>: <code>@assertOut(cond)</code>.</li><li>Using <code>@compileError</code> where a runtime assertion is meant. Outside a <code>comptime</code> block it fails the build immediately. If the condition is only decidable while the program runs, use <code>@assert</code> or <code>@assertOut</code>.</li><li>Expecting <code>@compileError</code> in a non-matching switch arm to fire. Inside <code>comptime</code>, only the matching arm is evaluated, so the <code>else</code> arm is inert unless nothing else matched. That is a feature, not a bug.</li><li>Reaching for <code>@arch()</code>. There is no such built-in. Use <code>flag(arch) { ... }</code>, or the <code>#[[cfg(...)]]</code> attribute.</li><li>Confusing an attribute with a built-in: <code>#[[generate(...)]]</code> is an attribute; <code>#[[pub]]</code> is deliberately not one (<code>pub</code> is the visibility keyword); and there is no <code>@generate</code>.</li></ol>
 <p>B.13 Exercises</p>

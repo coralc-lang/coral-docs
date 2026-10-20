@@ -43,7 +43,7 @@
 <p class="step-label">The better approach</p>
 <p>Keep one variable holding the sum so far. Walk the array once, add the current element to it, and record it. Each new entry costs one addition, and the previous work is reused instead of repeated. That is the whole idea: a running accumulator.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 Vec&lt;i32&gt; runningSum(const Vec&lt;i32&gt;* nums) {
@@ -63,7 +63,7 @@ void main() {
     for (i32 x : out) {
         println(&quot;{}&quot;, x);
     }
-}</code></pre>
+}</code></pre></div>
 <p>Notice three small courtesies. <code>withCap</code> reserves exactly the room we need, so the vector never reallocates while we fill it. The loop condition reads <code>nums-&gt;count()</code> on each pass, the checked, honest way to walk a <code>Vec</code> by index (<a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a> covers the pointer-versus-index distinction). And <code>sum</code> is a plain local: no allocation, no bookkeeping beyond one integer.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear. One pass, one addition per element, so the running time grows in direct proportion to the input size. Space is linear too, and here that is unavoidable: we return a new array of the same length. The accumulator itself is a single integer, the constant extra space the algorithm needs on top of the output.</p>
@@ -80,7 +80,7 @@ void main() {
 <p>One pass, two variables: <code>best</code> and <code>second</code>. For each number, if it beats <code>best</code>, the old <code>best</code> slides into <code>second</code> and the number becomes the new <code>best</code>. Otherwise, if it beats <code>second</code>, it becomes <code>second</code>. One pass, constant state.</p>
 <p>The tricky word is "beats." Second-largest must be strictly smaller than the largest, or it is not the second-largest at all. So the sliding comparison must be strict. If the new number equals <code>best</code>, it does not become the second. Otherwise you would report two copies of the same value as first and second.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 struct TopTwo {
@@ -105,7 +105,7 @@ TopTwo topTwo(const Vec&lt;i32&gt;* nums) {
         }
     }
     return TopTwo { .best = best, .second = second, .hasSecond = hasSecond };
-}</code></pre>
+}</code></pre></div>
 <p>The <code>hasSecond</code> flag is not decoration. If every element is equal, no second-largest exists, and a function that cannot say so would have to lie. We could return an <code>Option&lt;i32&gt;</code> from <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a> instead. The flag and the <code>Option</code> carry the same information, and the <code>Option</code> is the more idiomatic Coral answer. I use the flag here so the struct stays self-contained and the logic stays visible in one place.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: one pass over the data, a constant number of comparisons per element. Space is constant, two numbers and a flag no matter how big the array is. This is the first problem where the memory answer beats "proportional to the input." It will not be the last.</p>
@@ -121,7 +121,7 @@ TopTwo topTwo(const Vec&lt;i32&gt;* nums) {
 <p class="step-label">The better approach</p>
 <p>Peel and append with integer arithmetic. The last digit of <code>n</code> is <code>n % 10</code>. Appending a digit <code>d</code> to an accumulator <code>rev</code> is <code>rev = rev * 10 + d</code>. Chop the last digit off with <code>n = n / 10</code>. Repeat until <code>n</code> hits zero. The one care point is overflow: accumulate in a 64-bit integer and check against the 32-bit bounds before returning, because overflowed <code>i32</code> arithmetic in Coral is a bug you cannot see.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 
 i32 reverse(i32 x) {
     i64 n = (i64)x;
@@ -146,7 +146,7 @@ bool isPalindromeNumber(i32 x) {
         x = x / 10;
     }
     return x == rev || x == rev / 10;
-}</code></pre>
+}</code></pre></div>
 <p>The palindrome test hides a beautiful trick. Rather than reversing the entire number, which could overflow, we reverse only the last half and stop when the reversed half has caught up to the remaining front half. Take <code>1221</code>. We peel <code>1</code> then <code>2</code> to get <code>rev = 12</code>, while <code>x</code> has become <code>12</code>. They are equal, so it is a palindrome. Take <code>12321</code>. We peel to <code>rev = 123</code> while <code>x = 12</code>; the halves crossed, and the middle digit sits in <code>rev</code>. So we also accept <code>x == rev / 10</code>, which drops <code>rev</code>'s last digit and compares the outer halves. Negative numbers are never palindromes because of the minus sign. Neither is a positive number ending in zero (other than zero itself), because reversing it would start with a zero. Both cases are rejected up front.</p>
 <p class="step-label">The cost</p>
 <p>Time is proportional to the number of digits, the base-ten logarithm of the value; for a 32-bit int, at most ten iterations. Space is constant: a handful of integers, no allocation. This is the first appearance of a pattern worth naming, logarithm-time. It returns with force in 23.8.</p>
@@ -162,7 +162,7 @@ bool isPalindromeNumber(i32 x) {
 <p class="step-label">The better approach</p>
 <p>Exactly two independent questions exist, "is it divisible by 3?" and "is it divisible by 5?", with exactly four combinations of answers. That is a closed decision over a pair of booleans, and <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> gave us the tool for it: a switch over a tuple. The compiler checks that we covered all four combinations, so the ordering trap cannot happen. Small problem. But it shows the value of the language feature in a way no abstract example can.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 
 void fizzBuzz(i32 n) {
     for (i32 i = 1; i &lt;= n; i++) {
@@ -173,7 +173,7 @@ void fizzBuzz(i32 n) {
             (false, false)  =&gt; { println(&quot;{}&quot;, i); },
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>No <code>else</code> arm is needed. The four arms are exhaustive, and the compiler knows it.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear in n: one loop iteration per number, a constant amount of work inside (two remainders and a dispatch). Space is constant. The interesting part is not the asymptotic cost, which could hardly be simpler. It is the control flow. A decision that would be four ordered <code>if</code>s becomes a table the compiler verifies.</p>
@@ -189,7 +189,7 @@ void fizzBuzz(i32 n) {
 <p class="step-label">The better approach</p>
 <p>Euclid's algorithm. Replace <code>(a, b)</code> with <code>(b, a mod b)</code>, over and over. The remainder is always smaller than <code>b</code>, so the pair shrinks fast, and when the remainder hits zero the other number is the answer. The number of steps is logarithmic. Each step effectively halves the pair in the worst case, which is where the logarithm comes from.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 
 i64 gcd(i64 a, i64 b) {
     if (a &lt; 0) a = -a;
@@ -207,7 +207,7 @@ i64 lcm(i64 a, i64 b) {
     if (g == 0) return 0;
     i64 left = a / g;
     return left * b;
-}</code></pre>
+}</code></pre></div>
 <p>Look at the order of operations in <code>lcm</code>. The tempting formula is <code>(a * b) / g</code>, and it is wrong at scale: <code>a * b</code> can overflow long before you divide. Divide first, <code>(a / g) * b</code>, and the intermediate value stays small, because <code>g</code> divides <code>a</code> exactly. Reordering to divide before multiplying saves real programs and costs nothing.</p>
 <p class="step-label">The cost</p>
 <p>Time is logarithmic in the inputs. Each step replaces the larger number with a remainder smaller than the other, so the pair shrinks geometrically in the worst case. Space is constant: three integers, reused. The <code>lcm</code> adds a fixed, small number of operations on top, so it has the same complexity.</p>
@@ -220,15 +220,15 @@ i64 lcm(i64 a, i64 b) {
 <p>This problem is famous not because it is hard, but because it is the clearest place to watch a program run catastrophically slow for a reason you cannot see in the code. It looks like two lines of arithmetic. It is actually a tree of redundant work. This is where that lesson lands.</p>
 <p>Brute force</p>
 <p>The literal definition, written literally:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 fibNaive(i64 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i64 fibNaive(i64 n) {
     if (n &lt; 2) return n;
     return fibNaive(n - 1) + fibNaive(n - 2);
-}</code></pre>
+}</code></pre></div>
 <p>Correct and unusable. To compute <code>fib(n)</code> it computes <code>fib(n-1)</code> and <code>fib(n-2)</code>; <code>fib(n-1)</code> then computes <code>fib(n-2)</code> all over again. The same subproblems are recomputed an exponential number of times. The number of calls roughly doubles with every increment of n. <code>fib(50)</code> performs on the order of a billion operations, and <code>fib(100)</code> would outlast a human lifetime.</p>
 <p class="step-label">The better approach</p>
 <p>Two ways to fix it. The first is to remember. Whenever <code>fib</code> computes a value for the first time, store it in an array, and check the array before recursing. Then each value is computed once. The second, simpler here, is to notice that the dependence only ever reaches back one or two, so a running pair of the last two values is enough. Walk forward from the bottom.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 i64 fib(i64 n) {
@@ -249,7 +249,7 @@ i64 fibMemo(i64 n, Vec&lt;i64&gt;* memo) {
     i64 value = fibMemo(n - 1, memo) + fibMemo(n - 2, memo);
     memo-&gt;set((usize)n, value);
     return value;
-}</code></pre>
+}</code></pre></div>
 <p>In <code>fibMemo</code> we use <code>-1</code> as the sentinel for "not computed yet," which is honest because Fibonacci numbers are never negative. This is the sentinel-versus-<code>Option</code> trade from <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>. The sentinel is compact and, here, provably safe. An <code>Option&lt;i64&gt;</code> would be the more general choice, at the cost of a tag byte per slot.</p>
 <p class="step-label">The cost</p>
 <p>The naive recursion's time is exponential, roughly proportional to the golden ratio raised to the power n, because it expands each subproblem into the whole subtree beneath it. Its space is only linear, the depth of the recursion, which is why it fails on time and not on memory. The iterative version is linear time and constant space, one step per value, keeping only the last two. The memoized version is also linear time, but its space is linear too, because it keeps every value. The iterative one wins here. The memoized one generalizes to problems where the dependencies are not neatly the last two.</p>
@@ -265,7 +265,7 @@ i64 fibMemo(i64 n, Vec&lt;i64&gt;* memo) {
 <p class="step-label">The better approach</p>
 <p>The sieve flips the direction. Instead of asking each number "are you prime?", it lets each prime cross out its multiples. A boolean array records composite-ness. For each prime candidate p, mark <code>p*p, p*p + p, ...</code> as composite. Starting at <code>p*p</code> rather than <code>2*p</code> is the small optimization that skips work the smaller primes already did. Multiples of p below p*p have a smaller prime factor and were already crossed out. The total work is n log log n, almost linear for practical purposes.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 i32 countPrimes(i32 n) {
@@ -285,7 +285,7 @@ i32 countPrimes(i32 n) {
         if (!composite.at((usize)i)) count++;
     }
     return count;
-}</code></pre>
+}</code></pre></div>
 <p>Notice the casts to <code>i64</code> in the loop bounds. <code>p * p</code> for a large <code>p</code> can overflow a 32-bit multiply, and the loop condition would then be silently wrong. Widening the comparison to <code>i64</code> prevents it. A small example of a general rule: whenever you multiply two values that could be large, check whether the product fits the type.</p>
 <p class="step-label">The cost</p>
 <p>Time is n log log n, very close to linear, because each composite is crossed out once per distinct prime factor, and that count averages very small. Space is linear in n: one byte per number in the <code>Vec&lt;bool&gt;</code>. If memory is the constraint, a <code>Bitset</code> from <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a> stores the same information in one bit per number, sixty-four times smaller, at the price of slightly less direct indexing. For n in the billions, that difference is the difference between running and not running.</p>
@@ -301,7 +301,7 @@ i32 countPrimes(i32 n) {
 <p class="step-label">The better approach</p>
 <p>Binary exponentiation. Write the exponent in base two. Read its bits from least significant to most. Each bit that is 1 means "multiply the running result by the current power of base," and before moving on, each step squares that current power. The number of steps is the number of bits in <code>exp</code>, its base-two logarithm. For an exponent near a billion, that is about thirty steps instead of a billion.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 
 i64 power(i64 base, u32 exp) {
     i64 result = 1;
@@ -315,7 +315,7 @@ i64 power(i64 base, u32 exp) {
         e = e &gt;&gt; 1u;
     }
     return result;
-}</code></pre>
+}</code></pre></div>
 <p>The three lines inside the loop are the whole algorithm. If the lowest bit of the exponent is set, take the current factor into the result. Square the factor, so it now represents the next power. Shift the exponent right, dropping that bit. When no bits remain, the result is complete. Written out for <code>base = 3</code>, <code>exp = 5</code>: <code>e = 5</code> (binary 101), bit set, <code>result = 3</code>, <code>factor = 9</code>, <code>e = 2</code>; bit clear, <code>factor = 81</code>, <code>e = 1</code>; bit set, <code>result = 3 * 81 = 243</code>, which is indeed 3 to the 5th.</p>
 <p class="step-label">The cost</p>
 <p>Time is proportional to the number of bits in the exponent, its base-two logarithm; for a 32-bit exponent, at most thirty-two iterations. Space is constant, three integers, no matter how large the exponent. This is the sharpest example in the chapter of a huge improvement from a small change in how you look at the input.</p>
@@ -331,7 +331,7 @@ i64 power(i64 base, u32 exp) {
 <p class="step-label">The better approach</p>
 <p>Count the digits once, then reuse 23.8's squaring <code>power</code> helper so each <code>digit^d</code> costs a handful of multiplications instead of <code>d</code>. The digit loop does not change at all. Fast exponentiation earns its keep here even for tiny exponents, because it collapses the "multiply d times" idea into one reusable helper and removes a nested loop from the middle of the test.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 i64 ipow(i64 base, i64 exp) {
@@ -377,7 +377,7 @@ Vec&lt;i32&gt; armstrongUpTo(i32 n) {
         if (isArmstrong(x)) out.push(x);
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The <code>ipow</code> helper is the 23.8 loop verbatim with the exponent type widened to <code>i64</code>, so it can serve any caller. <code>sum</code> is an <code>i64</code> because a ten-digit number can raise a digit to the tenth power many times, and the running total is not guaranteed to fit a 32-bit integer even when the final answer would.</p>
 <p class="step-label">The cost</p>
 <p>Testing one number costs about <code>d</code> digit steps times <code>log d</code> squarings, so <code>O(d log d)</code>, effectively constant for a 32-bit value. Listing every Armstrong number up to <code>n</code> therefore costs <code>O(n log n)</code> in the digit counts. Space is constant apart from the returned vector. The numbers are rare, so the output is tiny no matter how large <code>n</code> gets.</p>
@@ -393,7 +393,7 @@ Vec&lt;i32&gt; armstrongUpTo(i32 n) {
 <p class="step-label">The better approach</p>
 <p>Remember the chain length of every value you compute, in a table indexed by the value. Before stepping, check the table; if the answer is known, add it and stop. This is the memoized recursion of 23.6, applied to a problem where the tail is shared rather than the head. Values larger than the limit are computed but not stored, because the table only has room for the starts.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 i64 collatzSteps(i64 n, Vec&lt;i32&gt;* memo) {
@@ -431,7 +431,7 @@ i32 longestCollatz(i32 limit) {
         }
     }
     return bestStart;
-}</code></pre>
+}</code></pre></div>
 <p>The sentinel <code>-1</code> means "not computed yet," exactly as in <code>fibMemo</code> from 23.6, and it is safe here for the same reason: a chain length is never negative. The arithmetic runs in <code>i64</code> because the odd step triples a value that has already grown, and a large <code>n</code> can push <code>3n + 1</code> past what a 32-bit integer holds even though the start fits one.</p>
 <p class="step-label">The cost</p>
 <p>With memoization the work is close to linear in the limit: each value in the table is computed once, and values above the limit appear only as transient links. Without it, the cost is the sum of all chain lengths, far larger. Space is linear in the limit, one integer per starting value. The recursion depth is at most the longest chain, which for values in the millions stays in the hundreds.</p>
@@ -447,7 +447,7 @@ i32 longestCollatz(i32 limit) {
 <p class="step-label">The better approach</p>
 <p>Compute the divisor sum in <code>O(sqrt n)</code> by walking <code>d</code> from 2 while <code>d * d &lt;= n</code>. Each time <code>d</code> divides <code>n</code>, add both <code>d</code> and <code>n / d</code>, skipping the second when the two are equal. Seed the sum at 1 because 1 divides everything. Then a perfect test is one comparison, and an amicable test is two divisor sums.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 i64 divisorSum(i64 n) {
@@ -485,7 +485,7 @@ Vec&lt;i64&gt; amicableFlat(i64 n) {
         }
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The <code>other != d</code> guard is the square-root subtlety in action: for <code>n = 16</code>, <code>d = 4</code> divides it, but <code>16 / 4</code> is also <code>4</code>, and adding it twice would overcount the divisor 4. The <code>b &gt; a</code> test in <code>amicableFlat</code> keeps each pair once and lets <code>a &lt; b</code> handle the second half of the reciprocity, so <code>(220, 284)</code> is emitted once and never as <code>(284, 220)</code>.</p>
 <p class="step-label">The cost</p>
 <p>One divisor sum is <code>O(sqrt n)</code>; listing the perfect numbers up to <code>n</code> is <code>O(n sqrt n)</code>; the amicable scan is <code>O(n sqrt n)</code> as well, since it calls the sum a small constant number of times per candidate. Space is constant beyond the returned vector. For bounds in the millions you would build a divisor-sum sieve instead, filling every value's sum in <code>O(n log n)</code> total, the same inversion the prime sieve of 23.7 uses.</p>

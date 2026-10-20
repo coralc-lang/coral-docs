@@ -42,7 +42,7 @@
 <p class="step-label">The better approach</p>
 <p>Two pointers, one at the left end and one at the right, swap the two characters they point at, then step inward. Stop when the pointers meet or cross. Every position is touched once, and the only extra storage is the one character being swapped.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::string { String };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::string { String };
 import(lib) std::io::ios { println };
 
 void reverseString(String* s) {
@@ -61,7 +61,7 @@ void main() {
     String text = String::from(&quot;hello&quot;);
     reverseString(&amp;text);
     println(&quot;{}&quot;, text.asView());
-}</code></pre>
+}</code></pre></div>
 <p>Two details matter here: the types and the mutability. The loop counters are <code>isize</code>, signed, because <code>j--</code> must reach zero and stop. An unsigned counter would wrap to a huge value on the final decrement and crash. The operations go through <code>String</code>, whose <code>at</code> and <code>atApply</code> give read and overwrite access. A <code>str</code> would not compile here, and that is no inconvenience. It is the type system telling you that reversing needs ownership of the bytes, not a view of them.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: the loop runs about half the length, and each iteration does constant work (two reads, two writes). Space is constant, no matter how long the string. Compare the build-a-new-string approach: also linear in time, but linear in extra space. This is the first problem where two pointers buy a space improvement, not a time one. Both kinds of win are real.</p>
@@ -77,7 +77,7 @@ void main() {
 <p class="step-label">The better approach</p>
 <p>Two pointers, one from each end, advancing past anything that is not alphanumeric and comparing the survivors with case folded. No copy is made. The punctuation is skipped as the pointers travel. This is 24.1's skeleton with two changes: skip non-alphanumeric characters before comparing, and compare lowercase forms instead of swapping.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::ascii { isAsciiAlnum, toAsciiLower };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::ascii { isAsciiAlnum, toAsciiLower };
 import(lib) std::io::ios { println };
 
 bool isPalindrome(str s) {
@@ -93,7 +93,7 @@ bool isPalindrome(str s) {
         j--;
     }
     return true;
-}</code></pre>
+}</code></pre></div>
 <p>The inner <code>while</code> loops are the new idea, and they are worth reading slowly. Each advances a pointer past characters that should not be compared. The condition <code>i &lt; j</code> appears inside them too, so a string that is all punctuation, with no alphanumeric character at all, cannot run the pointers past each other and off the end. This guard-inside-the-guard is the detail most first attempts get wrong, and it only fails on inputs like <code>"..."</code> or <code>"   "</code>.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: each pointer moves inward and never retreats, so total movement is bounded by the length of the string, even though there are nested loops. Space is constant: two indices, no allocation. This is a recurring surprise with two pointers. Loops nested in the source do not necessarily mean a nested cost, if the inner loop draws from a shared budget.</p>
@@ -109,7 +109,7 @@ bool isPalindrome(str s) {
 <p class="step-label">The better approach</p>
 <p>Two pointers, left and right. Compute the sum of the two values. If it equals the target, return the positions. If it is too small, no pair involving the smallest value and any value at or below the right pointer can reach the target except by advancing the left pointer, so advance <code>i</code>. If it is too big, advance <code>j</code> leftward. Each step eliminates one candidate entirely, so the pointers cross after at most n steps.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 Vec&lt;i32&gt; twoSumSorted(const Vec&lt;i32&gt;* v, i32 target) {
@@ -130,7 +130,7 @@ Vec&lt;i32&gt; twoSumSorted(const Vec&lt;i32&gt;* v, i32 target) {
         }
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The comparison widens the sum to <code>i64</code> before checking it. If both values are large <code>i32</code>s, their sum can overflow a 32-bit integer and wrap to a small number. Then the "too small" branch fires when the true sum was "too big." Widening the arithmetic is the smallest, cheapest guard against a whole class of silent bug.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: each iteration moves one pointer one step inward, so at most n iterations. Space is constant. The brute force was quadratic. The improvement comes entirely from using the sortedness to decide which pointer must move, so each comparison rules out an entire row or column of the hypothetical table of pairs.</p>
@@ -144,7 +144,7 @@ Vec&lt;i32&gt; twoSumSorted(const Vec&lt;i32&gt;* v, i32 target) {
 <p class="step-label">The better approach</p>
 <p>Two indices, one reading, one writing, both starting after the first element. The read index visits every element. The write index advances only when the current element differs from the last one written. Because the array is sorted, the last written value is exactly what to compare against: no set, no memory, just one comparison. At the end, the write index is the count of distinct values, and everything from it onward can be discarded.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 usize removeDuplicates(Vec&lt;i32&gt;* v) {
@@ -160,7 +160,7 @@ usize removeDuplicates(Vec&lt;i32&gt;* v) {
         v-&gt;pop();
     }
     return k;
-}</code></pre>
+}</code></pre></div>
 <p>Vegetarians, note the comparison: compare the current read value against <code>v-&gt;at(k - 1)</code>, the last value we kept, not against the previous read position <code>v-&gt;at(i - 1)</code>. They are usually the same, but not always. After a write, the two positions diverge, and comparing against the last kept value is the correct invariant. The final <code>pop</code> loop trims the vector down to the distinct count. A <code>Vec</code> has no <code>truncate</code> method, so shrinking to a length is an explicit sequence of pops; the loop does the job in constant time per removed element.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: one pass, one comparison and occasionally one write per element. Space is constant, two indices and no allocation, which is the entire point of an in-place problem. The pop loop is also linear in the number of duplicates removed, so the total stays linear.</p>
@@ -176,7 +176,7 @@ usize removeDuplicates(Vec&lt;i32&gt;* v) {
 <p class="step-label">The better approach</p>
 <p>The write-pointer pattern again, with the predicate "is nonzero." Walk the array with a read index. Whenever the value is nonzero, write it at the write index and advance the write index. When the scan ends, the first <code>k</code> positions hold all the nonzero values in their original order, and every position from <code>k</code> onward gets a zero. One pass to move the values, one pass to fill the tail.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 void moveZeroes(Vec&lt;i32&gt;* v) {
@@ -190,7 +190,7 @@ void moveZeroes(Vec&lt;i32&gt;* v) {
     for (usize i = k; i &lt; v-&gt;count(); i++) {
         v-&gt;set(i, 0);
     }
-}</code></pre>
+}</code></pre></div>
 <p>This version has a subtle property for free, and a common interview follow-up asks about it explicitly: the relative order of the nonzero elements is preserved, because the read pointer visits them in order and the write pointer accepts them in the same order. If order did not matter, a faster swap-based version touches each element once, but that is not required here.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: one full scan plus a second scan of the tail, so at most twice the length in the worst case. Still linear. Space is constant. The second pass is the honest price of overwrite-and-fill rather than swap: you visit the tail once to zero it. The swap-based alternative avoids that second pass when order is not required, but it needs a branch the order-preserving version does not.</p>
@@ -206,7 +206,7 @@ void moveZeroes(Vec&lt;i32&gt;* v) {
 <p class="step-label">The better approach</p>
 <p>Three pointers, all walking backwards. Index <code>i</code> sits at the last real element of the first array, <code>j</code> at the last element of the second, and <code>k</code> at the last slot of the combined region. At each step, take the larger of <code>a[i]</code> and <code>b[j]</code>, write it at <code>k</code>, and step that source pointer back. When the second array is exhausted, the first array's remaining elements are already in place. That is a small optimization: it avoids a redundant copy of the first array's front.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 void merge(Vec&lt;i32&gt;* a, i32 m, const Vec&lt;i32&gt;* b, i32 n) {
@@ -223,7 +223,7 @@ void merge(Vec&lt;i32&gt;* a, i32 m, const Vec&lt;i32&gt;* b, i32 n) {
         }
         k--;
     }
-}</code></pre>
+}</code></pre></div>
 <p>The loop condition is <code>j &gt;= 0</code>, not <code>i &gt;= 0 &amp;&amp; j &gt;= 0</code>, and that asymmetry is deliberate. Once the second array is exhausted, the leftovers of the first array already sit at the front of <code>a</code> in the correct order, so nothing is left to do. Loop until both run out instead, and you copy values onto themselves, which is harmless but pointless. The <code>i &gt;= 0</code> guard inside the condition protects the read of <code>a[i]</code> when the first array runs out before the second, a case that happens when the first array is empty.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear in the combined length: each iteration places exactly one element, and there are <code>m + n</code> elements. Space is constant. The backwards direction lets us avoid allocation, and it works because the destination is larger than the source and consumes the source from the same end it fills from.</p>
@@ -241,7 +241,7 @@ void merge(Vec&lt;i32&gt;* a, i32 m, const Vec&lt;i32&gt;* b, i32 n) {
 <ul><li>if it is 0, swap it with the element at <code>low</code>, advance both <code>low</code> and <code>mid</code>;</li><li>if it is 1, it is in its final region, advance only <code>mid</code>;</li><li>if it is 2, swap it with the element at <code>high</code>, retreat <code>high</code>, and do not advance <code>mid</code>.</li></ul>
 <p>The last line is the one to understand. After swapping with <code>high</code>, the element now at <code>mid</code> is one we have never examined; it came from the unprocessed right end. So we must look at it again rather than step over it.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 void swapAt(Vec&lt;i32&gt;* v, usize a, usize b) {
@@ -267,7 +267,7 @@ void sortColors(Vec&lt;i32&gt;* v) {
             high--;
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The <code>mid &lt;= high</code> condition, with <code>high</code> inclusive, is the workhorse. The region between <code>mid</code> and <code>high</code> is exactly the part not yet processed; when <code>mid</code> passes <code>high</code>, nothing is left. Every iteration either shrinks that region or advances <code>mid</code> into territory whose status is already known. So the loop terminates in a single pass.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear, and not just asymptotically. This is a true single pass: each element is examined a constant number of times and swapped at most once. Space is constant, three indices. Counting sort takes two passes, so the improvement is a factor of two in array traversals. Small, but the single-pass property is what the problem asks for and what makes the pattern reusable.</p>
@@ -283,7 +283,7 @@ void sortColors(Vec&lt;i32&gt;* v) {
 <p class="step-label">The better approach</p>
 <p>Two pointers at the ends, the widest possible container. Compute its area. Now move the pointer at the <em>shorter</em> wall inward. Why that one? The current width is the maximum achievable for this pair, and the height is capped by the shorter wall. Keep the shorter wall and move the taller one inward, and the width only shrinks while the cap stays the same, so it cannot beat what we have. Moving the shorter wall inward is the only move that can find a taller cap. Repeat until the pointers meet.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 i64 maxArea(const Vec&lt;i32&gt;* h) {
@@ -304,7 +304,7 @@ i64 maxArea(const Vec&lt;i32&gt;* h) {
         }
     }
     return best;
-}</code></pre>
+}</code></pre></div>
 <p>All the arithmetic is <code>i64</code>, so even the largest possible area, a width near a billion times a height near a billion, cannot overflow. The move rule is the heart of the proof, worth restating: when we discard the shorter wall, we discard every container that could have used it, and none of them could have beaten the best already recorded. That is why the algorithm is allowed to be greedy.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: each iteration moves one pointer inward, so exactly <code>n - 1</code> iterations. Space is constant. The quadratic brute force collapses to linear because the move rule lets us throw away a whole family of candidate pairs without checking them.</p>
@@ -320,7 +320,7 @@ i64 maxArea(const Vec&lt;i32&gt;* h) {
 <p class="step-label">The better approach</p>
 <p>Two pointers with two running maxima, one from the left and one from the right. Here is the key insight: if the tallest wall seen so far on the left is shorter than the tallest seen so far on the right, then the water level at the left pointer is governed entirely by the left maximum. The right side is known to have a wall at least as tall, so it will never be the binding constraint. That means we can add <code>leftMax - height[i]</code> at the left pointer with confidence, and move it inward. Mirror the logic on the right. One pass, no per-position scanning.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 i64 trap(const Vec&lt;i32&gt;* h) {
@@ -350,7 +350,7 @@ i64 trap(const Vec&lt;i32&gt;* h) {
         }
     }
     return water;
-}</code></pre>
+}</code></pre></div>
 <p>The condition <code>hi &lt; hj</code> chooses which side to process, and the choice is exactly the insight above: the side with the smaller wall is the side whose water level is settled, because the other side already offers a taller wall. The <code>if (hi &gt;= leftMax)</code> branch distinguishes a new high wall, which traps nothing above itself, from a valley position, which traps the difference.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: the pointers move toward each other and each position is processed once. Space is constant: two maxima and an accumulator. The O(n²) brute force becomes O(n) by precomputing the running maxima on the fly instead of rescanning, the same "carry it forward" idea as the running sum of <a href="../24-live-examples-warm-up-and-fundamentals/index.html">Chapter 24</a>.</p>
@@ -366,7 +366,7 @@ i64 trap(const Vec&lt;i32&gt;* h) {
 <p class="step-label">The better approach</p>
 <p>Use the first word as the candidate prefix and shrink it. For each later word, compare it character by character against the candidate and cut the candidate down to the matching length. Once the candidate is empty, nothing more can be added and the scan can stop. This is the <em>vertical scan</em>, and it makes at most one pass over each word up to the current prefix length.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 str longestCommonPrefix(const Vec&lt;str&gt;* words) {
@@ -383,7 +383,7 @@ str longestCommonPrefix(const Vec&lt;str&gt;* words) {
         if (limit == 0) break;
     }
     return first.slice(0, limit);
-}</code></pre>
+}</code></pre></div>
 <p><code>limit</code> is the only state, and it only ever shrinks, which is why the total work is bounded by the length of the shortest word times the number of words at the very worst, and usually far less. The returned <code>str</code> is a view into the first word's bytes, so no new memory is allocated at all; the caller's list must outlive the result, which the borrowed <code>str</code> type makes explicit.</p>
 <p class="step-label">The cost</p>
 <p>Time is <code>O(n · L)</code> in the worst case, where <code>L</code> is the answer length: each word is scanned only up to the current prefix, and the prefix shrinks. Space is constant, one index and one length, because the answer is a view rather than a copy. A binary-search refinement halves the number of comparisons, but only pays off with truly enormous strings.</p>
@@ -399,7 +399,7 @@ str longestCommonPrefix(const Vec&lt;str&gt;* words) {
 <p class="step-label">The better approach</p>
 <p>Three reversals. Reverse the whole array, reverse the first <code>k</code> elements, then reverse the remaining <code>n - k</code>. After the first reversal the two groups are in the wrong internal order but on the correct sides; the second and third reversals restore the order inside each group. Every element is moved a constant number of times, so the work is linear. Reduce <code>k</code> modulo <code>n</code> first so that <code>k = n</code> (or <code>0</code>) is handled without special cases.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 void reverseRange(Vec&lt;i32&gt;* v, usize lo, usize hi) {
@@ -420,7 +420,7 @@ void rotateRight(Vec&lt;i32&gt;* v, usize k) {
     reverseRange(v, 0, n - 1);
     reverseRange(v, 0, k - 1);
     reverseRange(v, k, n - 1);
-}</code></pre>
+}</code></pre></div>
 <p>The two guards at the top are not decoration. An empty array would make <code>n - 1</code> wrap around when it is unsigned, and <code>k % n</code> would divide by zero; returning early avoids both. The <code>k % n</code> line also means a rotation by more than the length behaves correctly instead of reading out of bounds. <code>reverseRange</code> is the same two-pointer swap as 24.1, generalized to an arbitrary interval.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: three passes, each moving each element at most once, so at most six writes per element. Space is constant, two indices and one temporary value. Compare the one-step-at-a-time version, which is also in place but <code>k</code> times slower.</p>
@@ -436,7 +436,7 @@ void rotateRight(Vec&lt;i32&gt;* v, usize k) {
 <p class="step-label">The better approach</p>
 <p>One pass with a start index and a scan index. For each run, push the character into the output <code>String</code> and append the count when the run is longer than one. The only piece of machinery that is not obvious is turning a multi-digit count into its decimal characters, because Coral's formatting helpers are not the right tool for building a string one byte at a time.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::text::string { String };
 import(lib) std::io::ios { println };
 
@@ -472,7 +472,7 @@ String compress(str s) {
         i = j;
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p><code>pushUint</code> peels the decimal digits into a vector in reverse, then emits them in order; it is the integer-reversal idea of 23.3, used here to <em>write</em> a number rather than read one. The byte constant <code>48</code> is <code>'0'</code>, and adding a digit value to it produces the character. The compression loop itself is only six lines, which is the payoff for extracting the number-writing helper.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear in the input length: the scan index advances across each character once, and the digit work for the counts adds only a logarithm per run. Space is proportional to the length of the output, which for a highly repetitive string is far smaller than the input but in the worst case (no repeats) is the same size.</p>
@@ -488,7 +488,7 @@ String compress(str s) {
 <p class="step-label">The better approach</p>
 <p>Two passes and one output array. The first pass fills <code>out[i]</code> with the running prefix product before <code>i</code>. The second pass walks backward maintaining a running suffix product and multiplies it into <code>out[i]</code>. The output array itself is the only extra storage, so beyond the answer the space is constant. Widen the accumulator to <code>i64</code>: a product of many <code>i32</code> values overflows a 32-bit integer almost immediately.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 Vec&lt;i64&gt; productExceptSelf(const Vec&lt;i32&gt;* v) {
@@ -510,7 +510,7 @@ Vec&lt;i64&gt; productExceptSelf(const Vec&lt;i32&gt;* v) {
         i--;
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The forward pass stores the product of the elements strictly before <code>i</code>; the backward pass multiplies in the product strictly after <code>i</code>. They never overlap, which is why no division is needed and zeros are harmless: a zero simply makes every prefix after it zero and every suffix before it zero, and each answer ends up correct. The signed <code>isize</code> backward index is the same choice as 24.1, so the <code>i--</code> can reach zero and stop without wrapping.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: two passes, constant work per element. Space is linear only because the answer is the same length as the input; the working state is a single running product. This is the discipline that distinguishes "extra space" from "output space," and the problem is usually asked precisely to test that distinction.</p>
@@ -526,7 +526,7 @@ Vec&lt;i64&gt; productExceptSelf(const Vec&lt;i32&gt;* v) {
 <p class="step-label">The better approach</p>
 <p>Sort once, then fix the first element with an outer index <code>i</code>. For the remaining window <code>(i, end]</code>, run the two-pointer two-sum against the target <code>-v[i]</code>. The sortedness licenses the pointer movement, and it also makes duplicate-skipping trivial: skip an <code>i</code> equal to the previous one, and after recording a triple, skip equal values on both ends of the window.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::sort { sortI32 };
 import(lib) std::io::ios { println };
 
@@ -562,7 +562,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; threeSum(Vec&lt;i32&gt;* nums) {
         }
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>There are three places duplicates could sneak in, and each is guarded once. The outer skip handles repeated first elements; the two inner skips handle repeated second and third values after a hit. The sum is widened to <code>i64</code> so three large <code>i32</code>s cannot overflow and flip the sign of the comparison. The returned triples come out in the order the sorted array produces, one per distinct value combination.</p>
 <p class="step-label">The cost</p>
 <p>Sorting is <code>O(n log n)</code>, and the outer loop with its inner two-pointer walk adds <code>O(n²)</code>, so the total is <code>O(n²)</code>, which beats the cubic brute force by a full factor of <code>n</code>. Space is constant beyond the sort and the output. The sorting cost is negligible next to the quadratic scan for any interesting input.</p>
@@ -578,7 +578,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; threeSum(Vec&lt;i32&gt;* nums) {
 <p class="step-label">The better approach</p>
 <p>A <em>fixed-size sliding window</em> with two frequency arrays, one for the pattern and one for the current window, each of 26 counters. Seed both from the first window, then compare. On each step, add the entering character to the window count and subtract the leaving one. Since the alphabet is tiny and fixed, comparing the two arrays is a constant 26 operations, and the total is linear in <code>n</code>.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 Vec&lt;i32&gt; findAnagrams(str s, str p) {
@@ -618,7 +618,7 @@ Vec&lt;i32&gt; findAnagrams(str s, str p) {
         }
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The subtraction <code>(i32)s.at(i) - 97</code> maps <code>'a'</code> to index 0 and <code>'z'</code> to 25; the constant <code>97</code> is <code>'a'</code>. The two conditions delimit the window: remove the leaving character only once <code>i &gt;= m</code>, and test only once the window is full at <code>i &gt;= m - 1</code>. The comparison loop breaks on the first mismatch, which makes the common (non-matching) case cheap.</p>
 <p class="step-label">The cost</p>
 <p>Time is <code>O(26 · n)</code>, which is <code>O(n)</code> because the alphabet size is a constant. Space is constant: two arrays of 26 integers, regardless of how long <code>s</code> and <code>p</code> are. This is the fixed-alphabet cousin of 25.6's sliding window, where the map grows with the number of distinct characters instead.</p>

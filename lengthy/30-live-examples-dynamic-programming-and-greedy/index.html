@@ -46,7 +46,7 @@
 <p>You are at the bottom of the stairs. To reach step n, your very last move landed you there from step n−1 (one step) or from step n−2 (two steps). So the number of ways to reach step n is the number of ways to reach n−1 plus the number of ways to reach n−2. That is exactly the Fibonacci recurrence wearing a different hat, and there is one way to be at the bottom (do nothing).</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force is the same double recursion that made Fibonacci explode: each call forks into two smaller calls, and the same step is recomputed by many paths. The fix is the same too, but here we write it as a small bottom-up table, which makes the DP structure visible:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 climbStairs(u64 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 climbStairs(u64 n) {
     // base cases: 0 or 1 steps can be done exactly one way
     if (n &lt;= 1) return 1;
     // ways[i] will hold the number of ways to reach step i
@@ -60,7 +60,7 @@
         ways.push(prev1 + prev2);
     }
     return ways.at((usize)n);
-}</code></pre>
+}</code></pre></div>
 <p>The table <code>ways</code> holds one entry per step, and each entry is the sum of the two before it. The first two entries are the base cases read directly off the problem; every later entry is computed from entries that already exist, which is what "bottom-up" means. Read backwards from the top, this table is a proof: the number of ways to reach step i is the sum of the ways to reach the two steps you could have come from.</p>
 <p class="step-label">Time and space</p>
 <p>The loop runs n−1 times, doing constant work per step, so it is Θ(n) time. The table is n+1 entries, so it is Θ(n) space, but note that each entry uses only the two before it, so we could keep just two variables and drop to O(1) space, exactly as the iterative Fibonacci did in 27.2. The full table is shown because most DP problems genuinely need it, and seeing the general form before optimising the special case is the right order of learning.</p>
@@ -75,7 +75,7 @@
 <p>You are paying an exact amount from a till, and you want the smallest handful of coins. For any amount a, your last coin was some denomination c, and before that coin you had to make a−c optimally. So the fewest coins for a is one plus the fewest coins for a−c, minimised over every coin c that fits. That sentence is the recurrence, and it is the smallest possible statement of optimal substructure.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute-force recursion tries every coin as the "last" coin and recurses, which explodes because the same amount is re-solved through many orderings. The bottom-up table fills amounts from 0 upward, so each is solved once:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 coinChange(Vec&lt;i32&gt;* coins, i32 amount) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i64 coinChange(Vec&lt;i32&gt;* coins, i32 amount) {
     // a sentinel meaning &quot;not yet reachable&quot;
     i64 impossible = 1000000000;
     // dp[a] = fewest coins summing exactly to a
@@ -102,7 +102,7 @@
     // still the sentinel means no combination exists
     if (answer &gt;= impossible) return -1;
     return answer;
-}</code></pre>
+}</code></pre></div>
 <p><code>dp[a]</code> is the fewest coins for amount a; <code>impossible</code> is a stand-in for "no way yet found." The nested loops consider, for each amount, every coin as the last coin and keep the smallest result. The <code>coin &lt;= a</code> guard prevents asking for a negative amount. When the final entry is still <code>impossible</code>, no combination exists and we return −1.</p>
 <p class="step-label">Time and space</p>
 <p>The outer loop runs amount times and the inner loop runs once per coin, so the time is Θ(amount × number_of_coins). The table is amount+1 entries, so the space is Θ(amount). This is the classic DP trade written plainly: we spend memory proportional to the target to turn an exponential recursion into a polynomial loop.</p>
@@ -117,7 +117,7 @@
 <p>You are robbing a museum with a single duffel bag of fixed capacity. Each loot has a weight and a value. You walk past the exhibits one by one; for each, you either take it (if it fits in what is left) or leave it. Unlike the coin problem, you cannot take a copy of an item later, there is only one of each, and that "once" is what makes this problem different from coin change.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force enumerates all 2^n subsets and checks each for weight, which is exponential. DP processes the items one at a time, maintaining a table of the best value achievable at every capacity using only the items seen so far:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 knapsack(Vec&lt;i32&gt;* weights, Vec&lt;i32&gt;* values, i32 capacity) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 knapsack(Vec&lt;i32&gt;* weights, Vec&lt;i32&gt;* values, i32 capacity) {
     usize n = weights-&gt;count();
     // dp[c] = best value achievable with capacity c
     Vec&lt;i32&gt; dp = Vec&lt;i32&gt;::withCap((usize)capacity + 1);
@@ -138,7 +138,7 @@
         }
     }
     return dp.at((usize)capacity);
-}</code></pre>
+}</code></pre></div>
 <p>The single <code>dp</code> vector is reused as the items stream past: after processing item i, <code>dp[c]</code> is the best value possible with capacity c using items 0 through i. The inner loop runs downward from <code>capacity</code> to <code>w</code>. That downward direction is the whole trick for the "at most once" rule: when we read <code>dp[c - w]</code>, we must read a value from the previous item's row, not one already updated with the current item, and going downward guarantees that entry has not been touched yet this pass. If you iterate upward instead, an item can be taken multiple times, which is a different problem (unbounded knapsack) and a bug in this one.</p>
 <p class="step-label">Time and space</p>
 <p>There are n items and capacity+1 capacities, so the time is Θ(n × capacity). The space is Θ(capacity), because the second dimension is collapsed, we keep only the current row, not all n of them. This collapsing is a real optimisation over the textbook (n+1) × (capacity+1) table; the downward loop is the price of it.</p>
@@ -153,7 +153,7 @@
 <p>Two editors have versions of the same document, and you want to know how much text they share in order. You line the two up and walk them together. If the current characters match, that character is part of the common subsequence and you advance both. If they do not match, one of the two characters must be skipped, so the answer is the better of skipping one or skipping the other. That decision, match, or skip one side, is the recurrence.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force generates every subsequence of the first string and checks membership in the second, which is exponential. DP builds a table indexed by (i, j), the prefixes of the two strings, where each cell is the LCS length of those prefixes:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 lcs(str a, str b) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 lcs(str a, str b) {
     usize m = a.len;
     usize n = b.len;
     // the 2-D table is stored flat, one row of width n+1 per prefix
@@ -178,7 +178,7 @@
         }
     }
     return dp.at(m * width + n);
-}</code></pre>
+}</code></pre></div>
 <p>The table is two-dimensional but stored in one flat vector: the cell for (i, j) lives at index <code>i * width + j</code> where <code>width = n + 1</code>. When the characters at the current positions match, the answer is one plus the best answer for the two prefixes with that character removed (<code>i−1, j−1</code>). When they do not, the answer is the larger of dropping a character from either string. The first row and first column are all zeros, an empty prefix has no common subsequence, which the initial fill establishes.</p>
 <p class="step-label">Time and space</p>
 <p>Both loops run over the two lengths, so the time is Θ(m × n). The flat table has (m+1)(n+1) entries, so the space is Θ(m × n). The full table is not always necessary, only the previous row is needed to compute the next, so a two-row version reduces the space to Θ(min(m, n)), but the full table is kept when you also want to reconstruct the actual subsequence by walking backward through it.</p>
@@ -193,7 +193,7 @@
 <p>You are fixing a typo, and each fix is one of three actions: delete a character, insert a character, or replace a character. You want the fewest fixes. Walking the two strings from the left, if the current characters match, no fix is needed and the answer is the same as for the prefixes without them. If they differ, you must spend exactly one fix, and you choose whichever of the three actions (delete from the first, insert into the first, substitute) leaves you the cheapest remainder.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute-force recursion branches into three at every mismatch, giving roughly 3^(m+n) work. DP collapses the branching into a table where each cell holds the distance between two prefixes:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 editDistance(str a, str b) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 editDistance(str a, str b) {
     usize m = a.len;
     usize n = b.len;
     usize width = n + 1;
@@ -228,7 +228,7 @@
         }
     }
     return dp.at(m * width + n);
-}</code></pre>
+}</code></pre></div>
 <p>The base cases are the border of the table: turning the empty string into a prefix of length j costs j insertions, and turning a prefix of length i into empty costs i deletions. Those borders are the first row and first column. Every interior cell either copies the diagonal (a match, free) or adds one to the cheapest of the three neighbours: up (delete), left (insert), or diagonal (substitute). This is the recurrence written as a picture, and the picture is the most important part; the code is just the picture made concrete.</p>
 <p class="step-label">Time and space</p>
 <p>The table is (m+1)(n+1), so both are Θ(m × n), exactly like LCS. The reconstruction of the actual edit script is a walk backward from the bottom-right corner, mirroring the choices that produced each cell. As with LCS, only the previous row is needed for the distance alone.</p>
@@ -243,7 +243,7 @@
 <p>You are picking moments in a stock chart to buy at the lowest price and sell higher, but only moving forward in time and only ever buying at a higher price than before, staying strictly ascending. The longest chain of increasing values is your answer. Think of each element as the possible last link of a chain; the longest chain ending at element i is one plus the longest chain ending at an earlier element whose value is smaller.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force tries all 2^n subsequences, exponential. The DP is O(n^2): a table <code>dp[i]</code> holds the length of the longest increasing subsequence that ends exactly at position i.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 lis(Vec&lt;i32&gt;* nums) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 lis(Vec&lt;i32&gt;* nums) {
     usize n = nums-&gt;count();
     if (n == 0) return 0;
     // dp[i] = length of the longest increasing chain ending exactly at i
@@ -267,7 +267,7 @@
         if (dp.at(i) &gt; best) best = dp.at(i);
     }
     return best;
-}</code></pre>
+}</code></pre></div>
 <p>Every position starts as a chain of length 1 (the element alone). For each position i, we look back at every earlier position j with a smaller value and extend that chain; <code>dp[i]</code> becomes the best such extension. The answer is the largest value anywhere in the table, not necessarily the last entry, because the longest chain can end anywhere. That "the answer is the table's maximum" is the detail people miss.</p>
 <p class="step-label">Time and space</p>
 <p>The two nested loops are Θ(n^2) time, and the table is Θ(n) space. That is fine for thousands of elements but too slow for millions, and there is a famous O(n log n) version: maintain a <code>tails</code> array where <code>tails[k]</code> is the smallest possible tail of an increasing subsequence of length k+1, and use binary search to place each new element. If you have just read 28.7 on binary search, that improvement is a beautiful application of it, the DP's inner scan is exactly what the binary search replaces.</p>
@@ -282,7 +282,7 @@
 <p>You are walking through a city laid out as a grid, and each cell charges a toll. You start at the top-left corner and may only move right or down, so you can never go back. The cheapest cost to reach any cell is the cell's own toll plus the cheaper of the costs to reach the cell above it and the cell to its left. That sentence is the recurrence, and it is the two-dimensional cousin of climbing stairs.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force tries all paths, which number C(rows+cols, rows), exponential. DP fills a table of cheapest costs cell by cell:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 minPathSum(Vec&lt;Vec&lt;i32&gt;&gt;* grid) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 minPathSum(Vec&lt;Vec&lt;i32&gt;&gt;* grid) {
     usize rows = grid-&gt;count();
     if (rows == 0) return 0;
     // read the row width without copying the row
@@ -317,7 +317,7 @@
         }
     }
     return dp.at(cols - 1);
-}</code></pre>
+}</code></pre></div>
 <p>Notice that the table is one-dimensional even though the grid is two-dimensional, and the loop nests are exactly the grid loops. This works because the only cells ever needed are the current row's left neighbour (already updated this row) and the cell above (still in the array from the previous row). <code>grid-&gt;atPtr(i)</code> returns a pointer to row i so we can read it without copying the row, which matters both for speed and, in Coral, for correctness: copying an owning <code>Vec</code> and letting the copy be freed would free memory the grid still points at. The three boundary branches handle the top row (no up), the left column (no left), and the interior (both).</p>
 <p class="step-label">Time and space</p>
 <p>Every cell is computed once, so the time is Θ(rows × cols). The space is Θ(cols) because only one row of the table is kept, not the whole grid of DP values. As with knapsack, the row-collapsing is a genuine optimisation; the naive DP would use the full grid.</p>
@@ -332,7 +332,7 @@
 <p>You have one conference room and a stack of booking requests. You want to accept as many as possible. The tempting rule is to accept the earliest-starting request first, but that can lock you into a long meeting that blocks several short ones. The rule that works is counterintuitive at first: always accept the request that ends earliest. Because a meeting that ends early frees the room soonest, and no other choice can leave the room free before it does.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force tries every subset to find the largest non-overlapping one, exponential. The greedy algorithm sorts by end time and sweeps once, accepting any interval that starts at or after the last accepted one's end:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Interval {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Interval {
     i32 start;
     i32 end;
 }
@@ -359,7 +359,7 @@ i32 maxNonOverlapping(Vec&lt;Interval&gt;* intervals) {
         }
     }
     return count;
-}</code></pre>
+}</code></pre></div>
 <p>The sort by end time is the whole algorithm; everything after it is a linear sweep. An interval is accepted exactly when it begins no earlier than the last accepted interval ended, so accepted intervals are automatically disjoint and in increasing order of end. <code>haveLast</code> handles the first accepted interval without needing a magic sentinel endpoint. The <code>(i64)cur.start</code> cast keeps the comparison in a signed type so the initial <code>lastEnd</code> sentinel can never collide with a real, non-negative time.</p>
 <p class="step-label">Time and space</p>
 <p>Sorting dominates: Θ(n log n). The sweep is Θ(n). The space is O(1) beyond the sorted list. That final complexity is the point of greedy: a problem that looked like it needed exponential search is solved in n log n, and the reason is that the exchange argument (below) proves the local choice is globally safe.</p>
@@ -376,7 +376,7 @@ i32 maxNonOverlapping(Vec&lt;Interval&gt;* intervals) {
 <p>Some letters in English are common (e, t, a) and some are rare (z, q). You want the common ones to have short codes and the rare ones long codes, so the total text is shorter. Huffman's insight is to build a tree from the bottom up: repeatedly take the two least frequent symbols and merge them into a new symbol whose frequency is their sum, until everything is one tree. The rarer a symbol is, the deeper it ends up, and the deeper it is, the longer its code. No prefix of a code is another code, because every symbol is a leaf and no leaf is on the path to another.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force searches all binary trees over the symbols, exponential. Huffman's greedy merge is optimal and needs only a priority queue: at every step it takes the two lightest nodes, and that local rule provably yields the minimal weighted path length. The priority queue from <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a> (a min-heap) is exactly the tool.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct HuffNode {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct HuffNode {
     i32 freq;
     i32 symbol;          // 0..symbols-1 for leaves, -1 for internal
     HuffNode* left;
@@ -427,7 +427,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
     }
     codeLengths(root-&gt;left, depth + 1, lengths);
     codeLengths(root-&gt;right, depth + 1, lengths);
-}</code></pre>
+}</code></pre></div>
 <p>The queue starts holding one leaf per symbol, ordered by frequency. Each pass pops the two lightest nodes and pushes a new internal node that is their parent, with their combined frequency. When one node remains, it is the root of the code tree. The distance from the root to a leaf is that symbol's code length, which <code>codeLengths</code> records by walking the tree and incrementing a depth counter. The total weighted path length, the objective being minimised, is the sum of <code>freq[s] * lengths[s]</code> over all symbols.</p>
 <p class="step-label">Time and space</p>
 <p>There are at most n pushes plus n−1 merges, and every heap operation is O(log n), so the time is Θ(n log n), where n is the number of distinct symbols. The tree has at most 2n−1 nodes, so the space is Θ(n). A full sort would also be O(n log n); the heap is used because the merges keep creating new frequencies that must be re-ordered, which a one-time sort cannot anticipate.</p>
@@ -444,7 +444,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
 <p>Your denominations are 1, 5, 10, and 25 cents, the US coins. Greedy gives the right answer for every amount, which is why cashiers make change in their heads. Now your denominations are 1, 3, and 4, and the amount is 6. Greedy grabs 4, then 1, then 1: three coins. But 3 + 3 is two coins. Greedy is wrong, and it is wrong because taking the largest coin now forecloses the better combination later.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The greedy version is short and tempting:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 coinChangeGreedy(Vec&lt;i32&gt;* coins, i32 amount) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 coinChangeGreedy(Vec&lt;i32&gt;* coins, i32 amount) {
     // sort ascending so we can walk from the largest coin down
     sortI32(coins);
     i32 count = 0;
@@ -460,7 +460,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
     // any remainder means this greedy pass failed to hit the target
     if (remaining != 0) return -1;
     return count;
-}</code></pre>
+}</code></pre></div>
 <p>Sort ascending, walk from the largest, take as many of each as fit. For coins {1, 5, 10, 25} it is correct for all amounts, and that is a genuine property of the US system (and of any system where each coin is a multiple of the next, called a canonical system). For coins {1, 3, 4} and amount 6 it returns 3 when the true answer is 2. The DP of 29.3 returns the correct 2, in Θ(amount × coins) time. This is the trade: greedy is polynomial and fast, DP is polynomial and correct; greedy is correct only when the denominations have the special structure, and DP is correct always.</p>
 <p class="step-label">Why greedy fails here</p>
 <p>The greedy choice (largest coin) is locally optimal in the sense that it leaves the smallest remainder for that one coin, but it is not "safe": there is no exchange argument showing an optimal solution contains the greedy first coin. Amount 6 with coins {1, 3, 4} is the concrete counterexample: the optimal solution does not contain a 4 at all. Without a proof of safety, greedy is a heuristic, and heuristics return wrong answers on the inputs that matter.</p>
@@ -474,7 +474,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
 <p>You walk down the street with a notebook. At each house you face a choice: rob it and skip its neighbour, or leave it and keep whatever you had. The best loot up to house i is either the best loot up to i−1 (leave house i) or the value of house i plus the best loot up to i−2 (rob it). That sentence is the recurrence, and it is climbing stairs with a maximum in place of a sum.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force tries all 2^n ways to choose a non-adjacent subset, which is exponential. The DP keeps, for each prefix of the street, the best total achievable there; each new house needs only the two previous answers, so the whole solution is a single pass with constant state.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 rob(Vec&lt;i32&gt;* nums) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 rob(Vec&lt;i32&gt;* nums) {
     // only the last two answers are ever needed
     i32 prev2 = 0;      // best loot up to two houses back
     i32 prev1 = 0;      // best loot up to the previous house
@@ -488,7 +488,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
         prev1 = cur;
     }
     return prev1;
-}</code></pre>
+}</code></pre></div>
 <p>Two variables carry the whole table. <code>prev1</code> is the best loot using the houses seen so far, and <code>prev2</code> is the best loot two houses back, which is the only state that matters when you decide to rob the current house. For each house the code compares robbing it (<code>prev2 + value</code>) with skipping it (<code>prev1</code>), keeps the larger, and slides the window forward. The full table would have one entry per house, but because each entry depends only on the two before it, it collapses into two variables.</p>
 <p class="step-label">Time and space</p>
 <p>One pass, constant work per house, so Θ(n) time and O(1) space, against the brute force's O(2^n). This is exactly the space optimisation noted for climbing stairs in 29.2, applied where the recurrence is a maximum rather than a sum.</p>
@@ -503,7 +503,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
 <p>You are walking a street grid, and at each intersection you may go right or down. The number of ways to reach a cell is the number of ways to reach the cell above it plus the number of ways to reach the cell to its left, because those are the only two cells you could have come from. The first row and first column each have exactly one path, all rights, or all downs, and those seed the count.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force walks every path, and the number of paths is the binomial coefficient C(m+n−2, m−1), which is already enormous for modest grids before the search itself becomes slow. The DP fills the counts in a single pass, and because each cell needs only the cell above and the cell to its left, one row of the table is enough.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 uniquePaths(i32 m, i32 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i64 uniquePaths(i32 m, i32 n) {
     if (m &lt;= 0 || n &lt;= 0) return 0;
     // one row of the count table
     Vec&lt;i64&gt; dp = Vec&lt;i64&gt;::withCap((usize)n);
@@ -517,7 +517,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
         }
     }
     return dp.at((usize)(n - 1));
-}</code></pre>
+}</code></pre></div>
 <p>The vector holds the current row of the table. After the first row is initialised to all ones, each later row is computed in place: <code>dp[j]</code> still holds the count from the cell above, while <code>dp[j-1]</code> has just been overwritten with the count from the cell to the left, so adding them yields the new <code>dp[j]</code>. This is the row-collapsing of 29.8's minimum path sum, with addition instead of minimisation and the first row and column seeded to one instead of handled by branches.</p>
 <p class="step-label">Time and space</p>
 <p>Every cell is computed once, so Θ(m × n) time. The table is one row, so Θ(n) space, or Θ(min(m, n)) if you iterate along the shorter dimension. The answers are binomial coefficients and grow quickly, so i64 is used rather than i32 to delay the overflow point.</p>
@@ -532,7 +532,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
 <p>You watch a price chart over time and may make a single buy followed by a later sell. As you move forward, the best day to have bought so far is the cheapest price seen, and the best trade ending today is today's price minus that cheapest price. You keep a running minimum and a running best profit, and the answer is the best profit anywhere.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force checks every (buy, sell) pair, which is O(n^2). One pass records the lowest price so far and the best profit so far; each new day needs only those two numbers, giving O(n) time and O(1) space. Notice this is a greedy scan, not a table: the running minimum is the safe choice so far, and it is always right because a lower buy price can only help.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 maxProfit(Vec&lt;i32&gt;* prices) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 maxProfit(Vec&lt;i32&gt;* prices) {
     i32 best = 0;
     // the running minimum replaces the unknown best buy day
     i64 lowest = 9223372036854775807;   // larger than any possible price
@@ -544,7 +544,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
         if (gain &gt; (i64)best) best = (i32)gain;
     }
     return best;
-}</code></pre>
+}</code></pre></div>
 <p><code>lowest</code> starts above any possible price so that the first day always sets a new minimum. For each day the code updates the running minimum, then computes the profit from selling today and keeps the best. Updating the minimum before computing the profit permits buying and selling on the same day for zero profit, which is harmless; if you required at least a day between the two, you would compute the profit first and update the minimum after.</p>
 <p class="step-label">Edge cases</p>
 <p>Fewer than two days yields 0, because no buy-then-sell pair exists and the gain is never positive. A steadily falling price yields 0, the correct "do not trade" answer. Prices are non-negative in the usual statement, and the i64 arithmetic prevents overflow in the subtraction. If short selling were allowed, the problem would change and the running-minimum trick would no longer apply.</p>
@@ -557,7 +557,7 @@ void codeLengths(HuffNode* root, i32 depth, Vec&lt;i32&gt;* lengths) {
 <p>You are reading a sentence that has lost its spaces and trying to segment it back into words using a dictionary. You mark each position you can reach; if the string up to some earlier position can be segmented, and the piece between there and here is a dictionary word, then the string up to here can be segmented too. The whole string is segmentable once the mark reaches its end.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute-force recursion tries every dictionary word at every position and explodes, because the same suffix is attempted from many earlier splits. The DP records, for each prefix length, whether that prefix can be segmented. It fills left to right, and each entry looks back for a word whose length lands exactly on it.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool endsWithWordAt(str s, i32 end, str w) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool endsWithWordAt(str s, i32 end, str w) {
     // where would this word start if it ended at `end`?
     i32 start = end - (i32)w.len;
     // prune: it would start before the string
@@ -591,7 +591,7 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
         }
     }
     return dp.at(n);
-}</code></pre>
+}</code></pre></div>
 <p><code>dp[i]</code> answers "can the first i characters be segmented?". From <code>dp[0] = true</code>, the empty string segments into no words, the outer loop extends the reachable frontier one character at a time. For each endpoint, the inner loop offers every dictionary word; a word is usable only if it fits (<code>w.len &lt;= i</code>), if the prefix just before it is reachable (<code>dp[i - w.len]</code>), and if its bytes actually match ending at <code>i</code>. The helper does that byte comparison. As soon as one word completes a segmentable prefix, the endpoint is marked and the inner loop can stop early.</p>
 <p class="step-label">Time and space</p>
 <p>The outer loop runs n times and the inner loop once per dictionary word, with a byte comparison of up to the word's length, so the time is O(n × d × L) for d words of maximum length L. The table is n + 1 booleans, so O(n) space, against the exponential recursion it replaces.</p>
@@ -606,7 +606,7 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
 <p>Two people want to divide a pile of coins exactly evenly. The total must be even, and then each person's share is exactly half. The real question is therefore a subset-sum: is there a subset of the pile summing to half the total? If there is, the rest automatically sums to the other half.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force tries all 2^n subsets, exponential. The DP is the 0/1 knapsack of 29.4 asking a yes/no question instead of a maximum: a boolean table says, for each reachable sum, whether some subset achieves it. Each number is offered exactly once, so the sum loop runs downward to keep an item from being reused.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool canPartition(Vec&lt;i32&gt;* nums) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool canPartition(Vec&lt;i32&gt;* nums) {
     i64 total = 0;
     for (usize i = 0; i &lt; nums-&gt;count(); i += 1) {
         total += (i64)nums-&gt;at(i);
@@ -630,7 +630,7 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
         }
     }
     return reachable.at((usize)target);
-}</code></pre>
+}</code></pre></div>
 <p>The parity check rejects the impossible cases straight away. The boolean vector then marks which sums are achievable, with sum 0 achieved by taking nothing. Each number is offered once, and the inner loop runs from the target down to the number, so that when it reads <code>reachable[s - x]</code> it reads the state from before this number was considered. Running the loop upward instead would let a single number be reused, which is the unbounded version of the problem, the same direction rule that separates 0/1 knapsack from its cousins.</p>
 <p class="step-label">Time and space</p>
 <p>The time is O(n × total), and the space is O(total). This is the pseudo-polynomial cost of subset-sum: polynomial in the numeric value of the total rather than in the count of items, which is fine for small totals and hopeless for huge ones.</p>
@@ -645,7 +645,7 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
 <p>You hold the string with a finger at each end. If the two end characters are equal, they can both join a palindromic subsequence, so the answer is two plus the best answer for the inside. If they differ, one of them must be dropped, so the answer is the better of dropping the left and dropping the right. The subproblem is always a range of the string, and the recurrence shrinks that range.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force tries all 2^n subsequences, exponential. The DP fills a table indexed by the two ends of a range, from short ranges up to the whole string. Every entry depends only on shorter ranges, so filling by increasing length makes each dependency available.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 longestPalindromicSubseq(str s) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 longestPalindromicSubseq(str s) {
     usize n = s.len;
     if (n == 0) return 0;
     // flat table: cell (i, j) lives at i*n + j
@@ -673,7 +673,7 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
         }
     }
     return dp.at(n - 1);                 // the cell (0, n-1)
-}</code></pre>
+}</code></pre></div>
 <p>The flat table stores cell <code>(i, j)</code> at index <code>i * n + j</code>. The diagonal <code>(i, i)</code> is seeded to 1. The outer loop then fills ranges of length 2, 3, and upward, because each cell needs <code>(i+1, j-1)</code>, <code>(i+1, j)</code>, and <code>(i, j-1)</code>, all strictly shorter ranges. When the ends match, the range's length is two more than the inside's; the <code>len == 2</code> special case avoids reading <code>(i+1, j-1)</code> for an empty inside, which would be an out-of-range cell.</p>
 <p class="step-label">Time and space</p>
 <p>Every range is computed once, so Θ(n^2) time, and the flat table has n^2 entries, so Θ(n^2) space. Here the cost lives in the table rather than in the output, since the answer is a single number.</p>
@@ -688,7 +688,7 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
 <p>You are crossing a line of stepping stones, and from each stone you may leap up to a stated distance. You do not need to plan the jumps in advance; you only need to know how far the furthest reachable stone is. Starting from the first stone, that frontier is its jump range, and as you advance through stones you can actually stand on, you extend the frontier by their jump ranges. If the frontier ever reaches the last stone, the answer is yes.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force explores every sequence of jumps, exponential because the same position is reached by many routes. The greedy scan keeps a single number, the furthest index reachable so far, and sweeps left to right. At each position it checks that the position is reachable (it is at or before the frontier) and extends the frontier if that stone can throw you further. One pass settles the question.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool canJump(Vec&lt;i32&gt;* nums) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool canJump(Vec&lt;i32&gt;* nums) {
     usize n = nums-&gt;count();
     if (n == 0) return true;
     // the furthest index any earlier stone can reach
@@ -703,7 +703,7 @@ bool wordBreak(str s, Vec&lt;str&gt;* dict) {
         if (farthest &gt;= n - 1) return true;      // the last stone is reachable
     }
     return true;
-}</code></pre>
+}</code></pre></div>
 <p>The loop is the whole algorithm. <code>farthest</code> is the rightmost index any earlier stone can reach. At stone <code>i</code>, if <code>i</code> lies beyond <code>farthest</code>, there is a gap no jump can cross and the answer is immediately false. Otherwise the stone is reachable, so its jump range extends the frontier. Once the frontier covers the last index, the answer is yes. There is no table and no backtracking, because the only fact that matters at each step is the single best frontier.</p>
 <p class="step-label">Why greedy works here</p>
 <p>The frontier only ever grows, and a larger frontier can never make a later stone less reachable, so extending it as far as possible is always safe. This monotonicity is the exchange argument in miniature: keeping the best frontier is never worse than any other choice, so one running maximum is enough.</p>

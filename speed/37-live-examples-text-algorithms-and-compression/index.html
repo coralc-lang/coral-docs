@@ -39,7 +39,7 @@
 <p class="step-label">The idea</p>
 <p>At each position, count how often the current byte repeats, emit the count and byte, then jump past the run. The decoder reads a count and byte and writes the byte that many times. RLE wins on long runs and loses on data with none: a run of one costs two bytes.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::text::string { String };
 import(lib) std::io::ios { println };
 
@@ -90,7 +90,7 @@ void main() {
     println(&quot;encoded {} bytes&quot;, encoded.count());
     println(&quot;decoded {}&quot;, decoded.asView());
     println(&quot;lossless {}&quot;, decoded.asView().equals(sample));
-}</code></pre>
+}</code></pre></div>
 <p>Each run is a count byte followed by a value byte, so the output is a <code>Vec&lt;u8&gt;</code>, which keeps the format unambiguous. The <code>run &lt; 255</code> guard caps a run at one byte's worth; longer runs split into several records, and the decoder never notices. <code>i += run</code> makes the encode one pass.</p>
 <p class="step-label">Cost and notes</p>
 <p>Time O(n): each byte is examined once by its run. Space O(r) for r runs. The encoder's best case is all-equal bytes (two output bytes per 255 input); its worst is no repeats, where output doubles. RLE is a pre-filter for an entropy coder, not a general compressor.</p>
@@ -102,7 +102,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Build a binary tree bottom-up. Start with one leaf per distinct symbol in a min-heap keyed by frequency. Repeatedly join the two lightest nodes under a node weighted by their sum. The final node is the root, and the path to a leaf (zero left, one right) is its code. Joining the two lightest minimizes average length.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::text::string { String };
 import(lib) std::io::ios { println };
 import(lib) std::collections::priorityqueue { PriorityQueue };
@@ -247,7 +247,7 @@ void main() {
     println(&quot;input   {} bytes&quot;, text.len);
     println(&quot;encoded {} bits&quot;, bits.len);
     println(&quot;roundtrip {}&quot;, back.asView().equals(text));
-}</code></pre>
+}</code></pre></div>
 <p><code>parent</code> and <code>bit</code> remove the need to store codes. On each merge, both children learn their parent and bit, so a leaf can walk up on demand. Encoding walks leaf to root, collecting bits, then emits them reversed. Decoding walks down from the root and resets at each leaf. The <code>single</code> guard handles one distinct symbol: the code is '0', repeated once per bit.</p>
 <p class="step-label">Cost and notes</p>
 <p>Counting is O(n). The heap holds at most 256 entries, so the build is O(k log k) with k effectively constant. Encoding is O(n x depth), decoding O(bits). Skewed frequencies approach entropy, the theoretical floor; a uniform distribution gains almost nothing.</p>
@@ -259,7 +259,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Keep a window of the last <code>w</code> bytes. At the current position, find the longest match and emit a reference plus the literal that broke it. With no match, emit offset zero and the literal alone. The window slides forward. LZ77 is the engine inside DEFLATE, gzip, and zlib; add Huffman coding of tokens and you have the format that compressed the web.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::text::string { String };
 import(lib) std::io::ios { println };
 
@@ -332,7 +332,7 @@ void main() {
     println(&quot;input  {} bytes&quot;, text.len);
     println(&quot;tokens {}&quot;, toks.count());
     println(&quot;roundtrip {}&quot;, back.asView().equals(text));
-}</code></pre>
+}</code></pre></div>
 <p>The inner <code>while</code> walks from candidate <code>s</code> and <code>pos</code> together, never reading past the end thanks to <code>pos + l &lt; n</code>. Overlapping matches let a reference reach into bytes not yet written: the decoder copies byte by byte, each copy a source for the next, which is how 'aaaa' becomes one token. Each token advances <code>pos</code> by <code>bestLen + 1</code>, the literal that ended the match.</p>
 <p class="step-label">Cost and notes</p>
 <p>The straightforward search is O(n x window) comparisons, or O(n x window x maxlength) with long matches. Production encoders reach O(n) with hash chains or suffix structures, which is why DEFLATE is fast. A repeated 12-byte phrase becomes one token; longer repetitions and smaller windows improve the ratio. The decoder is strictly linear and must be fast.</p>
@@ -344,7 +344,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Both sides start with 256 single-byte entries, and the next free code is 256. The encoder keeps a current string, initially the first byte. For each next byte, if the concatenation is in the dictionary, extend; otherwise emit the current code, add the concatenation, and restart at the new byte. Emit the last code at the end. The decoder reconstructs entries in lock-step. LZW is what <code>compress</code> and GIF use.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::text::string { String };
 import(lib) std::io::ios { println };
 
@@ -461,7 +461,7 @@ void main() {
     println(&quot;input  {} bytes&quot;, text.len);
     println(&quot;codes  {}&quot;, codes.count());
     println(&quot;roundtrip {}&quot;, back.asView().equals(text));
-}</code></pre>
+}</code></pre></div>
 <p>The encoder's dictionary is a flat <code>Vec&lt;Vec&lt;i32&gt;&gt;</code>: one 256-wide row per code, <code>dict[w][c]</code> holding the code for <code>w</code> followed by <code>c</code>, or -1. <code>atPtr</code> gives a pointer to the row without copying an owning <code>Vec</code>. The decoder stores <code>dprev</code> and <code>dsuf</code>, so each extended code remembers its prefix and trailing byte; <code>lzwEmit</code> walks the chain and replays suffixes, keeping decoding linear.</p>
 <p class="step-label">Cost and notes</p>
 <p>Encoding is O(n) lookups, each O(1) because the table is flat; real implementations use a hash map of (prefix, byte) pairs to avoid wide rows. Decoding is O(n x entryLength) worst case for <code>lzwEmit</code>, but bounded overall because the dictionary grows and short paths dominate. Repeated phrases cost a handful of codes. LZW's weakness is an unbounded dictionary and growing code width, so GIF freezes at 4096 entries and resets.</p>
@@ -473,7 +473,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Fill a table where <code>dp[i][j]</code> is the distance between the first <code>i</code> characters of <code>a</code> and first <code>j</code> of <code>b</code>. The first row and column are the index, since turning 'abc' into '' costs three deletions. Each interior cell is the cheapest of delete (above plus one), insert (left plus one), or substitute (diagonal, plus zero on a match, one otherwise). The bottom-right is the answer; walking backward retraces the alignment.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::text::string { String };
 import(lib) std::io::ios { println };
 
@@ -570,7 +570,7 @@ void main() {
     i32 d = editDistance(a, b, &amp;table);
     println(&quot;edit distance {}&quot;, d);
     printAlignment(&amp;table, a, b);
-}</code></pre>
+}</code></pre></div>
 <p>The table is a flat <code>Vec&lt;i32&gt;</code> indexed by <code>i * (n + 1) + j</code>, faster and smaller than a vector of vectors. <code>editDistance</code> fills it and returns the last entry; <code>printAlignment</code> walks backward and uses the values to choose each move. The <code>op</code> legend is <code>=</code> match, <code>*</code> substitution, <code>-</code> deletion from <code>a</code>, <code>+</code> insertion from <code>b</code>. Rows are built backward and reversed.</p>
 <p class="step-label">Cost and notes</p>
 <p>Time and space are O(m x n). The table is the price of the alignment: the distance alone needs two rolling rows and O(n) space, but the backtrack needs the whole table. A spell-checker can use O(n) space; a diff tool needs the alignment. This underpins <code>diff</code>, fuzzy matching, and speech and OCR error models.</p>
@@ -582,7 +582,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Precompute a failure function: for each pattern position, the length of the longest proper prefix that is also a suffix. On a mismatch it says how far to fall back without moving the text pointer. Each text character is inspected once, so the search is O(n + m).</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 Vec&lt;usize&gt; buildFailure(str pat) {
@@ -633,7 +633,7 @@ void main() {
         println(&quot;match at {}&quot;, hits.at(i));
     }
     println(&quot;total {}&quot;, hits.count());
-}</code></pre>
+}</code></pre></div>
 <p><code>buildFailure</code> runs the same scan on the pattern against itself. <code>k</code> is the current matched prefix length; on a mismatch it falls back to <code>fail[k - 1]</code>, and only a match advances <code>k</code>. The search never decrements <code>i</code>, which is why it is linear. After a full match, <code>k = fail[k - 1]</code> finds overlapping occurrences, so 'aa' in 'aaa' is reported at 0 and 1.</p>
 <p class="step-label">Cost and notes</p>
 <p>Both phases are O(n + m): each iteration advances <code>i</code> or decreases <code>k</code>, and <code>k</code> cannot decrease more times than it increased. That amortised argument is why KMP exists, the same shared-budget reasoning as the two-pointer palindrome scan in <a href="../25-live-examples-arrays-strings-and-two-pointers/index.html">Chapter 25</a>. Space is O(m).</p>
@@ -645,7 +645,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Write down every rotation, sort them lexicographically, and take the last column, which tends to have long runs because equal characters end up adjacent. Reversal also needs the row index of the original string; the inverse uses the last-to-first mapping, a stable count of each character's occurrences. Nothing is lost and no marker is needed.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::text::string { String };
 import(lib) std::io::ios { println };
 
@@ -752,7 +752,7 @@ void main() {
     println(&quot;bwt       {}&quot;, last.asView());
     println(&quot;primary   {}&quot;, primary);
     println(&quot;roundtrip {}&quot;, back.asView().equals(text));
-}</code></pre>
+}</code></pre></div>
 <p><code>rotationLess</code> compares rotations without materialising them, reading <code>s</code> at <code>(i + k) % n</code> and <code>(j + k) % n</code>. <code>sortRotations</code> is an inline insertion sort because a function pointer cannot capture <code>s</code>; <code>Vec::sortBy</code> would need a global. <code>bwtEncode</code> outputs the last column and records the original row. The inverse computes <code>C</code>, each byte's cumulative starting rank, and <code>lf</code>, mapping a row to the row beginning with its last character, then walks from the primary row and reverses.</p>
 <p class="step-label">Cost and notes</p>
 <p>The honest version materialises nothing but pays for sorting: insertion sort is O(n^2) comparisons of O(n), so O(n^3), fine only for small strings. Real BWT builds a suffix array in O(n log n) by prefix doubling. The inverse is linear once <code>C</code> and <code>lf</code> exist. The payoff is the <code>bzip2</code> pipeline: run-length encode the last column, then Huffman code the runs.</p>
@@ -764,7 +764,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Sort every suffix and store the start indices. A pattern occurs exactly when it is a prefix of some suffix, and sorted suffixes beginning with the pattern form a contiguous block. Binary search finds that block in O(log n) comparisons, each costing at most the pattern length. Build once, query many times.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 bool suffixLess(str text, usize i, usize j) {
@@ -846,7 +846,7 @@ void main() {
         Option::Some { value } =&gt; { println(&quot;found &#x27;{}&#x27; at {}&quot;, pat, value); },
         Option::None =&gt; { println(&quot;&#x27;{}&#x27; not found&quot;, pat); }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The suffix array is a <code>Vec&lt;usize&gt;</code> of start positions sorted by suffix. <code>suffixLess</code> compares byte by byte, treating the suffix that ends first as smaller, without allocating. <code>compareSuffixPattern</code> returns three-way, with a pattern that is a prefix counting as a match. <code>suffixSearch</code> is ordinary binary search, and <code>Option</code> carries not-found without a sentinel, as <a href="../36-live-examples-programming-principles/index.html">Chapter 36</a> argues.</p>
 <p class="step-label">Cost and notes</p>
 <p>Building here is insertion sort with an O(n) comparator, so O(n^2) comparisons and O(n^3) time: correct and clear, but only for modest texts. Prefix doubling builds in O(n log n) and is what real suffix arrays use. Queries are O(pat.len x log n), so the point is amortisation. The array stores 8 bytes per suffix plus the text, which is why suffix arrays displaced suffix trees.</p>
@@ -858,7 +858,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Shift each letter by the corresponding key letter's alphabet position. Advance the key only on letters, so spaces and punctuation pass through unchanged. Decryption subtracts. Both directions reduce the letter to a 0-through-25 index, operate there, and add the case's base back.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::string { String };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::string { String };
 import(lib) std::io::ios { println };
 
 String vigenere(str text, str key, bool encrypt) {
@@ -919,7 +919,7 @@ void main() {
     println(&quot;cipher    {}&quot;, cipher.asView());
     println(&quot;decoded   {}&quot;, plain.asView());
     println(&quot;roundtrip {}&quot;, plain.asView().equals(message));
-}</code></pre>
+}</code></pre></div>
 <p>The two case checks could be a <code>letterBase(u8)</code> helper returning the base or -1, the DRY refactor of <a href="../36-live-examples-programming-principles/index.html">Chapter 36</a>. The <code>continue</code> on a non-letter keeps the key aligned: punctuation is copied and <code>ki</code> is not advanced. Decryption adds 26 before subtracting so the result never goes negative.</p>
 <p class="step-label">Cost and notes</p>
 <p>One pass, O(n) time and O(n) space for the owned output. Vigenere was believed unbreakable for three centuries and is trivially broken today by frequency analysis: a repeating key leaks its period, then each shift is a Caesar cipher. This is text manipulation, not cryptography; use the standard library's AES or Appendix I, never a hand-rolled cipher.</p>

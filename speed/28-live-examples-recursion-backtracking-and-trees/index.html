@@ -41,7 +41,7 @@
 <p>To line up n boxes, put any one at the front, then line up the remaining n−1. A recursive function asks the same question with fewer boxes, but must know when to stop: there is exactly one way to arrange zero boxes, doing nothing.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute-force version is a plain loop:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 factLoop(u64 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 factLoop(u64 n) {
     // start the running product at the multiplicative identity
     u64 result = 1;
     // fold in every integer from 2 up to n
@@ -49,14 +49,14 @@
         result = result * i;
     }
     return result;
-}</code></pre>
+}</code></pre></div>
 <p>That is correct, uses no stack, and is the better version here, but the loop hides the definition: n! is n times (n−1)!.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 fact(u64 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 fact(u64 n) {
     // base case: 0! and 1! are both 1, stop here
     if (n &lt;= 1) return 1;
     // recursive case: n! = n * (n-1)!
     return n * fact(n - 1);
-}</code></pre>
+}</code></pre></div>
 <p>Read it as two sentences. The base case: "if n is 0 or 1, the answer is 1; stop." The recursive case: "otherwise the answer is n times the answer for n−1." The function only knows how to do two things: stop, or ask a smaller version of itself and then multiply. It does not hold the whole multiplication in its head; it stacks up the pending multiplications and lets them unwind as the calls return.</p>
 <p>The Coral implementation is the second snippet above, complete. The import surface is nothing at all, factorial needs only arithmetic. For a fancier example that needs collections, see 27.2.</p>
 <p class="step-label">Time and space</p>
@@ -65,12 +65,12 @@
 <p>n = 0 and n = 1 both return 1 through the base case. n = 2 returns 2 * fact(1) = 2. The real edge case is overflow: u64 blows up at 21! (20! is the largest factorial that fits in 64 bits), and after that the answer silently wraps. If you need exact factorials of large n, you need a big-integer type, not u64; no accumulation strategy saves you, because the number itself is too big for the register.</p>
 <p class="step-label">A variation</p>
 <p>Rewrite the recursion so the multiplication happens before the call instead of after it, by carrying a running product forward as a parameter:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 factTail(u64 n, u64 acc) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 factTail(u64 n, u64 acc) {
     // base case: hand back the product carried so far
     if (n &lt;= 1) return acc;
     // carry the product forward; the call is the whole return value
     return factTail(n - 1, acc * n);
-}</code></pre>
+}</code></pre></div>
 <p>Now the recursive call is the entire return value, there is nothing left to do when it comes back, and this is a tail call, which <a href="../05-functions-and-procedures/index.html">Chapter 5</a> explains the compiler can turn into a loop that reuses one stack frame. The accumulator <code>acc</code> is the running product, and passing it forward is the standard trick for turning a stack-eating recursion into a constant-stack one.</p>
 <section><h2 id="s28-2">Fibonacci: When the Same Answer Is Computed Twice</h2></section>
 <p class="step-label">The problem</p>
@@ -79,15 +79,15 @@
 <p>Imagine two rabbits, and every month each pair produces another pair. The number of pairs next month is the number this month plus the number last month. The trouble is that to count this month you must count both previous months, and to count last month you count the month before it and the one before that, and the same month's count gets requested over and over by different lines of questioning. The recursion is a family tree of questions in which the same person is asked the same question many times.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The definition translates directly into a function:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 fibSlow(u64 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 fibSlow(u64 n) {
     // base case: F(0)=0 and F(1)=1
     if (n &lt; 2) return n;
     // two recursive calls; the same n is recomputed all over again
     return fibSlow(n - 1) + fibSlow(n - 2);
-}</code></pre>
+}</code></pre></div>
 <p>This is correct and disastrous. To compute fibSlow(5) it computes fibSlow(4) and fibSlow(3). But fibSlow(4) also computes fibSlow(3). So fibSlow(3) is computed twice, fibSlow(2) three times, and so on. The number of calls grows like the Fibonacci numbers themselves, which is exponential, roughly 1.6^n. fibSlow(40) makes about a billion calls, and fibSlow(50) would make more calls than you have seconds.</p>
 <p>The better approach is to remember answers you have already computed. This is called memoization, and in Coral the memory is an explicit object, a Vec for the answers and a Vec of flags for which answers exist, passed through the recursion:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 fibMemo(u64 n, Vec&lt;u64&gt;* memo, Vec&lt;bool&gt;* seen) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 fibMemo(u64 n, Vec&lt;u64&gt;* memo, Vec&lt;bool&gt;* seen) {
     // base case: F(0)=0 and F(1)=1, never cached
     if (n &lt; 2) return n;
     // already solved: hand back the remembered answer, no recursion
@@ -110,7 +110,7 @@ u64 fib(u64 n) {
     }
     // share the table across all recursive calls by address
     return fibMemo(n, &amp;memo, &amp;seen);
-}</code></pre>
+}</code></pre></div>
 <p>The <code>&amp;memo</code> at the call site is the address of the vector, because the memo table must be shared across every recursive call, not copied into each one. Inside, the first thing the function does is check whether the answer is already known: if the flag is set, hand back the stored value and stop. Only on a genuine miss does it recurse, and before returning it stores the answer so that no later call computes it again.</p>
 <p class="step-label">Time and space</p>
 <p>The slow version is O(2^n) time, exponential, unusable past about n = 40, and O(n) stack space because the deepest chain of calls is n deep. The memoized version is O(n) time: each distinct argument is computed exactly once, and every other visit is a constant-time lookup, so the number of real computations is n and the extra work is a constant per call. The extra memory is the two Vecs, O(n), plus the same O(n) call stack. We traded an exponential amount of time for a linear amount of memory, which is almost always a good trade. <a href="../30-live-examples-dynamic-programming-and-greedy/index.html">Chapter 30</a> turns this same table into an even cleaner loop, but the idea, remember what you have already paid for, is the heart of dynamic programming.</p>
@@ -118,7 +118,7 @@ u64 fib(u64 n) {
 <p>n = 0 returns 0 and n = 1 returns 1 from the first line, before the memo is ever consulted, so those do not need to be stored. The try-<code>at</code>-the-memo path uses <code>seen</code> rather than a sentinel like −1, because for an unsigned type there is no spare value to mean "not yet computed"; a separate flag vector keeps the meaning honest. Overflow returns at n = 94 (F(93) is the largest Fibonacci number that fits in 64 bits).</p>
 <p class="step-label">A variation</p>
 <p>Iterate from the bottom up instead of recursing from the top down:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 fibLoop(u64 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 fibLoop(u64 n) {
     // base case: the first two Fibonacci numbers
     if (n &lt; 2) return n;
     // a holds F(i-2), b holds F(i-1)
@@ -131,7 +131,7 @@ u64 fib(u64 n) {
         b = c;
     }
     return b;
-}</code></pre>
+}</code></pre></div>
 <p>This is O(n) time and O(1) space, no memo table, no stack, because it computes the values in the order they are needed and only ever keeps the last two. Whenever a memoized recursion fills a table in a simple order, you can usually rewrite it as a loop over that order and drop the recursion entirely.</p>
 <section><h2 id="s28-3">Palindromes: Two Hands Walking Toward the Middle</h2></section>
 <p class="step-label">The problem</p>
@@ -140,7 +140,7 @@ u64 fib(u64 n) {
 <p>You hold a strip of paper with letters on it, and you have a finger of each hand. You press your left finger on the leftmost letter and your right finger on the rightmost, and you ask: are these the same? If not, it is not a palindrome and you are done. If they are, both fingers step inward and you ask again. When the fingers meet or cross, every pair matched, and it is a palindrome. That is the entire algorithm, and both the loop version and the recursive version are just ways of driving the two fingers.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The naive approach builds the reversed string and compares it to the original. That allocates a whole second copy of the string for an answer that often becomes clear after one glance. The two-finger walk is better: it stops the moment a mismatch appears and allocates nothing.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool isPalindrome(str s) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool isPalindrome(str s) {
     // two fingers start at the two ends
     i64 lo = 0;
     i64 hi = (i64)s.len - 1;
@@ -153,10 +153,10 @@ u64 fib(u64 n) {
     }
     // every pair matched
     return true;
-}</code></pre>
+}</code></pre></div>
 <p>The indices are declared i64 rather than usize on purpose. For an empty string, <code>s.len - 1</code> on an unsigned type would wrap around to a gigantic number, and <code>lo &lt; hi</code> would be true and the function would read out of bounds. Signed indices make <code>hi</code> equal to −1 for the empty string, the loop condition <code>0 &lt; -1</code> is false immediately, and everything is correct. This is a recurring bug in string and array code, and using a signed index for a range that can be empty is the simplest cure.</p>
 <p>The recursive version keeps the same two fingers but passes them as parameters:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool palindromeRange(str s, usize lo, usize hi) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool palindromeRange(str s, usize lo, usize hi) {
     // base case: the fingers met or crossed, all pairs matched
     if (lo &gt;= hi) return true;
     // mismatch ends the branch
@@ -169,7 +169,7 @@ bool isPalindromeRec(str s) {
     // guard the empty string so s.len - 1 is never evaluated on nothing
     if (s.len == 0) return true;
     return palindromeRange(s, 0, s.len - 1);
-}</code></pre>
+}</code></pre></div>
 <p>Each call examines one pair and delegates the rest to a call that has stepped both fingers inward. The empty-string guard lives in the outer function so that <code>s.len - 1</code> is never evaluated on nothing.</p>
 <p class="step-label">Time and space</p>
 <p>Both versions are O(n) time in the worst case, where n is the length, because in the best case, a mismatch near the ends, they stop after a constant number of comparisons, or O(1) if the very first pair differs. The loop is O(1) space. The recursion is O(n) space for the call stack, one frame per pair, which is wasteful for a problem whose loop is this simple; the recursion is shown here because it is the cleanest possible illustration of "handle one step, recurse on the rest."</p>
@@ -184,7 +184,7 @@ bool isPalindromeRec(str s) {
 <p>You walk down the row of numbers with a shopping basket. At each number you face the same two questions: do I put this one in the basket, or do I leave it out? Then you move to the next number and ask again. At the end of the row, whatever is in your basket is one subset; write it down. Then you back up and make the other choice somewhere, and walk to the end again. Every distinct pattern of yes/no choices you can make over the row produces exactly one subset, and there are 2^n patterns for n numbers.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force counts from 0 to 2^n − 1 and reads each counter as a bitmap: bit i says whether number i is in the subset. That is perfectly correct and even elegant in a language with good bit operations. The recursive version is what generalizes to harder problems, permutations, mazes, constraint puzzles, so it is the one worth learning, even though for subsets alone the bit version is shorter.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void subsetsFrom(Vec&lt;i32&gt;* nums, usize i, Vec&lt;i32&gt;* current, Vec&lt;Vec&lt;i32&gt;&gt;* out) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void subsetsFrom(Vec&lt;i32&gt;* nums, usize i, Vec&lt;i32&gt;* current, Vec&lt;Vec&lt;i32&gt;&gt;* out) {
     // base case: walked off the end, current is a complete subset
     if (i == nums-&gt;count()) {
         out-&gt;push(copyVec(current));
@@ -215,7 +215,7 @@ Vec&lt;i32&gt; copyVec(Vec&lt;i32&gt;* v) {
         c.push(v-&gt;at(i));
     }
     return c;
-}</code></pre>
+}</code></pre></div>
 <p>The helper <code>subsetsFrom</code> is where the whole idea lives. It takes the position <code>i</code> it is standing on, the basket <code>current</code>, and the list <code>out</code> it is filling. The base case fires when <code>i</code> has walked off the end of the list; at that moment <code>current</code> holds a complete subset, and <code>copyVec</code> makes a private copy to store (we must copy, because <code>current</code> will keep changing as the search continues). The two recursive calls are the two branches. The second branch pushes, recurses deeper, then pops, which is the walk-back: after exploring everything that includes nums[i], we remove it so that the sibling branch starts from the state before the choice was made. That push-then-pop pairing is the signature of backtracking, and you will see it in every remaining problem in this chapter.</p>
 <p class="step-label">Time and space</p>
 <p>There are 2^n subsets, and every leaf of the recursion tree produces one. The recursion tree has about 2^(n+1) nodes total, so the running time is O(n · 2^n) if you count the cost of copying each subset (each copy is up to n long), or O(2^n) if you count only the tree's nodes. The memory is dominated by the output: 2^n subsets, each up to n long, so O(n · 2^n). The working stack is just the basket's depth, O(n). Output can be truly enormous, n = 20 gives over a million subsets, so this is a function whose output size, not its cleverness, is the limit.</p>
@@ -223,7 +223,7 @@ Vec&lt;i32&gt; copyVec(Vec&lt;i32&gt;* v) {
 <p>An empty input list has exactly one subset, the empty one: the recursion immediately hits the base case and stores the empty basket. Duplicate elements are not handled by this version. If the input can contain duplicates (say [1, 1, 2]), the same subset appears more than once, and the standard fix is to sort the list and, at each level, skip a value equal to the one before it at the same depth.</p>
 <p class="step-label">A variation</p>
 <p>The bitmask version, for comparison:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;Vec&lt;i32&gt;&gt; subsetsByBits(Vec&lt;i32&gt;* nums) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Vec&lt;Vec&lt;i32&gt;&gt; subsetsByBits(Vec&lt;i32&gt;* nums) {
     usize n = nums-&gt;count();
     // there are 2^n bit patterns, one per subset
     u64 total = (u64)1 &lt;&lt; n;
@@ -240,7 +240,7 @@ Vec&lt;i32&gt; copyVec(Vec&lt;i32&gt;* v) {
         out.push(one);
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>Notice the shape of the trade. With the bitmask, the "state" (which numbers are chosen) is a single integer, and the whole search is a plain loop; there is no recursion and no walk-back. That works because every subset corresponds to exactly one counter value. The moment the choices are not independent bits, say you can choose at most two numbers, or the order matters, the counter trick stops covering the space, and you need the recursive walk-back.</p>
 <section><h2 id="s28-5">All Permutations: Choosing a Seat</h2></section>
 <p class="step-label">The problem</p>
@@ -249,7 +249,7 @@ Vec&lt;i32&gt; copyVec(Vec&lt;i32&gt;* v) {
 <p>You are seating n people in n chairs in a row. You seat the first chair by choosing any of the n people. Then you seat the second chair by choosing any of the n−1 who remain. You keep choosing, each time from the shrinking pool, until every chair is filled; that seating is one permutation. Then you take the last person out and try a different choice for the last chair, and so on, backing up whenever a row is complete. The key difference from subsets is that here you may not reuse a person: once someone is seated, they are off the market.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force generates all n^n sequences of choices and throws away the ones with repeats. That is wildly wasteful, n^n is far larger than n!, because most of the sequences it builds are illegal. Backtracking avoids the waste by never choosing a person who is already seated, so every branch it explores is already a partial valid permutation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void permuteFrom(Vec&lt;i32&gt;* nums, Vec&lt;bool&gt;* used, Vec&lt;i32&gt;* current, Vec&lt;Vec&lt;i32&gt;&gt;* out) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void permuteFrom(Vec&lt;i32&gt;* nums, Vec&lt;bool&gt;* used, Vec&lt;i32&gt;* current, Vec&lt;Vec&lt;i32&gt;&gt;* out) {
     // base case: every chair is filled, record the ordering
     if (current-&gt;count() == nums-&gt;count()) {
         out-&gt;push(copyVec(current));
@@ -278,7 +278,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; permutations(Vec&lt;i32&gt;* nums) {
     }
     permuteFrom(nums, &amp;used, &amp;current, &amp;out);
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The <code>used</code> vector is the "who is already seated" book. At every level, the loop considers every person, skips the ones already used with <code>continue</code>, and for each available person marks them used, seats them, recurses, and then un-marks them and removes them from the row. The un-marking is essential: the <code>used</code> vector is shared across the whole search, and a choice only "owns" its mark for as long as its branch is being explored. Forget the un-mark and later branches see a table that is half-full for no reason. This is the single most common bug in hand-written backtracking, and it is exactly what the push/pop pairing prevents.</p>
 <p class="step-label">Time and space</p>
 <p>There are n! permutations, and producing each costs a copy of n elements, so the output alone is O(n · n!). The search tree has fewer than e · n! nodes, so the total work is O(n · n!), dominated by writing the answers down, not by finding them. The <code>used</code> vector and the current row are O(n). Again, the output size is the wall: 12! is about 479 million, so anything past a dozen elements is measured in hours or in disk space.</p>
@@ -293,7 +293,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; permutations(Vec&lt;i32&gt;* nums) {
 <p>You are placing queens one row at a time, from the top. In each row you will put exactly one queen, because two queens in a row would attack. So when you are on row r, the only real question is which column to use. But before you place it, you check the queen against every queen already placed above: is its column already taken? Is it on the same diagonal as an earlier queen? If yes, this column is illegal and you try the next. If no, you place it and move down a row. When you reach a row below the last, you have a full solution. When every column in a row fails, you back up a row and move that row's queen over.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force tries all n^n placements and checks each for attacks. Backtracking is dramatically better for two reasons: it places exactly one queen per row by construction, killing n^n / n! of the search immediately, and it rejects a partial placement the instant a conflict appears, so it never finishes building a board that was already doomed. This early rejection, pruning, is what makes backtracking more than "recursion with a for loop."</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool queenSafe(Vec&lt;i32&gt;* cols, usize row, usize col) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool queenSafe(Vec&lt;i32&gt;* cols, usize row, usize col) {
     // only the rows already filled can attack this candidate
     for (usize r = 0; r &lt; row; r += 1) {
         i32 c = cols-&gt;at(r);
@@ -329,7 +329,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; solveNQueens(usize n) {
     Vec&lt;i32&gt; cols = Vec&lt;i32&gt;::new();
     solveNFrom(&amp;cols, 0, (usize)n, &amp;out);
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The board itself is stored as a Vec of column numbers: <code>cols[r]</code> is the column of the queen in row r. That encoding throws away the rows (there is always exactly one queen per row) and keeps only the information that matters, which is a general lesson, the right data structure shrinks the search. <code>queenSafe</code> checks only the rows above, because no queens exist below yet. Two queens share a diagonal precisely when the difference between their columns equals the difference between their rows, so the diagonal test is <code>|col − previousCol| == row − previousRow</code>, written out with an explicit sign comparison to avoid needing an absolute-value call.</p>
 <p class="step-label">Time and space</p>
 <p>The number of solutions grows fast (92 for n = 8, 147,725,088 for n = 14), so the output dominates and the bound is exponential in n. But the useful measurement is how many partial boards the search examines, and that is where pruning shines: the naive n^n collapses to roughly O(n!) at worst and far less in practice, because most branches die after one or two placements. Space is O(n) for the current row plus the output.</p>
@@ -344,7 +344,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; solveNQueens(usize n) {
 <p>You are filling a shopping bag exactly to a budget, and the store allows you to take as many of any item as you like. You walk the shelves in order. At each item you decide whether to take a copy and keep shopping with what is left of your budget, or to move on to the next item and never come back to this one. If your budget reaches exactly zero, you have a valid bag; if it goes negative, you overspent and turn back. Because you always move forward through the shelf, you never record the same bag twice in a different order.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The naive approach tries every multiset of candidates whose size is unknown, which is unbounded. Backtracking bounds the search by the budget: the moment a partial sum exceeds the target, the branch is abandoned, because adding more positive numbers only makes it worse. Sorting the candidates ascending lets us abandon even earlier: once a candidate is too big for the remaining budget, every later candidate is at least as big, so the entire rest of the shelf is hopeless and we can break, not merely continue.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void combSumFrom(Vec&lt;i32&gt;* cand, usize start, i32 target, Vec&lt;i32&gt;* current, Vec&lt;Vec&lt;i32&gt;&gt;* out) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void combSumFrom(Vec&lt;i32&gt;* cand, usize start, i32 target, Vec&lt;i32&gt;* current, Vec&lt;Vec&lt;i32&gt;&gt;* out) {
     // base case: the budget hit exactly zero, so current is a valid bag
     if (target == 0) {
         out-&gt;push(copyVec(current));
@@ -368,7 +368,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; combinationSum(Vec&lt;i32&gt;* candidates, i32 target)
     Vec&lt;i32&gt; current = Vec&lt;i32&gt;::new();
     combSumFrom(candidates, 0, target, &amp;current, &amp;out);
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>Two things distinguish this from the permutations of 27.5. The recursion passes <code>i</code>, not <code>i + 1</code>, so the current candidate can be reused, that is how [2, 2, 3] is built, by taking 2, then taking 2 again from the same shelf position. And the loop starts at <code>start</code> rather than 0, so a combination is built with its values in non-decreasing order and each distinct multiset is produced exactly once. Sorting first is not for correctness, only for speed: it makes the <code>break</code> legal and prunes hard.</p>
 <p class="step-label">Time and space</p>
 <p>The time is O(number of nodes in the search tree) times the copy cost, which is hard to state in terms of n alone because it depends on how the target divides into the candidates; the honest answer is "proportional to the number of combinations found, times the target divided by the smallest candidate." The space is O(target / min(candidate)) for the current bag, plus the output. The pruning is what keeps this from being truly hopeless: an unbounded space becomes a search bounded by the budget.</p>
@@ -384,7 +384,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; combinationSum(Vec&lt;i32&gt;* candidates, i32 target)
 <p class="step-label">Brute force, then better</p>
 <p>There is not really a brute force for traversals, the recursive definition is the algorithm, but there is a wrong instinct, which is to try to hold the whole traversal in a loop with an explicit index per level. The recursive version is not merely shorter; it is the only version that scales to trees whose shape you do not know in advance.</p>
 <p>The tree node. A binary tree node is a value plus two pointers to more nodes. We declare it as a struct, the same shape the standard library's own tree modules use:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::mman { alloc, dealloc };
 
 struct TreeNode {
     i32 value;
@@ -400,10 +400,10 @@ TreeNode* makeNode(i32 value) {
     n-&gt;left = null;
     n-&gt;right = null;
     return n;
-}</code></pre>
+}</code></pre></div>
 <p>The <code>alloc&lt;TreeNode&gt;(1)</code> asks for room for one node on the heap and returns a pointer. The three fields are then filled in by hand, with the children set to <code>null</code>, the empty pointer that stands for "no subtree here." The type is self-referential: <code>TreeNode</code> mentions <code>TreeNode*</code>. That pointer is what makes the definition finite; without it the compiler would need to know how big a node is in terms of itself, which is impossible (<a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>'s section on recursive variants explains why the compiler refuses such a type).</p>
 <p>The traversals. Here are all three, each a mirror of its name:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void preorder(TreeNode* root, Vec&lt;i32&gt;* out) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void preorder(TreeNode* root, Vec&lt;i32&gt;* out) {
     // base case: the empty subtree contributes nothing
     if (root == null) return;
     // value first, then the two subtrees
@@ -426,10 +426,10 @@ void postorder(TreeNode* root, Vec&lt;i32&gt;* out) {
     postorder(root-&gt;left, out);
     postorder(root-&gt;right, out);
     out-&gt;push(root-&gt;value);
-}</code></pre>
+}</code></pre></div>
 <p>Only the position of the <code>push</code> moves. That is the whole difference between the three traversals, and it is worth dwelling on: the recursion does not change at all, because the recursion is about the shape of the data, not about the order in which you want to print it. Each function's first line is the base case, <code>root == null</code>, and the two recursive calls are the two subtrees. The <code>out</code> vector is threaded through by pointer because it accumulates across the whole traversal; it is the one piece of state that is not part of the tree.</p>
 <p>For a tree whose inorder we want first, we build the smallest interesting example:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">TreeNode* root  = makeNode(4);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">TreeNode* root  = makeNode(4);
 root-&gt;left      = makeNode(2);
 root-&gt;right     = makeNode(6);
 root-&gt;left-&gt;left  = makeNode(1);
@@ -437,14 +437,14 @@ root-&gt;left-&gt;right = makeNode(3);
 
 Vec&lt;i32&gt; order = Vec&lt;i32&gt;::new();
 // inorder visits this shape in ascending value order
-inorder(root, &amp;order);       // order is now [1, 2, 3, 4, 6]</code></pre>
+inorder(root, &amp;order);       // order is now [1, 2, 3, 4, 6]</code></pre></div>
 <p>The same tree, as a variant. There is a second way to write these nodes, and it is the one <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> would reach for first, because "a tree is a leaf or a node with children" is literally a variant. The empty subtree becomes a case instead of a null pointer:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Tree {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">variant Tree {
     Leaf,                                   // the empty subtree as a named case
     Node { i32 value; Tree* left; Tree* right; }
-}</code></pre>
+}</code></pre></div>
 <p>The <code>Tree*</code> fields are still pointers, for the same reason as before, a variant that stored whole <code>Tree</code> values would be infinitely large. What changes is that "empty" is now a named case, <code>Tree::Leaf</code>, rather than a null pointer, so a switch over a tree value is exhaustive and the compiler can prove you handled the empty case. The two constructors make nodes the same way the struct version did, by allocating one and writing through the pointer:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Tree* leaf() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Tree* leaf() {
     Tree* t = alloc&lt;Tree&gt;(1);
     *t = Tree::Leaf;                        // write the empty case through the pointer
     return t;
@@ -454,9 +454,9 @@ Tree* branch(i32 value, Tree* left, Tree* right) {
     Tree* t = alloc&lt;Tree&gt;(1);
     *t = Tree::Node { .value = value, .left = left, .right = right };
     return t;
-}</code></pre>
+}</code></pre></div>
 <p>And a recursion over it is a switch rather than a null check, which is the payoff of the variant, there is no pointer to forget to check:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 treeDepth(Tree* t) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 treeDepth(Tree* t) {
     Tree node = *t;
     switch (node) {
         // base case: a leaf has depth 0
@@ -469,7 +469,7 @@ Tree* branch(i32 value, Tree* left, Tree* right) {
             return 1 + (l &gt; r ? l : r);
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>Both representations are correct and the choice is a matter of taste and of which tool the surrounding code already uses. The struct version matches the standard library's own trees and is marginally leaner in memory (no tag); the variant version makes "empty" impossible to forget and pairs naturally with the pattern matching of <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>. In this chapter the later problems use the struct form, because that is what the rest of the book uses, but everything here translates to the variant form with a switch in place of each null check.</p>
 <p class="step-label">Time and space</p>
 <p>Every traversal is O(n) time, where n is the number of nodes, because each node is visited exactly once and the work per visit (push the value, make two calls) is constant. The extra space is O(h), where h is the height of the tree, for the call stack, one frame per level of depth, not per node. For a balanced tree of n nodes, h is about log n; for a tree that is a straight line of n nodes, h is n and the recursion uses O(n) stack. The intuition is the rule from <a href="../05-functions-and-procedures/index.html">Chapter 5</a>: depth recurses, length iterates.</p>
@@ -477,14 +477,14 @@ Tree* branch(i32 value, Tree* left, Tree* right) {
 <p>The empty tree (<code>root == null</code>) is the base case itself, so all three traversals return an empty <code>out</code> without complaint; a null tree is a valid tree. A single node produces one-element output in every order. A degenerate "tree" that is a chain of n nodes still traverses correctly, but the stack grows to depth n, so a chain of a million nodes can overflow the stack even though the answer is only a million elements, a good argument for an iterative traversal with an explicit stack when the shape is untrusted.</p>
 <p class="step-label">A variation</p>
 <p>A tree whose values are themselves a variant, say each node holds a JSON value, or a token, is just <code>TreeNode&lt;T&gt;</code> for a generic T, exactly as <code>Vec&lt;T&gt;</code> is generic. The traversals become <code>preorder&lt;T&gt;(TreeNode&lt;T&gt;* root, Vec&lt;T&gt;* out)</code>. And if you want to free a tree, the destruction order matters: you must free the children before the parent, because the parent's pointers point at the children. That is postorder, which is why every well-written <code>freeTree</code> is a postorder walk:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void freeTree(TreeNode* root) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void freeTree(TreeNode* root) {
     // base case: nothing to free
     if (root == null) return;
     // free the children before the parent, i.e. postorder
     freeTree(root-&gt;left);
     freeTree(root-&gt;right);
     dealloc&lt;TreeNode&gt;(root);
-}</code></pre>
+}</code></pre></div>
 <section><h2 id="s28-9">Tree Depth and Balance</h2></section>
 <p class="step-label">The problem</p>
 <p>Given a binary tree, compute its maximum depth (the number of nodes on the longest path from the root down to a leaf), and decide whether it is height-balanced (every subtree's left and right heights differ by at most one).</p>
@@ -492,7 +492,7 @@ Tree* branch(i32 value, Tree* left, Tree* right) {
 <p>Depth is "how many floors is the building." The building's height is one floor plus the taller of its two wings, and each wing is a building of its own. Balance is a structural worry: a building where one wing is far taller than the other is lopsided and would topple; a balanced one can be searched efficiently because it does not sprawl into a long thin line.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute-force balance check asks, at every node, "is the left height and right height within one?", recomputing the height of each subtree from scratch, and then recursively re-checking every subtree. That is O(n^2) because the height of each node is recomputed once for every ancestor that asks. The better way computes the height and the balance verdict in a single pass, returning both up the recursion.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 maxDepth(TreeNode* root) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 maxDepth(TreeNode* root) {
     // base case: the empty tree has depth 0
     if (root == null) return 0;
     // the two subtree depths...
@@ -500,10 +500,10 @@ Tree* branch(i32 value, Tree* left, Tree* right) {
     i32 r = maxDepth(root-&gt;right);
     // ...plus one for the current node
     return 1 + (l &gt; r ? l : r);
-}</code></pre>
+}</code></pre></div>
 <p>Depth is the textbook single-pass recursion: an empty tree has depth 0; otherwise the answer is one plus the deeper of the two subtrees' depths. The <code>(l &gt; r ? l : r)</code> is the ternary conditional, a compact "the larger of these two", and <code>1 +</code> counts the current node.</p>
 <p>For balance, the trick is to compute depths and detect imbalance in the same walk, using a <code>bool</code> flag that the caller passes by address so that once the flag is set to false, the work can stop early on every level:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 checkHeight(TreeNode* root, bool* balanced) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 checkHeight(TreeNode* root, bool* balanced) {
     // base case: empty subtree has height 0
     if (root == null) return 0;
     i32 l = checkHeight(root-&gt;left, balanced);
@@ -522,7 +522,7 @@ bool isBalanced(TreeNode* root) {
     bool balanced = true;
     checkHeight(root, &amp;balanced);
     return balanced;
-}</code></pre>
+}</code></pre></div>
 <p>The <code>*balanced</code> notation reads the value behind the pointer; <code>*balanced = false</code> writes through it. Passing the flag by pointer rather than by value is the whole point: a value copy would let each call detect its own imbalance and then throw the finding away when it returned. The early <code>if (!*balanced) return 0;</code> after each recursive call is a small optimisation, once we know the tree is unbalanced we no longer care about exact heights, so we stop.</p>
 <p class="step-label">Time and space</p>
 <p>Both functions are O(n) time, because each node is visited once. The balance check is O(n) rather than the brute force's O(n^2) precisely because it does the height and the verdict in one traversal instead of re-deriving heights. Space is O(h) for the stack, as in 27.8: logarithmic for a balanced tree, linear for a chain.</p>
@@ -537,7 +537,7 @@ bool isBalanced(TreeNode* root) {
 <p>Two people in a family tree want to know their most recent shared ancestor. You ask each branch: "has the common ancestor turned up yet, or do you contain one of the two people?" If the left branch contains a and the right branch contains b, then the current node is where the two lines meet and it is the answer. If only one branch contains anything relevant, the meeting point is further down in that branch. If the current node is one of the two people, then it is trivially an ancestor of both once the other one shows up below it.</p>
 <p class="step-label">Brute force, then better</p>
 <p>A brute-force approach computes the root-to-node path for each value and finds the last shared element; that is O(n) to build each path and O(n) to compare, fine but clunky, and it requires storing two paths. The recursive version is a single traversal and needs no auxiliary storage.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">TreeNode* lca(TreeNode* root, i32 a, i32 b) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">TreeNode* lca(TreeNode* root, i32 a, i32 b) {
     // base case: nothing relevant down this branch
     if (root == null) return null;
     // this node is one target, so it is a candidate ancestor
@@ -549,7 +549,7 @@ bool isBalanced(TreeNode* root) {
     if (left != null &amp;&amp; right != null) return root;
     if (left != null) return left;
     return right;
-}</code></pre>
+}</code></pre></div>
 <p>The logic reads as three lines. If this node is empty, there is nothing here. If this node is one of the two targets, this node is a candidate ancestor, return it upward. Otherwise, ask the left subtree and the right subtree. If both come back non-null, each subtree found one of the targets, so this node is the meeting point: return it. If only one came back non-null, both targets live on that side, and the answer is whatever that side reported. The <code>null</code> return is the "there is nothing relevant here" signal, and it is what makes the answer bubble up without any extra bookkeeping.</p>
 <p class="step-label">Time and space</p>
 <p>The function visits each node at most once, so it is O(n) time. The space is O(h) for the recursion stack, logarithmic for a balanced tree and linear for a chain. Compare this to the two-paths approach, which is also O(n) time but uses O(n) extra memory for the paths; the recursive version is strictly leaner.</p>
@@ -564,7 +564,7 @@ bool isBalanced(TreeNode* root) {
 <p>You are playing a word game on a lettered board. You start on any cell that matches the first letter, then walk to a neighbouring cell matching the next letter, and so on. You may not step on a cell you have already used in the current word, so you leave a footprint behind you and wipe it away when you back out. If you ever complete the whole word, you win.</p>
 <p class="step-label">Brute force, then better</p>
 <p>A brute force would enumerate every path of the right length, most of which die on the first mismatch. Backtracking with rollback prunes those immediately: at each step you extend the path only if the next letter matches, and the "used" mark is set before the recursive call and cleared after it, so the board returns to its original state when you retreat.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 bool searchFrom(Vec&lt;str&gt;* board, str word, usize r, usize c, usize k, Vec&lt;Vec&lt;bool&gt;&gt;* used, usize rows, usize cols) {
     // base case: every letter matched
@@ -610,7 +610,7 @@ bool wordSearch(Vec&lt;str&gt;* board, str word) {
         }
     }
     return false;
-}</code></pre>
+}</code></pre></div>
 <p>The recursion carries the whole state it needs: where it stands (<code>r</code>, <code>c</code>), how far into the word it has got (<code>k</code>), and the shared <code>used</code> grid. The first three checks are the base cases and the fast rejections, off the board, already stepped on, wrong letter, and any one of them returning false unwinds the branch immediately. The four conditional calls are the four directions, and the named <code>found</code> short-circuits them so that once a direction succeeds, the others are not tried. The single line that clears the mark is the whole difference between a search for simple paths and a search that may trample its own trail.</p>
 <p class="step-label">Time and space</p>
 <p>Each cell is tried as a starting point, and each start can branch in up to four directions for each of the word's L letters, so the worst case is O((rows × cols) × 4^L), although the letter check prunes it heavily on real boards. The <code>used</code> grid is O(rows × cols), and the recursion stack is O(L).</p>
@@ -625,7 +625,7 @@ bool wordSearch(Vec&lt;str&gt;* board, str word) {
 <p>You are old enough to remember texting on a numeric keypad. To spell a word you press one key per letter, and each key offers a small menu of letters. Building every possible word is a walk over the digits where, at each digit, you branch over its menu and continue to the next digit. When the digits run out, the letters you chose make one word.</p>
 <p class="step-label">Brute force, then better</p>
 <p>There is no cleverer idea than generating the combinations, there are 3^L or 4^L of them and the answer is all of them. The work is in doing it cleanly: a recursive walk that appends one letter per digit into a growing buffer, instead of loops nested to a depth that depends on the input.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 void buildCombos(str digits, usize i, Vec&lt;str&gt;* keypad, String* current, Vec&lt;String&gt;* out) {
     // base case: every digit has a letter, the buffer is one word
@@ -661,7 +661,7 @@ Vec&lt;String&gt; letterCombinations(str digits) {
     String current = String::new();
     buildCombos(digits, 0, &amp;keypad, &amp;current, &amp;out);
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The keypad is a small table indexed by the digit minus the byte <code>'2'</code>, so <code>'2'</code> lands on "abc", <code>'7'</code> on "pqrs", and <code>'9'</code> on "wxyz". The buffer <code>current</code> is shared across the whole walk, and each level appends its chosen byte, recurses, then truncates it away. The <code>truncate</code> is the rollback: it is the string-building equivalent of the <code>pop</code> in every other problem in this chapter. At the base case the buffer is complete, so we clone it, <code>clone</code> copies the bytes, because the buffer is about to be overwritten by the next combination.</p>
 <p class="step-label">Time and space</p>
 <p>If the digits yield c combinations each of length L, the time is O(c × L), dominated by the copying at each leaf, and the space is O(c × L) for the output plus O(L) for the recursion, the buffer, and the keypad. As with the other enumerations, the size of the answer is the true limit.</p>
@@ -676,7 +676,7 @@ Vec&lt;String&gt; letterCombinations(str digits) {
 <p>You are writing brackets from left to right, and at every position you face the same two choices: write an opener, or write a closer. But not every sequence of choices is legal. You may write a closer only if some opener is still waiting to be closed, and you may write an opener only while unplaced openers remain. Those two rules keep you on the path of valid strings, and when both budgets reach zero you have one complete balanced string.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force writes all 2^(2n) strings of n openers and n closers and tests each for balance, wasteful, since most candidates are illegal. The backtracking keeps two counters and only makes choices that keep both non-negative, so every leaf it reaches is already a valid string and no final balance check is needed.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 void parenFrom(i32 open, i32 close, String* current, Vec&lt;String&gt;* out) {
     // base case: both budgets empty, so the string is balanced
@@ -704,7 +704,7 @@ Vec&lt;String&gt; generateParentheses(i32 n) {
     // start with n openers unplaced and none waiting to be closed
     parenFrom(n, 0, &amp;current, &amp;out);
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The two counters carry the state. <code>open</code> is how many openers are still unwritten, and <code>close</code> is how many openers are currently unmatched and may therefore be closed. Writing an opener spends one of the former and creates one of the latter (<code>open - 1, close + 1</code>); writing a closer spends one of the latter (<code>close - 1</code>), and the guard <code>close &gt; 0</code> is what forbids a closer with nothing to close. The base case fires only when both are zero, which can happen only after all n pairs have been placed and matched.</p>
 <p class="step-label">Time and space</p>
 <p>The number of valid strings is the nth Catalan number, about 4^n / (n^1.5), so the work is proportional to the output times n, and the space is the output plus O(n) for the buffer and the recursion. Catalan growth is still exponential, but it is dramatically smaller than 2^(2n): the pruning refuses to build the illegal strings at all.</p>
@@ -719,7 +719,7 @@ Vec&lt;String&gt; generateParentheses(i32 n) {
 <p>A binary search tree is a building with a strict rule: everything in a left wing must be smaller than the floor above it, and everything in a right wing must be larger. The trap is that checking a node against only its two children is not enough. A value deep in the right wing could still be smaller than an ancestor several floors up, so each node must be checked against a whole allowed range, not just against its parent.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The tempting wrong answer checks, at each node, that the left child is smaller and the right child is larger. That accepts trees that are not search trees, because it never relates a node to its grandparent. The correct method threads an open interval (low, high) down the recursion; a node is valid only if its value lies strictly inside the interval, and then the left subtree inherits (low, value) and the right subtree inherits (value, high).</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool validRange(TreeNode* root, i64 low, i64 high) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool validRange(TreeNode* root, i64 low, i64 high) {
     // base case: an empty subtree is valid
     if (root == null) return true;
     i64 v = (i64)root-&gt;value;
@@ -732,7 +732,7 @@ Vec&lt;String&gt; generateParentheses(i32 n) {
 bool isValidBst(TreeNode* root) {
     // start outside the whole i32 range so extremes are still legal
     return validRange(root, -2147483649, 2147483648);
-}</code></pre>
+}</code></pre></div>
 <p>This reuses the <code>TreeNode</code> introduced in 27.8. The bounds start just outside the range of every possible i32 value, so even a node holding the smallest or largest legal integer can be validated. Each recursive call narrows the interval: a left child's upper bound becomes its parent's value, and a right child's lower bound becomes it. A node that violates its interval is caught no matter how deep it sits, which is precisely the case the naive child-only test misses.</p>
 <p class="step-label">Time and space</p>
 <p>Every node is visited once, so the time is O(n), and the recursion descends to the tree's height, so the space is O(h), logarithmic for a balanced tree, linear for a chain. No auxiliary table is allocated.</p>
@@ -747,7 +747,7 @@ bool isValidBst(TreeNode* root) {
 <p>You are reading a building floor by floor. On each floor you note everyone standing there before moving up, and while you do you write down where the people on the next floor can be found. A queue is exactly the right shape for this: first in, first out means the oldest waiting node is always handled next, so an entire floor is finished before anyone on the floor above is touched.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The recursive traversals of 27.8 cannot produce level order directly, because recursion dives to the bottom of a branch before it returns. A queue does it in a single pass: hold the root, and repeatedly remove a node, record it, and enqueue its children. Because the queue is FIFO, the children of the current level line up behind one another, ahead of the next level's children.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::queue { Queue };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::queue { Queue };
 
 Vec&lt;Vec&lt;i32&gt;&gt; levelOrder(TreeNode* root) {
     Vec&lt;Vec&lt;i32&gt;&gt; out = Vec&lt;Vec&lt;i32&gt;&gt;::new();
@@ -770,7 +770,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; levelOrder(TreeNode* root) {
         out.push(level);
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The one subtle line is <code>usize levelSize = q.count();</code>. At the top of the outer loop the queue holds exactly the nodes of the current level, so snapshotting its size before the inner loop marks where the level ends. Enqueuing children grows the queue during the inner loop, and without the snapshot those new nodes would be consumed in the same level and the floors would smear together.</p>
 <p class="step-label">Time and space</p>
 <p>Each node is enqueued and dequeued exactly once, so the time is O(n). The queue holds at most the widest level, up to about n/2 nodes, and the output holds every value, so the space is O(n).</p>
@@ -785,7 +785,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; levelOrder(TreeNode* root) {
 <p>A search tree is already arranged so that an inorder walk visits its values from smallest to largest, that is the defining property of the structure. So the kth smallest is simply the kth value you meet on such a walk. You need not sort anything or examine the whole tree; you can stop the instant you have counted k values.</p>
 <p class="step-label">Brute force, then better</p>
 <p>The brute force collects every value, sorts the collection, and indexes k − 1, which is O(n log n) and ignores the ordering the tree already encodes. An inorder walk is O(h + k): it descends to the smallest value, then yields values in increasing order and can stop as soon as k of them have been seen. The better method exploits the structure instead of flattening it.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void inorderCount(TreeNode* root, i32 k, i32* seen, i32* answer) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void inorderCount(TreeNode* root, i32 k, i32* seen, i32* answer) {
     // base case: nothing here
     if (root == null) return;
     // prune: already counted k, no need to descend further
@@ -808,7 +808,7 @@ i32 kthSmallest(TreeNode* root, i32 k) {
     i32 answer = -1;
     inorderCount(root, k, &amp;seen, &amp;answer);
     return answer;
-}</code></pre>
+}</code></pre></div>
 <p>The walk is the ordinary inorder of 27.8 with two additions: a counter <code>seen</code>, passed by pointer so it is shared across the whole traversal, and an early <code>if (*seen &gt;= k) return;</code> at the top and after the left subtree. The counter is bumped when the current node is visited, after its left subtree, before its right, which is exactly the position that makes the values emerge in sorted order. Once the count reaches k the answer is recorded and every remaining frame returns without descending further.</p>
 <p class="step-label">Time and space</p>
 <p>The best case visits O(h + k) nodes and stops; the worst case, when k is the largest value, visits all n. The recursion stack is O(h). Nothing is sorted and no auxiliary collection is built, which is the whole point relative to the brute force.</p>

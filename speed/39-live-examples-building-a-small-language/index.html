@@ -41,7 +41,7 @@
 <p class="step-label">The idea</p>
 <p>Walk the bytes once. Skip whitespace; a digit run is a number; a run of letters, digits, and underscores is a name, promoted to a keyword if it spells one; every other byte is a one-character operator or delimiter. Append a sentinel token so lookahead never checks for the end, which shortens every later stage.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 enum TokenKind {
@@ -173,7 +173,7 @@ void main() {
         // the text column is the exact slice the token covers
         println(&quot;{} {}&quot;, kindName(t.kind), t.text);
     }
-}</code></pre>
+}</code></pre></div>
 <p>Tokens keep a <code>str</code> rather than a copied <code>String</code>, because the source outlives parsing; this is <a href="../10-object-oriented-programming/index.html">Chapter 10</a>'s lifetime rule. <code>pos</code> is the first byte's offset, printed as a column in errors. The <code>Eof</code> sentinel is appended unconditionally, so an empty source yields one token and lookahead is total.</p>
 <p class="step-label">Cost and notes</p>
 <p>Time is O(n): each byte is consumed by one branch and never examined twice. Space is O(t) for tokens plus the uncopied source. This is a single-pass scanner, so lexing a megabyte is memory-bandwidth bound. A production lexer adds maximal munch for <code>==</code>, <code>&lt;=</code>, <code>&amp;&amp;</code>, number bases, and escapes; each is one more <code>while</code>, not a new architecture.</p>
@@ -185,7 +185,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>This is a variant from <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>, and self-reference is the story. An expression is one of four cases, two pointing back at more expressions. Pointers make the type finite: a variant containing whole <code>Expr</code> values would ask the compiler to size a box in terms of itself. <code>alloc</code>/<code>dealloc</code> frees the heap nodes.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::mman { alloc, dealloc };
 import(lib) std::io::ios { println, print };
 
 enum Op { Add, Sub, Mul, Div, Less, Greater }
@@ -276,7 +276,7 @@ void main() {
     show(e);
     println(&quot;&quot;);
     freeExpr(e);
-}</code></pre>
+}</code></pre></div>
 <p><code>show</code> prints the tree fully parenthesized, which confirms parsing produced the intended tree: <code>(+ 1 (* 2 3))</code> differs visibly from <code>(* (+ 1 2) 3)</code>. <code>freeExpr</code> is postorder deallocation, as <code>freeTree</code> in <a href="../28-live-examples-recursion-backtracking-and-trees/index.html">Chapter 28</a>, because a parent's pointers are the only route to its children.</p>
 <p class="step-label">Cost and notes</p>
 <p>Construction is O(1) per node. <code>show</code> and <code>freeExpr</code> are O(n). A tree of n nodes uses O(n) heap and O(h) stack for depth h; a right-leaning chain of a million additions recurses a million frames deep. No sharing, no cycles: each node is allocated once and freed once.</p>
@@ -289,7 +289,7 @@ void main() {
 <p>One function per precedence level, each calling the tighter level for operands: comparison calls addition, which calls multiplication, which calls unary negation, which calls atoms. Multiplication loops while it sees <code>*</code> or <code>/</code>, swallowing them before returning to addition. The loop, not recursion, makes each level left-associative. This is recursive descent.</p>
 <p class="step-label">The implementation</p>
 <p>This builds on the <code>Token</code>/<code>TokenKind</code> definitions of 39.1 and the <code>Expr</code>, <code>Op</code>, and <code>mk*</code> constructors of 39.2. Only the parser is new.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 struct Parser {
@@ -395,7 +395,7 @@ void main() {
     show(e);
     println(&quot;&quot;);
     freeExpr(e);
-}</code></pre>
+}</code></pre></div>
 <p>The non-obvious move is that <code>parseComparison</code> calls <code>parseAddSub</code> for both sides, not itself. Operands always come from a stricter level, which stops left recursion, the infinite regress of <code>expr := expr '+' expr</code>. The <code>while</code> loops handle repetition. Read the four levels as one idea repeated, and <a href="../03-operators-and-expressions/index.html">Chapter 3</a>'s precedence table becomes a stack of functions.</p>
 <p class="step-label">Cost and notes</p>
 <p>Parsing is O(t): each token is consumed by one <code>advance</code>, and lookahead never backtracks. Recursion depth is bounded by nesting, not length. Recursive descent suits small grammars; larger ones grow to dozens of levels or a table-driven parser, but the shape, a function per precedence and a loop per repetition, remains.</p>
@@ -408,7 +408,7 @@ void main() {
 <p>Make the error a value: a <code>ParseError</code> variant carrying a message and position, stored in the parser. Every parse function keeps going after recording an error, so one run reports the first problem without early returns. The first error wins, since later ones are consequences. A <code>Result</code> carries the tree or error out, following <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>.</p>
 <p class="step-label">The implementation</p>
 <p>This adds error state to the parser of 39.3 and changes the entry point; the tokenizer and tree are unchanged.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::result { Result };
 import(lib) std::io::ios { println };
 
@@ -494,7 +494,7 @@ void main() {
     show(e);
     println(&quot;&quot;);
     freeExpr(e);
-}</code></pre>
+}</code></pre></div>
 <p><code>fail</code> records only the first error and ignores later ones; otherwise a recovering parser piles up cascading messages, all symptoms of one mistake. <code>Result&lt;Expr*, ParseError&gt;</code> never holds a null tree and an error at once.</p>
 <p class="step-label">Cost and notes</p>
 <p>Error handling adds constant work per token and leaves O(t) unchanged, since <code>fail</code> is O(1). The error value is small, so returning it by value costs nothing meaningful. Production parsers batch diagnostics, keep a list, and resume at a synchronization point such as the next semicolon.</p>
@@ -507,7 +507,7 @@ void main() {
 <p>The evaluator's recursion mirrors the tree. A number evaluates to itself; negation evaluates and negates; a binary node evaluates both children and applies the operator. Comparisons yield <code>1</code> or <code>0</code>, so there is one value type and no coercion. The interesting choices are at the boundaries, such as division by zero.</p>
 <p class="step-label">The implementation</p>
 <p>The tree and constructors come from 39.2; only <code>eval</code> and <code>main</code> are new.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::mman { alloc, dealloc };
 import(lib) std::io::ios { println };
 
 i64 eval(Expr* e) {
@@ -545,7 +545,7 @@ void main() {
     show(e);
     println(&quot; = {}&quot;, eval(e));
     freeExpr(e);
-}</code></pre>
+}</code></pre></div>
 <p>The tree-walker is the reference every faster engine is measured against. It is slow because the recursion touches the heap once per node and rediscovers the operator through a runtime switch a compiler would resolve at build time. That gap is what 39.8 closes.</p>
 <p class="step-label">Cost and notes</p>
 <p>Time is O(n) in nodes, each <code>eval</code> a call plus a tag switch. Space is O(h) for recursion. Every node is visited once, so a tree of additions is linear; exponential blowups come from re-evaluating shared subtrees, which this representation cannot express.</p>
@@ -558,7 +558,7 @@ void main() {
 <p>Keep a hash map from name to value, the environment, and add a second tree, the statement tree. A program is a sequence of statements; <code>runStmt</code> walks them with the environment in hand. The map is <code>HashMap&lt;str, i64&gt;</code> from <a href="../26-live-examples-hashing-and-sets/index.html">Chapter 26</a>, keyed by a source view, safe because the source outlives the run.</p>
 <p class="step-label">The implementation</p>
 <p>This adds the <code>Stmt</code> variant and an environment parameter threaded through evaluation; the expression tree and constructors are unchanged from 39.2.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::hashmap { HashMap };
 import(lib) std::mman { alloc, dealloc };
 import(lib) std::io::ios { println };
@@ -656,7 +656,7 @@ void main() {
     println(&quot;x = {}&quot;, env.get(&quot;x&quot;).unwrapOr(0));
     // the map owns heap storage that must be released by hand
     env.dispose();
-}</code></pre>
+}</code></pre></div>
 <p>The environment is threaded as a pointer because every statement shares and mutates the same map, the one state outside the tree. <code>runStmt</code> being separate from <code>eval</code> is the moment the language stops being an expression calculator and becomes a sequence of effects.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each assignment and read is an O(1) average hash operation, so a program of length p is O(p) evaluations plus O(p) map work. The map grows with distinct variables, not assignments. The <code>str</code> key is safe only because the source outlives the run; 39.9 solves the dangling case with owned <code>String</code> keys.</p>
@@ -669,7 +669,7 @@ void main() {
 <p>Add a <code>Block</code>, a sequence of statements, and two statement cases pointing at blocks. <code>if</code> evaluates its condition and runs one block; <code>while</code> re-evaluates before every pass and runs the body while nonzero. Since the body is a list of statements and <code>runStmt</code> is recursive, nesting is free.</p>
 <p class="step-label">The implementation</p>
 <p>This extends the <code>Stmt</code> variant and <code>runStmt</code> of 39.6; the environment and expression evaluator are unchanged.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::hashmap { HashMap };
 import(lib) std::mman { alloc, dealloc };
 import(lib) std::io::ios { println };
@@ -748,7 +748,7 @@ void main() {
         runStmt(program.at(i), &amp;env);
     }
     env.dispose();
-}</code></pre>
+}</code></pre></div>
 <p><code>runStmt</code> and <code>runBlock</code> are mutually recursive. Here <code>runStmt</code> inlines the block loop rather than calling <code>runBlock</code>, keeping recursion single-function and definition order valid. <code>elseBody</code> is <code>null</code> when there is no <code>else</code>, checked explicitly; an <code>Option&lt;Block*&gt;</code> would make forgetting impossible at compile time.</p>
 <p class="step-label">Cost and notes</p>
 <p>The interpreter's cost is the program's cost: each iteration is one condition evaluation plus one block execution, with no compilation to amortize. Recursion depth is block nesting depth, not loop count, because <code>while</code> is a loop, not a recursive call.</p>
@@ -761,7 +761,7 @@ void main() {
 <p>A stack machine: instructions push values, operators pop operands and push results. Compiling an expression is a postorder walk: emit left, right, then the operator, so operands are on the stack when the operator runs. The tree is read once at compile time; run time is a loop and an array, no recursion or tags.</p>
 <p class="step-label">The implementation</p>
 <p>The tree and constructors come from 39.2; the evaluator is replaced by a compiler and a machine.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::mman { alloc, dealloc };
 import(lib) std::io::ios { println };
 
@@ -858,7 +858,7 @@ void main() {
     println(&quot;{} instructions&quot;, c.code.count());
     println(&quot;result {}&quot;, run(&amp;c.code));
     freeExpr(e);
-}</code></pre>
+}</code></pre></div>
 <p>The multi-case arm <code>Add | Sub | Mul | Div | Less | Greater =&gt; apply(...)</code> is the payoff: six operators dispatch through one call, and a seventh means one new <code>OpCode</code> case and one line in <code>apply</code>. The machine has no idea it runs a tree; it has an array and an index. This is the split a real compiler makes twice, tree to bytecode and bytecode to machine code.</p>
 <p class="step-label">Cost and notes</p>
 <p>Compilation is one O(n) postorder pass. Execution is O(k) instructions, each a constant-time stack operation plus one array access, with no recursion or per-step heap. The win over tree-walking is the absence of per-node calls and tag dispatch. Production VMs use direct threading to remove the loop overhead.</p>
@@ -871,7 +871,7 @@ void main() {
 <p>Everything is written: the tokenizer, tree, error-carrying parser extended with statements, and the environment and evaluator. The new problem is ownership. A REPL reuses one input buffer, so a name captured during parsing would dangle when the next line overwrites it. The environment therefore owns its keys, storing <code>String</code>, not <code>str</code>.</p>
 <p class="step-label">The implementation</p>
 <p>This is the full assembly. It parses three statement forms, <code>print</code>, assignment, and a bare expression, which a REPL echoes; <code>if</code> and <code>while</code> are left to 39.7 as an exercise.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::text::string { String };
 import(lib) std::collections::hashmap { HashMap };
 import(lib) std::mman { alloc, dealloc };
@@ -1040,7 +1040,7 @@ void main() {
     }
     line.free();
     env.dispose();
-}</code></pre>
+}</code></pre></div>
 <p>Ownership is the heart of this section. The tree's names are <code>str</code> views into <code>line</code>, correct while the statement runs, before the next read. But the environment outlives the line: a variable set on line one must read back on line fifty. So <code>assign</code> copies the name into an owned <code>String</code>, while <code>lookup</code> builds a temporary key and frees it immediately. This is <a href="../10-object-oriented-programming/index.html">Chapter 10</a>'s borrow-versus-own split: the tree borrows, the environment owns.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each line is lexed, parsed, and run in time proportional to its length, and the environment costs an O(1) average hash operation per statement. The only new cost is the <code>String</code> copy on each assignment and lookup; assignments are rare and lookups short, so it is negligible and buys correctness. The REPL holds no state between lines except the environment.</p>

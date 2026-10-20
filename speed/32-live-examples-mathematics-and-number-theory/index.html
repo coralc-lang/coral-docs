@@ -41,7 +41,7 @@
 <p class="step-label">The approach</p>
 <p>Show brute force, then the square-root bound, then the wheel: after handling two and three, every prime candidate is 6k − 1 or 6k + 1, so the loop steps by six and tests two offsets. That cuts the work by a further factor of three.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub bool isPrimeBrute(u64 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub bool isPrimeBrute(u64 n) {
     // 0 and 1 are not prime
     if (n &lt; 2) return false;
     // try every candidate divisor
@@ -71,7 +71,7 @@ pub bool isPrime(u64 n) {
         i += 6;
     }
     return true;
-}</code></pre>
+}</code></pre></div>
 <p>The natural bound <code>while (i * i &lt;= n)</code> overflows near the top of <code>u64</code>: <code>i * i</code> wraps to a small number, so the loop runs forever or tests nonsense. <code>i &lt;= n / i</code> says the same thing without a product that can overflow. Compare against the quotient, not the square.</p>
 <p class="step-label">Cost and notes</p>
 <p>Brute force is O(n) divisions; the square-root version and the wheel are O(sqrt n), the wheel with a smaller constant. None scales to cryptographic sizes, which is why public-key cryptography exists. For hundred-digit primes, use Miller-Rabin instead.</p>
@@ -87,7 +87,7 @@ pub bool isPrime(u64 n) {
 <p class="step-label">The approach</p>
 <p>Two versions: a byte vector for clarity, then <code>std::collections::bitset</code>, the honest structure for a dense range of yes-or-no answers.</p>
 <p>The implementation, byte version.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub Vec&lt;u64&gt; sieve(u64 limit) {
     // collected primes
@@ -111,10 +111,10 @@ pub Vec&lt;u64&gt; sieve(u64 limit) {
     for (u64 i = 2; i &lt;= limit; i += 1)
         if (composite.at((usize)i) == 0) primes.push(i);
     return primes;
-}</code></pre>
+}</code></pre></div>
 <p>The inner loop starts at <code>p * p</code>, not at <code>2 * p</code>, and that is why the sieve is fast. Every multiple of <code>p</code> below <code>p * p</code> has a smaller prime factor that already crossed it out, so starting at the square is part of the algorithm.</p>
 <p>The implementation, bitset version.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::bitset { Bitset };
 
 pub Vec&lt;u64&gt; sieveBits(u64 limit) {
@@ -135,7 +135,7 @@ pub Vec&lt;u64&gt; sieveBits(u64 limit) {
     for (u64 i = 2; i &lt;= limit; i += 1)
         if (!composite.test(i)) primes.push(i);
     return primes;
-}</code></pre>
+}</code></pre></div>
 <p>The bitset uses one bit per number instead of one byte, an eight-fold saving, and bit operations are single instructions. For a million numbers that is 125 kilobytes instead of a megabyte, the difference between fitting in cache and streaming.</p>
 <p class="step-label">Cost and notes</p>
 <p>The marking work is O(n log log n), famously close to linear, which is why the sieve embarrasses per-number tests. Space is O(n) bytes, or O(n/8) with the bitset. For a million, the sieve finishes in the time one stubborn <code>isPrime</code> call takes.</p>
@@ -151,7 +151,7 @@ pub Vec&lt;u64&gt; sieveBits(u64 limit) {
 <p class="step-label">The approach</p>
 <p>Iterative Euclid for the GCD, then the LCM. The formula <code>lcm(a, b) = a * b / gcd(a, b)</code> overflows when the product exceeds the type even though the answer fits, so divide before multiplying.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 gcd(u64 a, u64 b) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u64 gcd(u64 a, u64 b) {
     // Euclidean step until the remainder is zero
     while (b != 0) {
         // new remainder
@@ -174,7 +174,7 @@ pub i64 gcdSigned(i64 a, i64 b) {
     if (a &lt; 0) a = -a;
     if (b &lt; 0) b = -b;
     return (i64)gcd((u64)a, (u64)b);
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>Euclid takes O(log(min(a, b))) remainder steps, at most a couple of dozen for <code>u64</code>, with consecutive Fibonacci numbers as the worst case. <code>gcdSigned</code> takes absolute values first, since sign is irrelevant; negating the most negative <code>i64</code> overflows, so the unsigned path is safer.</p>
 <p class="step-label">Edge cases</p>
@@ -189,7 +189,7 @@ pub i64 gcdSigned(i64 a, i64 b) {
 <p class="step-label">The approach</p>
 <p>Reduce the base, then walk the exponent's bits from the bottom with <code>u64</code>, noting the multiplication caveat.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 modPow(u64 base, u64 exp, u64 m) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u64 modPow(u64 base, u64 exp, u64 m) {
     // mod one, every value is zero
     if (m == 1) return 0;
     // product of the selected powers
@@ -206,9 +206,9 @@ pub i64 gcdSigned(i64 a, i64 b) {
         base = (base * base) % m;
     }
     return result;
-}</code></pre>
+}</code></pre></div>
 <p><code>(result * base) % m</code> is correct only while the product fits the type, so <code>m</code> must be at most about four billion, the square root of the <code>u64</code> maximum. For larger moduli, multiply by doubling and repeated addition, reducing at each step:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 mulMod(u64 a, u64 b, u64 m) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u64 mulMod(u64 a, u64 b, u64 m) {
     u64 result = 0;
     a %= m;
     while (b &gt; 0) {
@@ -223,7 +223,7 @@ pub i64 gcdSigned(i64 a, i64 b) {
         b &gt;&gt;= 1;
     }
     return result;
-}</code></pre>
+}</code></pre></div>
 <p>With <code>mulMod</code>, replace every <code>result * base</code> and <code>base * base</code> in <code>modPow</code> with a <code>mulMod</code> call. The algorithm is then correct for the full <code>u64</code> range, at a cost of about sixty-four times the speed.</p>
 <p class="step-label">Cost and notes</p>
 <p><code>modPow</code> does one or two modular multiplications per exponent bit: O(log exp) steps, each O(1) while the modulus is small. <code>mulMod</code> makes each O(log m), so the full-range version is O(log exp * log m). The small-modulus version is the common case.</p>
@@ -239,7 +239,7 @@ pub i64 gcdSigned(i64 a, i64 b) {
 <p class="step-label">The approach</p>
 <p>A checked integer version returning <code>bool</code> and writing through a pointer, then the logarithm version for factorials used as intermediate values.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::math::math { log, exp, pi };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::math::math { log, exp, pi };
 
 pub bool factorial(u64 n, u64* out) {
     // 0! and 1! are one
@@ -266,7 +266,7 @@ pub f64 logFactorialStirling(u64 n) {
     if (n &lt; 2) return 0.0;
     f64 fn = (f64)n;
     return 0.5 * log(2.0 * pi * fn) + fn * (log(fn) - 1.0);
-}</code></pre>
+}</code></pre></div>
 <p>The overflow test is the pattern to memorise: before multiplying, compare the running result with the largest value divided by the factor. If <code>result</code> exceeds <code>MAX / i</code>, stop. Testing after multiplication is useless, because the product has already wrapped.</p>
 <p class="step-label">Cost and notes</p>
 <p>The checked version is O(n) multiplications and never lies. Sum-of-logs is O(n) calls to <code>log</code>, slower but usable where integers fail; Stirling is a cheap constant-time approximation. Use exact integers for small exact counts, logarithms for large probabilities and ratios.</p>
@@ -282,7 +282,7 @@ pub f64 logFactorialStirling(u64 n) {
 <p class="step-label">The approach</p>
 <p>Show all three: the definition, the obvious repair, and the linear-map exponentiation.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 fibNaive(u64 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u64 fibNaive(u64 n) {
     // fib(0) = 0, fib(1) = 1
     if (n &lt; 2) return n;
     return fibNaive(n - 1) + fibNaive(n - 2);
@@ -321,7 +321,7 @@ Pair fibPair(u64 n) {
 
 pub u64 fibFast(u64 n) {
     return fibPair(n).first;
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p><code>fibNaive</code> is O(phi^n) time and O(n) stack. <code>fibIterative</code> is O(n) time and O(1) space, and is almost always what you should write. <code>fibFast</code> is O(log n) time and O(log n) stack, useful when n is astronomical and you work modulo something.</p>
 <p class="step-label">Edge cases</p>
@@ -336,7 +336,7 @@ pub u64 fibFast(u64 n) {
 <p class="step-label">The approach</p>
 <p>Use <code>C(n, k) = C(n, n - k)</code> to multiply fewer terms, and keep multiply and divide in the right order.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 choose(u64 n, u64 k) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u64 choose(u64 n, u64 k) {
     // choosing more than exist is impossible
     if (k &gt; n) return 0;
     if (k &gt; n - k) k = n - k;          // symmetry: fewer factors
@@ -347,7 +347,7 @@ pub u64 fibFast(u64 n) {
         result = result * (n - k + i) / i;   // exact at each step
     }
     return result;
-}</code></pre>
+}</code></pre></div>
 <p>Why is each step exact? After i steps the running value is <code>C(n - k + i, i)</code>, a binomial coefficient and therefore a whole number, so the division leaves no remainder. That is a specific property of this formula, not a general license; a defending comment is worth more than the code.</p>
 <p class="step-label">Cost and notes</p>
 <p>O(min(k, n - k)) multiplications and divisions on <code>u64</code>. For k near n/2 the answer overflows before the loop ends: <code>C(67, 33)</code> already exceeds <code>u64</code>. Use <code>chooseMod</code> or a Pascal's-triangle table at scale.</p>
@@ -363,7 +363,7 @@ pub u64 fibFast(u64 n) {
 <p class="step-label">The approach</p>
 <p>A direct trial-division factoriser with no setup, then a smallest-prime-factor table for repeated work.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub Vec&lt;u64&gt; factorise(u64 n) {
     // collected prime factors
@@ -410,7 +410,7 @@ pub void factoriseUsing(const Vec&lt;u64&gt;* spf, u64 n) {
         // divide it out
         n /= p;
     }
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>The direct factoriser is O(sqrt n) divisions in the worst case, when n is prime, and less when n has small factors. The table costs O(n log log n) once, then factors any number up to the limit in O(log n) steps. Build the table only if you will factor many numbers.</p>
 <p class="step-label">Edge cases</p>
@@ -425,7 +425,7 @@ pub void factoriseUsing(const Vec&lt;u64&gt;* spf, u64 n) {
 <p class="step-label">The approach</p>
 <p>Provide absolute and relative tolerance helpers, and demonstrate the traps with small functions that make failures visible.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::math::math { fabs, maxF64, isNan, isFinite };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::math::math { fabs, maxF64, isNan, isFinite };
 
 pub bool nearlyEqualAbs(f64 a, f64 b, f64 eps) {
     // absolute difference within tolerance
@@ -462,7 +462,7 @@ pub void demonstrate() {
     println(&quot;{}&quot;, nan == nan);               // false, the only value not equal to itself
     println(&quot;{}&quot;, nan &lt; 1.0);                // false
     println(&quot;{}&quot;, nan &gt; 1.0);                // false
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>The helpers cost almost nothing. The conceptual costs matter: addition and multiplication are not associative, so careful code uses a consistent order and Kahan summation; catastrophic cancellation occurs when nearly equal large numbers are subtracted; <code>pow</code> and <code>exp</code> are approximations, so equal expressions can differ in the last bits.</p>
 <p class="step-label">Edge cases</p>
@@ -477,7 +477,7 @@ pub void demonstrate() {
 <p class="step-label">The approach</p>
 <p>Run the Euclidean loop on three columns at once: remainders, <code>a</code>-coefficients, and <code>b</code>-coefficients. At the end, normalise the sign so the gcd is non-negative and the inverse lies in <code>[0, m)</code>.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct GcdResult { u64 g; i64 x; i64 y; }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct GcdResult { u64 g; i64 x; i64 y; }
 
 pub GcdResult extendedGcd(i64 a, i64 b) {
     // remainders, oldR leading
@@ -521,7 +521,7 @@ pub Option&lt;u64&gt; modInverse(u64 a, u64 m) {
     i64 inv = r.x % (i64)m;
     if (inv &lt; 0) inv += (i64)m;                     // normalise into [0, m)
     return Option&lt;u64&gt;::Some { .value = (u64)inv };
-}</code></pre>
+}</code></pre></div>
 <p>The three rows march together. <code>oldR</code>/<code>r</code> are the Euclid pair; <code>oldS</code>/<code>s</code> track how much of <code>a</code> is in the remainder; <code>oldT</code>/<code>t</code> do the same for <code>b</code>. When the loop stops, <code>oldR</code> is the gcd and <code>oldS</code>, <code>oldT</code> are the coefficients. Trace <code>(240, 46)</code> by hand once.</p>
 <p class="step-label">Cost and notes</p>
 <p>The same length as plain Euclid: O(log min(a, b)) iterations, each a division and a few arithmetic operations, all O(1) on machine words. <code>modInverse</code> adds one normalisation. This is cheaper and more general than Fermat's little theorem, which needs a prime modulus and a full modular exponentiation.</p>
@@ -537,7 +537,7 @@ pub Option&lt;u64&gt; modInverse(u64 a, u64 m) {
 <p class="step-label">The approach</p>
 <p>For one n, factor by trial division and fold each distinct prime in with <code>result -= result / p</code>. For all n up to a limit, use a sieve seeded with <code>i</code> and scaled by each prime.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub u64 eulerPhi(u64 n) {
     if (n == 0) return 0;
@@ -571,7 +571,7 @@ pub Vec&lt;u64&gt; totientTable(u64 limit) {
         }
     }
     return phi;
-}</code></pre>
+}</code></pre></div>
 <p><code>result -= result / p</code> is the integer form of <code>result = result * (p - 1) / p</code>, with no fractions. The sieve's prime test is a gem: entry p still equals p exactly when no smaller prime has scaled it, so no separate sieve is needed.</p>
 <p class="step-label">Cost and notes</p>
 <p><code>eulerPhi</code> is O(sqrt n) divisions in the worst case, using the overflow-safe <code>p &lt;= n / p</code> bound. <code>totientTable</code> is O(n log log n), like the sieve, and answers <code>phi(n)</code> in O(1) within the limit. Use the single function for one value and the table for many.</p>
@@ -587,7 +587,7 @@ pub Vec&lt;u64&gt; totientTable(u64 limit) {
 <p class="step-label">The approach</p>
 <p>Start from the first power of two above the root, then iterate until the guess stops falling. Write the update so it never forms a square that could overflow.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 bitLength(u64 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 bitLength(u64 n) {
     u64 bits = 0;
     // shift out one bit per step
     while (n != 0) { n &gt;&gt;= 1; bits += 1; }
@@ -612,7 +612,7 @@ pub bool isPerfectSquare(u64 n) {
     if (r == 0) return true;                      // n is zero
     // avoids r*r overflow
     return n / r == r &amp;&amp; n % r == 0;
-}</code></pre>
+}</code></pre></div>
 <p>The starting guess matters. Beginning at n itself overflows on the first update for n near the <code>u64</code> maximum, because <code>x + n / x</code> wraps. A power of two just above the root keeps every intermediate sum below twice the root.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each iteration roughly halves the wrong bits, so the loop runs about <code>log2(log2(n))</code> times, five or six for any <code>u64</code>. The divide-only update never computes <code>x * x</code>, which would sit at the type's edge near the maximum root.</p>
@@ -628,7 +628,7 @@ pub bool isPerfectSquare(u64 n) {
 <p class="step-label">The approach</p>
 <p>One function turns a <code>u64</code> into a <code>String</code>, using digits below ten and letters above; another folds a <code>str</code> back into a <code>u64</code>, returning <code>Option</code> for malformed input.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::string { String };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::string { String };
 
 u8 digitChar(u64 d) {
     // 0-9 map to digit characters
@@ -687,7 +687,7 @@ pub Option&lt;u64&gt; fromBase(str s, u32 base) {
         value = value * b + d;
     }
     return Option&lt;u64&gt;::Some { .value = value };
-}</code></pre>
+}</code></pre></div>
 <p><code>digitValue</code> trusts that the caller checked the character class; <code>fromBase</code> does that check, so the helper stays small. Lower and upper case both parse, so <code>0xFF</code> and <code>0xff</code> agree.</p>
 <p class="step-label">Cost and notes</p>
 <p>Both directions are O(number of digits), one division or multiply-add per digit. The string allocation dominates. For fixed-width output such as a byte in hex, the format specifiers are shorter and faster; this pair is for runtime bases and parsing.</p>
@@ -703,7 +703,7 @@ pub Option&lt;u64&gt; fromBase(str s, u32 base) {
 <p class="step-label">The approach</p>
 <p>Walk both strings backward with two indices, accumulate the carry, push each result digit, then reverse. The <code>while</code> continues while either index is in range or a final carry remains, which handles the extra leading digit.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::string { String };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::string { String };
 
 // char digit to numeric value
 u64 decimalDigit(u8 c) { return (u64)(c - (u8)&#x27;0&#x27;); }
@@ -734,7 +734,7 @@ pub String addBig(str a, str b) {
     // digits came out least-significant first
     out.reverse();
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The two working lines are <code>out.pushChar(... sum % 10)</code> and <code>carry = sum / 10</code>; the rest is index bookkeeping. The reverse is required, because digits are discovered least significant first.</p>
 <p class="step-label">Cost and notes</p>
 <p>O(max(len(a), len(b))) time and space, one pass with no nested loops, the fastest possible for this representation. Repeated addition costs O(total digits); feed the running result back as an operand. Multiplication is the next step, at O(len(a) * len(b)) with the same grade-school structure.</p>

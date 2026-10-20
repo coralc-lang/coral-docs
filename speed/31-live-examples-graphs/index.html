@@ -41,7 +41,7 @@
 <p>A city map where each intersection has a signpost listing its streets. An adjacency list is one drawer per intersection, holding only the streets that leave it.</p>
 <p class="step-label">Brute force, then better</p>
 <p>An adjacency matrix stores n^2 entries whether or not they exist, so a sparse million-vertex graph needs a trillion booleans. The adjacency list stores only existing edges and suits neighbour traversal, so it is smaller and better shaped.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 // adjacency list: one list of neighbours per vertex
 struct Graph {
@@ -74,7 +74,7 @@ struct Graph {
     void addDirectedEdge(i32 u, i32 v) {
         self.adj.atPtr((usize)u)-&gt;push(v);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The struct holds the vertex count and <code>Vec&lt;Vec&lt;i32&gt;&gt;</code>: one neighbour vector per vertex. <code>new</code> allocates n empty vectors, so isolated vertices are valid. <code>addUndirectedEdge</code> pushes each endpoint into the other's list; <code>addDirectedEdge</code> pushes only u to v. Both use <code>atPtr</code> deliberately: it returns a pointer without copying the inner vector. Using <code>at</code> copies the owning <code>Vec</code> and risks a double free.</p>
 <p class="step-label">Time and space</p>
 <p>Building costs O(V), each edge O(1), and storage is O(V + E) (2E inner entries for an undirected graph). A matrix would be O(V^2).</p>
@@ -82,12 +82,12 @@ struct Graph {
 <p>Zero vertices is legal and empty. Undirected self-loops work. Duplicate edges are not deduplicated; deduplicate at insert or tolerate revisits.</p>
 <p class="step-label">A variation</p>
 <p>For weighted graphs, store a struct per edge:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// weighted edge: destination plus cost
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// weighted edge: destination plus cost
 struct Edge {
     i32 to;
     // the cost of travelling this edge
     i32 weight;
-}</code></pre>
+}</code></pre></div>
 <p>Then the list becomes <code>Vec&lt;Vec&lt;Edge&gt;&gt;</code>, each neighbour carrying its weight, which Dijkstra (30.5) and Prim (30.8) use. A Map from pairs to weights is clumsier for neighbour traversal.</p>
 <section><h2 id="s31-2">BFS: Shortest Paths in an Unweighted Graph</h2></section>
 <p class="step-label">The problem</p>
@@ -96,7 +96,7 @@ struct Edge {
 <p>Mark the start zero, then every corner one step away one, then every unvisited corner two steps away two, and so on. The first time you reach a corner is the shortest route, so the search expands in rings.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Exploring every walk is exponential because walks can loop. BFS visits vertices in distance order, and the first visit is the shortest. A FIFO queue ensures every vertex at distance d leaves before any at d+1.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::queue { Queue };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::queue { Queue };
 
 void bfs(Graph* g, i32 source, Vec&lt;i32&gt;* dist) {
     for (usize i = 0; i &lt; g-&gt;n; i += 1) {
@@ -124,7 +124,7 @@ void bfs(Graph* g, i32 source, Vec&lt;i32&gt;* dist) {
             }
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The <code>dist</code> vector doubles as the visited marker: -1 means unseen, any non-negative value is a distance. The source starts at 0. Each neighbour of a dequeued vertex, if unseen, gets one more than the current distance and is enqueued. FIFO order makes that the true shortest distance.</p>
 <p class="step-label">Time and space</p>
 <p>Each vertex is enqueued at most once and each edge examined once per endpoint, so O(V + E). The distance vector and queue are O(V).</p>
@@ -139,7 +139,7 @@ void bfs(Graph* g, i32 source, Vec&lt;i32&gt;* dist) {
 <p>Components are islands joined by bridges: from one island you can reach exactly its component. Visit every island reachable from a start, then restart from the next unvisited one. DFS goes as deep as possible before backing up.</p>
 <p class="step-label">Brute force, then better</p>
 <p>No algorithm can beat linear time for visiting every vertex, so DFS is the algorithm. It marks the current vertex, then recurses into each unvisited neighbour; the recursion stack replaces BFS's queue.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void dfsFrom(Graph* g, i32 u, Vec&lt;bool&gt;* visited) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void dfsFrom(Graph* g, i32 u, Vec&lt;bool&gt;* visited) {
     // mark before recursing, or cycles never terminate
     visited-&gt;set((usize)u, true);
     Vec&lt;i32&gt;* neighbors = g-&gt;adj.atPtr((usize)u);
@@ -167,10 +167,10 @@ i32 countComponents(Graph* g) {
         }
     }
     return count;
-}</code></pre>
+}</code></pre></div>
 <p><code>dfsFrom</code> floods from one vertex through every unvisited neighbour, marking as it goes. <code>countComponents</code> restarts from each unreached vertex, and each restart is a new component. Passing <code>&amp;visited</code> is essential: the whole flood must share one visited set.</p>
 <p>For directed cycle detection, track three states: white (untouched), gray (on the current recursion path), and black (finished). An edge to a gray vertex is a back edge and closes a cycle; an edge to black is harmless. An enum expresses the three states (<a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>):</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// white = untouched, gray = on the current path, black = done
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// white = untouched, gray = on the current path, black = done
 enum Color {
     White,
     Gray,
@@ -203,7 +203,7 @@ bool hasCycle(Graph* g) {
         if (state.at(u) == Color::White &amp;&amp; dfsCycle(g, (i32)u, &amp;state)) return true;
     }
     return false;
-}</code></pre>
+}</code></pre></div>
 <p>White means unexplored, gray means on the current path, black means fully explored. An edge into gray closes a loop; an edge into black does not. Using <code>enum</code> makes the test read as the concept and prevents a mistyped integer from masquerading as a colour.</p>
 <p class="step-label">Time and space</p>
 <p>Both are O(V + E) time. The recursion stack is O(V) deep in the worst case, and the visited or state array is O(V). Very large graphs may need an explicit stack, as <a href="../28-live-examples-recursion-backtracking-and-trees/index.html">Chapter 28</a> warned for deep trees.</p>
@@ -218,7 +218,7 @@ bool hasCycle(Graph* g) {
 <p>Some garments depend on others: socks before shoes, shirt before jacket. Repeatedly take any garment whose prerequisites are all on, add it to the list, and remove it from the pile. If items remain but none is free, they form a cycle.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Trial and error is exponential. Kahn's algorithm is linear: count each vertex's incoming edges (indegree), repeatedly output a zero-indegree vertex, and decrement its neighbours' indegrees. A vertex becomes available when its last prerequisite is removed.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool topologicalSort(Graph* g, Vec&lt;i32&gt;* order) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool topologicalSort(Graph* g, Vec&lt;i32&gt;* order) {
     // indegree[v] counts v&#x27;s not-yet-removed prerequisites
     Vec&lt;i32&gt; indegree = Vec&lt;i32&gt;::new();
     for (usize i = 0; i &lt; g-&gt;n; i += 1) {
@@ -254,7 +254,7 @@ bool hasCycle(Graph* g) {
     }
     // a short order means a cycle locked some vertices
     return order-&gt;count() == g-&gt;n;
-}</code></pre>
+}</code></pre></div>
 <p>The first pass computes every indegree. The queue starts with the zero-indegree vertices. Each removal appends a vertex and decrements its neighbours; any neighbour reaching zero is enqueued. If the order is shorter than V, some vertices never became free, which means a cycle.</p>
 <p class="step-label">Time and space</p>
 <p>Indegree computation and the main loop are O(V + E), with O(V) for the indegree vector and queue. Any valid order is returned; enqueue order breaks ties deterministically for a given input.</p>
@@ -269,7 +269,7 @@ bool hasCycle(Graph* g) {
 <p>Each road has a travel time, and the best route to a city is the best route to a neighbour plus the road from it. The graph has no natural table order, so Dijkstra always finalises the nearest unfinalised vertex, turning the unordered graph into an ordered process.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Considering all paths is exponential. Bellman-Ford relaxes every edge V-1 times in O(V × E) and handles negative weights. Dijkstra is faster, O((V + E) log V), but requires non-negative weights; a priority queue always pulls the smallest tentative distance.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Edge {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Edge {
     i32 to;
     i32 weight;
 }
@@ -310,7 +310,7 @@ void dijkstra(Vec&lt;Vec&lt;Edge&gt;&gt;* adj, usize n, i32 source, Vec&lt;i64&g
             }
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>dist</code> holds the best known distance, infinity except for the source at 0. The priority queue yields the smallest tentative distance, and a popped vertex is finalised because non-negative weights mean no later path can be shorter. Each outgoing edge is relaxed: a shorter route is recorded and pushed. The <code>if (top.dist &gt; dist-&gt;at(u)) continue;</code> line discards stale entries, avoiding decrease-key.</p>
 <p class="step-label">Time and space</p>
 <p>Each edge causes at most one push, so O(E) heap operations of O(log E) each, total O((V + E) log V). The distance array is O(V) and the heap O(E). Without a heap, Dijkstra is O(V^2), fine for dense graphs and worse for sparse ones.</p>
@@ -325,7 +325,7 @@ void dijkstra(Vec&lt;Vec&lt;Edge&gt;&gt;* adj, usize n, i32 source, Vec&lt;i64&g
 <p>Conversation circles form at a mixer. <code>find(person)</code> asks which circle someone is in, and <code>unite(a, b)</code> merges two circles. Rather than relabel everyone, each circle has a leader and each person points toward the leader; merging points one leader at the other.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Relabelling every member on merge is O(n) per merge and O(n^2) overall. Union-find stores only parent pointers, with roots as labels. Union by rank hangs the smaller tree under the larger, and path compression points every element on a find path directly at the root.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct DSU {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct DSU {
     // parent[x] points toward x&#x27;s group root
     Vec&lt;i32&gt; parent;
     // rank is an upper bound on the depth of a tree
@@ -378,7 +378,7 @@ void dijkstra(Vec&lt;Vec&lt;Edge&gt;&gt;* adj, usize n, i32 source, Vec&lt;i64&g
         }
         return true;
     }
-}</code></pre>
+}</code></pre></div>
 <p>Each element's <code>parent</code> points to another element; a root points to itself. <code>find</code> walks to the root, then repoints every element on the path directly at it, keeping future finds short. <code>unite</code> hangs the shallower tree under the deeper using <code>rank</code>; only ties increase depth. A <code>false</code> return means a and b were already connected, which is what Kruskal needs.</p>
 <p class="step-label">Time and space</p>
 <p>With union by rank and path compression, each operation is amortised O(α(n)), the inverse Ackermann function, below 5 for any practical n, effectively O(1). Storage is O(n) for the two arrays.</p>
@@ -393,7 +393,7 @@ void dijkstra(Vec&lt;Vec&lt;Edge&gt;&gt;* adj, usize n, i32 source, Vec&lt;i64&g
 <p>Wiring an office, you consider cables cheapest first and lay each one if it joins two previously separate clusters. Skipping any cable that would close a loop guarantees no redundant connection.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Trying every subset of V-1 edges is exponential. Kruskal's algorithm sorts edges by weight and adds each unless it would create a cycle. Union-find's <code>unite</code> returning false is exactly that cycle test, which makes Kruskal fast.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct WEdge {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct WEdge {
     i32 u;
     i32 v;
     i32 weight;
@@ -422,7 +422,7 @@ i64 kruskal(usize n, Vec&lt;WEdge&gt;* edges) {
     }
     if (n &gt; 0 &amp;&amp; used != n - 1) return -1;    // the graph was not connected
     return total;
-}</code></pre>
+}</code></pre></div>
 <p>Sorting puts cheap edges first. <code>unite</code> returns true only when an edge joins two different components, so accepted edges are added and totalled. The loop breaks once n-1 edges are added. If it finishes short, the graph is disconnected and -1 is returned.</p>
 <p class="step-label">Time and space</p>
 <p>The sort is O(E log E), and the loop does at most E effectively O(1) union-find operations, so O(E log E) total. Space is O(V + E) for the graph and DSU arrays. Kruskal suits an edge list; Prim (30.8) suits an existing adjacency structure.</p>
@@ -439,7 +439,7 @@ i64 kruskal(usize n, Vec&lt;WEdge&gt;* edges) {
 <p>Light a town from one house, each step extending power by the cheapest wire from the lit area to a dark house. The lit region grows like a snowball, and the wires laid form an MST.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Scanning all edges for the next cheapest crossing edge gives O(V^2). A priority queue turns each scan into a heap extraction: push every edge from the newly lit vertex, then pop the cheapest, skipping edges whose endpoint is already lit. That gives O((V + E) log V).</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 prim(Vec&lt;Vec&lt;Edge&gt;&gt;* adj, usize n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i64 prim(Vec&lt;Vec&lt;Edge&gt;&gt;* adj, usize n) {
     if (n == 0) return 0;
     // which vertices have already joined the tree
     Vec&lt;bool&gt; inTree = Vec&lt;bool&gt;::new();
@@ -471,7 +471,7 @@ i64 kruskal(usize n, Vec&lt;WEdge&gt;* edges) {
     // not every vertex joined: the graph was disconnected
     if (reached != (i32)n) return -1;
     return total;
-}</code></pre>
+}</code></pre></div>
 <p>The queue holds (cost to reach this vertex, vertex), starting with the source at cost 0, an artificial edge so the source joins first. Each pop is the cheapest way to reach a new vertex; if it is already in the tree, the entry is stale. Otherwise it joins, its cost is added, and its edges to dark neighbours are pushed. <code>reached</code> detects a disconnected graph and returns -1.</p>
 <p class="step-label">Time and space</p>
 <p>Each edge is pushed at most once per endpoint, so O((V + E) log V) time and O(V + E) space. On dense graphs the heap advantage over the O(V^2) scan shrinks; on sparse graphs it is clearly better.</p>
@@ -486,7 +486,7 @@ i64 kruskal(usize n, Vec&lt;WEdge&gt;* edges) {
 <p>Plan a degree with prerequisites. If two courses require each other, no schedule exists. Otherwise a schedule is a topological order of the prerequisite graph.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Trying every order is factorial. Build a directed edge from each prerequisite to the course requiring it, then run Kahn's algorithm; the courses are schedulable exactly when the topological sort includes every vertex.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool canFinish(i32 numCourses, Vec&lt;Vec&lt;i32&gt;&gt;* prerequisites) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool canFinish(i32 numCourses, Vec&lt;Vec&lt;i32&gt;&gt;* prerequisites) {
     Graph g = Graph::new((usize)numCourses);
     // one directed edge per prerequisite pair
     for (usize i = 0; i &lt; prerequisites-&gt;count(); i += 1) {
@@ -498,7 +498,7 @@ i64 kruskal(usize n, Vec&lt;WEdge&gt;* edges) {
     Vec&lt;i32&gt; order = Vec&lt;i32&gt;::new();
     // schedulable exactly when every course makes it into the order
     return topologicalSort(&amp;g, &amp;order);
-}</code></pre>
+}</code></pre></div>
 <p>The function adds one directed edge per prerequisite in the direction "must come first → depends on it," then delegates to <code>topologicalSort</code>, whose boolean return is the answer. <code>prerequisites-&gt;atPtr(i)</code> reads the pair without copying. Any cycle leaves <code>order</code> short, so the function returns false.</p>
 <p class="step-label">Time and space</p>
 <p>Building the graph and the topological sort are both O(V + E), so the whole thing is O(V + E) time and space, where V is courses and E is prerequisite pairs. Recognising the graph structure turned an exponential problem linear.</p>
@@ -513,7 +513,7 @@ i64 kruskal(usize n, Vec&lt;WEdge&gt;* edges) {
 <p>Scan a satellite image. On hitting land, you have found a new island; flood the whole island, walking to its four neighbours and marking everything reachable, so it is never counted again.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Comparing every land cell with every other is quadratic and error-prone. Each land cell is a vertex joined to its land neighbours, so counting islands is counting connected components (30.3) on a grid.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::queue { Queue };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::queue { Queue };
 
 void exploreDir(Vec&lt;str&gt;* grid, Vec&lt;bool&gt;* visited, Queue&lt;i64&gt;* q, i64 r, i64 c, usize rows, usize cols) {
     // reject negative coordinates
@@ -568,7 +568,7 @@ i32 numIslands(Vec&lt;str&gt;* grid) {
         }
     }
     return count;
-}</code></pre>
+}</code></pre></div>
 <p>The grid is a <code>Vec&lt;str&gt;</code>, one string per row. <code>str</code> is a borrowed view, so reading a row never copies the data and never risks the double-free that copying an owning <code>Vec</code> would. <code>visited</code> is one flat <code>Vec&lt;bool&gt;</code> indexed by <code>r * cols + c</code>, smaller and faster than a vector of vectors. <code>floodFill</code> is BFS: mark and enqueue a cell, then repeatedly dequeue and try its four neighbours through <code>exploreDir</code>, which bounds-checks, skips visited cells and water, and marks and enqueues land. <code>numIslands</code> calls <code>floodFill</code> once per unvisited land cell, consuming a whole island.</p>
 <p class="step-label">Time and space</p>
 <p>Every cell is examined once by the outer scan and at most four times as a neighbour, so O(rows × cols). The visited vector and BFS queue are O(rows × cols). This is O(V + E) with V = cells and E at most 4V, so O(V).</p>
@@ -583,7 +583,7 @@ i32 numIslands(Vec&lt;str&gt;* grid) {
 <p>Split people into two teams so nobody who dislikes each other shares a team. Put one person on A, everyone they dislike on B, then everyone those dislike back on A, alternating. If someone would have to be on both teams, no split exists.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Trying all 2^V colourings is exponential. One BFS colours a starting vertex and floods outward, giving each neighbour the opposite colour. The first edge joining two vertices of the same colour proves the graph is not bipartite.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::queue { Queue };
 
 bool isBipartite(Vec&lt;Vec&lt;i32&gt;&gt;* adj) {
@@ -615,7 +615,7 @@ bool isBipartite(Vec&lt;Vec&lt;i32&gt;&gt;* adj) {
         }
     }
     return true;
-}</code></pre>
+}</code></pre></div>
 <p><code>color</code> holds 0, 1, or -1 for uncoloured. The outer loop restarts the flood from every uncoloured vertex, so each component is coloured independently and all must pass. An uncoloured neighbour gets the opposite colour and is enqueued; an already-coloured neighbour must differ, or an edge joins two equal colours and the answer is false. <code>1 - color</code> flips between 0 and 1.</p>
 <p class="step-label">Time and space</p>
 <p>Each vertex is enqueued once and each edge examined once per endpoint, so O(V + E) time, with O(V) for the colour array and queue. This is BFS with one extra check.</p>
@@ -630,7 +630,7 @@ bool isBipartite(Vec&lt;Vec&lt;i32&gt;&gt;* adj) {
 <p>Several fires break out at once, each spreading one step per minute. With multiple sources, all fronts advance together, and a cell's ignition time is its distance to the nearest source, which is what BFS from all sources computes.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Running BFS from every rotten cell and taking the per-cell minimum is O(V × (V + E)), quadratic. Seeding the queue with every rotten cell before the loop lets one pass process cells in non-decreasing distance order, so the first reach is by the nearest source.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::queue { Queue };
 
 void rotCell(Vec&lt;Vec&lt;i32&gt;&gt;* grid, Queue&lt;i64&gt;* q, i32* fresh, i64 nr, i64 nc, usize rows, usize cols) {
@@ -681,7 +681,7 @@ i32 orangesRotting(Vec&lt;Vec&lt;i32&gt;&gt;* grid) {
     // some fresh cell was unreachable
     if (fresh &gt; 0) return -1;
     return minutes;
-}</code></pre>
+}</code></pre></div>
 <p>Seeding every rotten cell before processing is the entire difference from ordinary BFS. The <code>fresh</code> counter stops the loop when the last fresh cell rots and detects the impossible case. The inner loop drains one BFS level, and <code>minutes</code> increments once per level, counting rounds of simultaneous spread. <code>rotCell</code> mirrors the four-neighbour flood of 30.10: it bounds-checks, ignores non-fresh cells, and otherwise rots, decrements, and enqueues.</p>
 <p class="step-label">Time and space</p>
 <p>Each cell enters the queue at most once and gets at most four neighbour checks, so O(rows × cols). The queue and counters are O(rows × cols) in the worst case, and <code>minutes</code> is at most that. Rotting in the grid doubles as the visited marker.</p>
@@ -696,7 +696,7 @@ i32 orangesRotting(Vec&lt;Vec&lt;i32&gt;&gt;* grid) {
 <p>Dijkstra finalises a vertex on pop, trusting no later path is shorter, which requires non-negative edges. Bellman-Ford assumes nothing: relax every edge repeatedly, and each full pass extends known shortest paths by one more edge, so V-1 passes cover every simple path.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Considering all paths is exponential. Bellman-Ford runs V-1 rounds of relaxing every edge, O(V × E). It is slower than Dijkstra on non-negative graphs but more general, and it detects negative cycles.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct WEdge {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct WEdge {
     i32 u;
     i32 v;
     i32 weight;
@@ -735,7 +735,7 @@ bool bellmanFord(i32 n, Vec&lt;WEdge&gt;* edges, i32 source, Vec&lt;i64&gt;* dis
         }
     }
     return true;
-}</code></pre>
+}</code></pre></div>
 <p>After k passes the distances are correct for every path of at most k edges, so V-1 passes cover every simple path; a shortest path never repeats a vertex unless a negative cycle exists. The <code>changed</code> flag ends the run early once a pass improves nothing. The final loop tests for a negative cycle: if any edge can still be relaxed, a reachable negative cycle makes the shortest distances undefined.</p>
 <p class="step-label">Time and space</p>
 <p>O(V × E) time worst case and O(V) space for the distance array. The <code>du == infinity</code> guard matters for unreachable vertices, since adding a negative weight to the sentinel would manufacture a bogus reachable distance; the sentinel is chosen large enough that no real distance collides with it.</p>
@@ -750,7 +750,7 @@ bool bellmanFord(i32 n, Vec&lt;WEdge&gt;* edges, i32 source, Vec&lt;i64&gt;* dis
 <p>You want shortest routes between every pair of cities. Admit intermediate cities one at a time: direct roads first, then allow city 0 as a stop, then city 1 as well, and so on. When all cities are allowed, every shortest route is found.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Dijkstra from every vertex cannot tolerate negative edges, and Bellman-Ford from every vertex is O(V^2 × E), or O(V^4) on a dense graph. Floyd-Warshall fills one V × V table in O(V^3) with three nested loops.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 void floydWarshall(Vec&lt;Vec&lt;i64&gt;&gt;* dist) {
     usize n = dist-&gt;count();
@@ -769,7 +769,7 @@ void floydWarshall(Vec&lt;Vec&lt;i64&gt;&gt;* dist) {
             }
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The table starts as the adjacency matrix: <code>dist[i][j]</code> is the direct edge weight, zero on the diagonal, and a large sentinel where no edge exists. The outer loop <code>k</code> is the set of allowed intermediates; for each pair <code>(i, j)</code> the code asks whether going through <code>k</code> is shorter. <code>k</code> must be outermost so that when it is processed, <code>dist[i][k]</code> and <code>dist[k][j]</code> already account for every lower-numbered intermediate.</p>
 <p class="step-label">Time and space</p>
 <p>Three nested loops give Θ(V^3) time, and the table is Θ(V^2) space. Cubic cost is fine up to a few hundred vertices; Dijkstra from each vertex is faster on sparse graphs, while Floyd-Warshall suits dense graphs and negative edges.</p>
@@ -784,7 +784,7 @@ void floydWarshall(Vec&lt;Vec&lt;i64&gt;&gt;* dist) {
 <p>Each word is a vertex, and two words are adjacent when they differ in exactly one letter. The shortest transformation is a shortest path in an unweighted graph, so BFS from the begin word stops the moment the end word appears; the number of layers is the ladder length.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Building the whole graph by comparing every pair costs O(N^2 × L) before BFS even starts. Neighbours can instead be generated on demand by scoring each unused dictionary word, so BFS generates them as it goes, with a visited flag preventing duplicate enqueues.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::queue { Queue };
 
 bool oneLetterApart(str a, str b) {
@@ -831,7 +831,7 @@ i32 wordLadder(str begin, str end, Vec&lt;str&gt;* words) {
         steps += 1;
     }
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>The queue holds words and <code>used</code> marks dictionary words already enqueued, so each word enters at most once. Instead of precomputing the graph, the inner loop scores every unused word against the current one with <code>oneLetterApart</code>, comparing byte by byte. The <code>levelSize</code> snapshot makes <code>steps</code> count words in the ladder, not expansions. Checking the end word on dequeue also handles begin equal to end.</p>
 <p class="step-label">Time and space</p>
 <p>Every dictionary word is dequeued once, and each dequeue scans the whole dictionary, so O(N^2 × L) for N words of length L, the same order as building the graph but with far less memory and simpler code. The queue and visited array are O(N).</p>
@@ -846,7 +846,7 @@ i32 wordLadder(str begin, str end, Vec&lt;str&gt;* words) {
 <p>Duplicating a web of friendships means each friend must also be a fresh person whose list points at fresh versions. Keep a map from each original node to its copy: the first time you meet a node, make its copy and record it, and every later reference resolves to that copy. The map stops recursion from chasing a cycle forever.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Without a map, a recursive copy follows an edge and then follows it back, looping forever on any cycle. The map breaks the cycle: each node is cloned once, the clone is recorded before its neighbours are visited, and later visits return the recorded clone. It is memoization applied to a graph traversal.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::hashmap { HashMap };
 import(lib) std::mman { alloc };
 
@@ -877,7 +877,7 @@ GNode* cloneGraph(GNode* start) {
     if (start == null) return null;
     HashMap&lt;i32, GNode*&gt; seen = HashMap&lt;i32, GNode*&gt;::new(hashI32, eqI32);
     return cloneNode(start, &amp;seen);
-}</code></pre>
+}</code></pre></div>
 <p>The map ties each original value to its copy. The copy must go into the map before the neighbour loop: insert it afterward and a cycle recurses back to the original, fails to find a copy, and clones it again forever. Inserting first means a neighbour leading back returns the copy already under construction. <code>node-&gt;neighbors</code> is a <code>Vec&lt;GNode*&gt;</code> reached through the pointer, and auto-dereferencing lets the count and indexed read work.</p>
 <p class="step-label">Time and space</p>
 <p>Every node is cloned once and every edge crossed once per direction, so O(V + E) time. The map holds one entry per vertex and each clone owns its neighbour list, so O(V + E) space, with recursion depth up to O(V) for a long path.</p>

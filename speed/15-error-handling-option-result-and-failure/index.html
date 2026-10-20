@@ -37,103 +37,103 @@
 <p>This chapter covers <code>Option</code> and <code>Result</code>, building and propagating them, designing a good error type, and a worked example.</p>
 <section><h2 id="s15-1">Option&lt;T&gt;: The Absence of a Value</h2></section>
 <p><code>Option&lt;T&gt;</code> answers "a <code>T</code>, or nothing?" without null or a sentinel. It is declared in <code>std::data::option</code> and re-exported as <code>std::option</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant Option&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub variant Option&lt;T&gt; {
     None,
     Some { T value; }
-}</code></pre>
+}</code></pre></div>
 <p><code>None</code> is absence; <code>Some</code> carries a value:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Option&lt;i32&gt; maybe   = Option&lt;i32&gt;::Some { .value = 42 };
-Option&lt;i32&gt; nothing = Option&lt;i32&gt;::None;</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Option&lt;i32&gt; maybe   = Option&lt;i32&gt;::Some { .value = 42 };
+Option&lt;i32&gt; nothing = Option&lt;i32&gt;::None;</code></pre></div>
 <p><code>Some { .value = 42 }</code> says yes; <code>None</code> says no. The compiler will not let you treat an <code>Option&lt;i32&gt;</code> as a plain <code>i32</code>, which is the point: a bare <code>i32</code> cannot say "no."</p>
 <p>Other languages smuggle "no value" in as null, <code>-1</code>, or an empty string, with no type warning. <code>Option&lt;T&gt;</code> is a box that is visibly empty or holds a <code>T</code>, and the compiler refuses access until you check.</p>
 <p>A magic number such as <code>-1</code> from <code>findUser</code> breaks when a real id is <code>-1</code>, when someone forgets to check, or when the <code>-1</code> is passed as an id. A sentinel is an unchecked convention; <code>Option&lt;i32&gt;</code> makes "not found" a case the type knows.</p>
 <p><code>isSome</code> and <code>isNone</code> report the case; <code>unwrap</code> trusts presence; <code>unwrapOr</code> supplies a fallback; <code>take</code> removes the value and leaves <code>None</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">if (maybe.isSome()) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">if (maybe.isSome()) {
     i32 v = maybe.unwrap();
 }
 
-i32 safe = nothing.unwrapOr(-1);      // -1</code></pre>
+i32 safe = nothing.unwrapOr(-1);      // -1</code></pre></div>
 <p><code>unwrap</code> is a promise: on <code>None</code> it is an explicit assertion failure, not a garbage value or a later null dereference. <code>unwrapOr</code> handles <code>None</code>; when <code>None</code> is genuinely impossible, an assertion is more honest than a default.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Result&lt;i32, str&gt; r = parseCount(input);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Result&lt;i32, str&gt; r = parseCount(input);
 if (r.isOk())
     println(&quot;count is {}&quot;, r.unwrap());
 else
-    println(&quot;bad count: {}&quot;, r.unwrapErr());</code></pre>
+    println(&quot;bad count: {}&quot;, r.unwrapErr());</code></pre></div>
 <p>The <code>if</code> is the decision: the success path reads the value, the failure path reads the reason, and neither can read the other.</p>
 <p>Do not call <code>unwrap</code> everywhere and rebuild the crashes <code>Option</code> prevents. If you cannot prove presence, handle <code>None</code> or use <code>unwrapOr</code>.</p>
 <p><code>take</code> pulls the value out and puts <code>None</code> back:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Option&lt;String&gt; slot = Option&lt;String&gt;::Some { .value = String::from(&quot;hello&quot;) };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Option&lt;String&gt; slot = Option&lt;String&gt;::Some { .value = String::from(&quot;hello&quot;) };
 String s = slot.take();     // s is &quot;hello&quot;
 // slot is now None
-// slot.take() a second time asserts, because there is nothing left</code></pre>
+// slot.take() a second time asserts, because there is nothing left</code></pre></div>
 <p><code>take</code> moves an owned value out of an <code>Option</code> you do not own, leaving a valid empty <code>Option</code> behind, which is exactly what an <code>Option</code> field needs.</p>
 <p><code>ptr</code> returns a pointer to the inner value or null; <code>constPtr</code> returns the read-only version:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32* p = maybe.ptr();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32* p = maybe.ptr();
 if (p != null) {
     *p = 99;
-}</code></pre>
+}</code></pre></div>
 <p>This is the C nullable-pointer idiom made explicit. The type still knows it is an <code>Option</code>: you cannot call <code>.value</code> on a <code>None</code> or pass <code>Option&lt;i32&gt;</code> where <code>i32</code> is expected. When crossing into C, <code>ptr</code> is the door and the null check is the price.</p>
 <p><code>map</code> applies a function to a present value in place; <code>andThen</code> chains an operation returning an <code>Option</code>, flattening the nesting; <code>orElse</code> supplies a value on <code>None</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">maybe.map(double);                    // Some(v) becomes Some(2v); None stays None
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">maybe.map(double);                    // Some(v) becomes Some(2v); None stays None
 maybe.andThen(parseMore);             // avoids Option&lt;Option&lt;T&gt;&gt;
-nothing.orElse(computeDefault);       // runs computeDefault only on None</code></pre>
+nothing.orElse(computeDefault);       // runs computeDefault only on None</code></pre></div>
 <p>Those methods return <code>void</code> and mutate <code>self</code>. The standard library's <code>map</code> is:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void map(T(T) fn)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void map(T(T) fn)
 {
     #[[fallthrough]]
     switch (self)
     {
         Some { value } =&gt; { self = Option&lt;T&gt;::Some { .value = fn(value) }; }
     }
-}</code></pre>
+}</code></pre></div>
 <p>So <code>maybe.map(double);</code> rewrites <code>maybe</code> rather than producing a new <code>Option</code>; copy first if you need the original. This keeps the common in-place transform cheap, at the price of surprising anyone expecting purity. The <code>#[[fallthrough]]</code> lets the <code>None</code> arm do nothing without being flagged as a missing case.</p>
 <p>This vocabulary makes "look this up, then that, or give up" chains read as one line. <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>'s lookups return <code>Option</code> or pointer-plus-check. Remember that each link rewrites the variable on the left.</p>
 <section><h2 id="s15-2">Result&lt;T, E&gt;: Failure With a Reason</h2></section>
 <p><code>Option</code> says a value is absent; <code>Result</code> says an operation failed and why. It is declared in <code>std::data::result</code> and re-exported as <code>std::result</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant Result&lt;T, E&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub variant Result&lt;T, E&gt; {
     Ok  { T value; },
     Err { E error; }
-}</code></pre>
+}</code></pre></div>
 <p><code>Ok</code> carries success, <code>Err</code> the reason. The API author chooses <code>E</code>, usually a variant enumerating the failure modes, which makes failure inspectable rather than a string to parse.</p>
 <p><code>Option</code> fits when the only thing to say is "there was nothing": a failed search or missing key. <code>Result</code> fits when you can say more: the file does not exist, the number was too large, the checksum did not match. Those distinctions live in the error type, so a caller can switch on them.</p>
 <p>In short, <code>Option</code> answers "is there anything?" and <code>Result</code> answers "did it work, and if not, why not?"</p>
 <p>The choice determines what the caller may know. A map lookup returning <code>Option&lt;V&gt;</code> honestly says "a value or nothing." A file open returning <code>Result&lt;File, IoError&gt;</code> says "a file, or a specific reason," and <code>IoError</code> lets the caller retry, report the path, or use a default.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Result&lt;File, IoError&gt; opened = open(&quot;config.txt&quot;);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Result&lt;File, IoError&gt; opened = open(&quot;config.txt&quot;);
 switch (opened) {
     Ok { value }   =&gt; { use(value); },
     Err { error }  =&gt; { report(error); },
-}</code></pre>
+}</code></pre></div>
 <p>The methods mirror <code>Option</code>'s: <code>isOk</code> and <code>isErr</code>; <code>unwrap</code> and <code>unwrapOr</code>; <code>unwrapErr</code> for tests; <code>okPtr</code> and <code>errPtr</code> returning pointers to the live case or null:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">if (opened.isOk()) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">if (opened.isOk()) {
     File f = opened.unwrap();
 }
 
 i32 count = parseCount(input).unwrapOr(0);
-IoError e = opened.unwrapErr();</code></pre>
+IoError e = opened.unwrapErr();</code></pre></div>
 <p>The assertion messages matter: <code>unwrap</code> on an <code>Err</code> reports "Called unwrap() on an 'Err' value." rather than faulting. That names the mistake instead of the symptom, saving an afternoon of debugging.</p>
 <p><code>mapOk</code> transforms success; <code>mapErr</code> transforms the error; <code>andThen</code> chains a fallible operation onto success; <code>orElse</code> recovers with a fallible recovery:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">count.mapOk(double);                  // transform the Ok case
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">count.mapOk(double);                  // transform the Ok case
 count.mapErr(addContext);             // enrich the Err case
 count.andThen(validateThenStore);     // chain, flattening Result&lt;Result&lt;...&gt;&gt;
-count.orElse(retry);                  // recover on Err</code></pre>
+count.orElse(retry);                  // recover on Err</code></pre></div>
 <p>Like <code>Option</code>'s, these mutate in place and return <code>void</code>; <code>count.mapOk(double);</code> rewrites <code>count</code>.</p>
 <p><code>mapErr</code> adds context as an error propagates: a parser returns <code>Result&lt;T, ParseError&gt;</code>, a layer maps it to <code>ConfigError</code> naming the file, and the top maps that to a user message. The error's type records which layers have seen it and what they added.</p>
 <p>A three-line example. <code>readConfig</code> calls <code>readFile</code>; its job is not to handle I/O but to say which config file was involved:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Result&lt;str, ConfigError&gt; readConfig(str path) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Result&lt;str, ConfigError&gt; readConfig(str path) {
     var contents = readFile(path);
     contents.mapErr(wrapAsConfigError);
     if (contents.isErr()) return contents.unwrapErr();
     return contents.unwrap();
-}</code></pre>
+}</code></pre></div>
 <p>The <code>IoError</code> became a <code>ConfigError</code> carrying the path, and every layer can add context the same way, so the final error is rich with what each layer understood.</p>
 <section><h2 id="s15-3">Assertions: When Failure Is a Bug</h2></section>
 <p>Some failures are contract violations. Coral uses three assertion forms with three audiences.</p>
 <p><code>@assert(cond)</code> aborts with a diagnostic if an invariant fails. Use it for conditions that indicate a bug, not bad input.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">@assert(index &lt; count);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">@assert(index &lt; count);</code></pre></div>
 <p><code>@assertOut(cond, "message")</code> adds a message naming the violated precondition:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">@assertOut(count &gt; 0, &quot;mean() called on an empty Vec&quot;);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">@assertOut(count &gt; 0, &quot;mean() called on an empty Vec&quot;);</code></pre></div>
 <p><code>@compileError("message")</code> is evaluated at compile time, rejecting an unsupported generic or <code>comptime</code> instantiation at the call site:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">@compileError(&quot;Vec&lt;T&gt; requires T to be movable&quot;);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">@compileError(&quot;Vec&lt;T&gt; requires T to be movable&quot;);</code></pre></div>
 <p>Keep the division clean. Outside input (a file, socket, command line) uses <code>Result</code>, because it can fail beyond the programmer's control. An internal invariant uses <code>@assert</code> or <code>@assertOut</code>, because a violation is a bug and the only response is to stop loudly. A compile-time constraint uses <code>@compileError</code>, so the mistake never becomes a running program.</p>
 <p>Side by side for <code>average(const i32[] data)</code>:</p>
 <ul><li>If <code>data</code> comes from the user and could legitimately be empty, return <code>Result&lt;f64, StatsError&gt;</code> with an <code>Empty</code> case and let the caller decide.</li><li>If the contract says "caller must pass a non-empty slice," use <code>@assertOut(data.count() &gt; 0, "average() on empty slice")</code> to stop the bug loudly.</li><li>If <code>data</code> is a fixed-size array whose length is known to be zero, use <code>@compileError("average() of a zero-length array")</code> so the call never builds.</li></ul>
@@ -144,7 +144,7 @@ count.orElse(retry);                  // recover on Err</code></pre>
 <section><h2 id="s15-4">Propagating Failure</h2></section>
 <p>Coral has no error-propagation operator; there is no question mark that unwraps a <code>Result</code> or returns early. Propagation is explicit, so a reader sees at every call whether failure is handled here or passed up.</p>
 <p>The idiom is a switch that returns the error case and continues on success:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Result&lt;Config, ConfigError&gt; loadConfig(str path) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Result&lt;Config, ConfigError&gt; loadConfig(str path) {
     Result&lt;File, IoError&gt; opened = open(path);
     switch (opened) {
         Err { error }  =&gt; { return ConfigError::Io { .cause = error }; }
@@ -159,33 +159,33 @@ count.orElse(retry);                  // recover on Err</code></pre>
     }
 
     return parseConfig(contents.unwrap());
-}</code></pre>
+}</code></pre></div>
 <p>Before each call nothing can have failed. The call returns a <code>Result</code>; the switch asks "did it fail?" and returns immediately with the underlying error wrapped in the promised <code>ConfigError</code>. On success the <code>else</code> does nothing and the code falls out, where <code>unwrap</code> is safe because failure already returned. The invariant: by the time you reach an <code>unwrap</code>, a switch above has handled the <code>Err</code>.</p>
 <p>Do not reach for <code>unwrap</code> first and add the switch later; with no switch above it, <code>unwrap</code> on an <code>Err</code> aborts instead of reporting. Handle the <code>Err</code> with a switch or <code>mapErr</code> first, and let <code>unwrap</code> appear only afterward.</p>
 <p>The repeated shape is a small cost. In exchange, every exit on failure is a line you can point to, and the error is enriched at each boundary. "What happens if the file does not exist?" is answered by the first switch, with no call graph to trace.</p>
 <p>Walk it through. If <code>open(path)</code> fails, the switch builds <code>ConfigError::Io</code> and returns, so <code>readAll</code> and <code>parseConfig</code> never run. If <code>open</code> succeeds, the <code>else</code> falls through, <code>opened.unwrap()</code> yields the file, and the function continues. Every failure exits by the same visible road: a switch, then a <code>return</code>.</p>
 <p>Two refinements reduce repetition. <code>andThen</code> fuses fallible steps when the error types line up:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">return open(path)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">return open(path)
     .andThen(readAll)
-    .andThen(parseConfig);</code></pre>
+    .andThen(parseConfig);</code></pre></div>
 <p>and the switch appears once, at the end, where the caller decides. <code>mapErr</code> converts an error into the caller's type, so a deep layer can rephrase failure for the layer that reports it. The switch makes each step's failure obvious; the chain makes the successful pipeline obvious. Both are correct.</p>
 <p>Caution: because <code>andThen</code> mutates in place and returns <code>void</code>, the expression form above is shorthand for a sequence of statements. When in doubt, write the statements and let each step's type confirm the error types line up.</p>
 <section><h2 id="s15-5">Designing an Error Type</h2></section>
 <p>An error type is an interface. The default good shape is a variant naming the distinct failure modes, each carrying what a caller needs to respond:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ConfigError {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub variant ConfigError {
     NotFound   { str path; }
     Io         { IoError cause; }
     Syntax     { usize line; str message; }
     Validation { str field; str reason; }
-}</code></pre>
+}</code></pre></div>
 <p>Four properties make this a good error type.</p>
 <p>The compiler distinguishes the cases. A switch over <code>ConfigError</code> is checked for exhaustiveness, so "not found" can be handled differently from "syntax error," unlike a stringly-typed error. Cases needing the same response can share an arm with <code>|</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool retryable(IoError e) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool retryable(IoError e) {
     switch (e) {
         IoError::Timeout | IoError::WouldBlock | IoError::Interrupted  =&gt; { true; },
         else  =&gt; { false; },
     }
-}</code></pre>
+}</code></pre></div>
 <p>Read <code>|</code> as "or": one body answers all three cases. It is the same separator <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> uses for literal patterns. A comma ends an arm and begins the next, so <code>IoError::Timeout, IoError::WouldBlock =&gt; true</code> is a different, probably unintended, program.</p>
 <p>Each case carries what its handler needs: <code>NotFound</code> the path, <code>Syntax</code> the line, and <code>Io</code> the underlying error rather than a flattened message.</p>
 <p>Use the error type directly when there is genuinely one failure mode: <code>Result&lt;str, IoError&gt;</code> is honest when only I/O can fail. A one-case wrapper adds ceremony for nothing.</p>
@@ -200,7 +200,7 @@ count.orElse(retry);                  // recover on Err</code></pre>
 <p>Assertion failures are aborts with a location, not error codes, because a violated assertion means the program is wrong. "Returned an <code>Err</code>" is an anticipated failure; "aborted" is a bug. <a href="../23-diagnostics-and-the-error-catalogue/index.html">Chapter 23</a> surveys the full catalogue.</p>
 <section><h2 id="s15-7">A Worked Example: Reading a Number</h2></section>
 <p>A config file has lines like <code>timeout = 30</code>. Parsing the timeout can fail three ways: the key is missing, the value is not a number, or the number is out of range. Each is a distinct case.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant ConfigError {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub variant ConfigError {
     MissingKey { str key; }
     NotANumber { str key; str value; }
     OutOfRange { str key; i64 value; i64 min; i64 max; }
@@ -224,11 +224,11 @@ Result&lt;i64, ConfigError&gt; parseTimeout(Map&lt;str, str&gt;* cfg) {
         };
     }
     return value;
-}</code></pre>
+}</code></pre></div>
 <p>The signature documents the failure modes: <code>parseTimeout</code> returns a <code>Result</code>, and the <code>Err</code> type enumerates the three ways. The success path returns a bare <code>i64</code>, which the compiler wraps in <code>Ok</code> silently. That sugar keeps the happy path readable; returning failure requires naming the <code>Err</code> case explicitly. It is easy to succeed and necessary to say a word to fail.</p>
 <p>This asymmetry shapes the function. The happy path stays quiet while every failure is spelled out, so a reader sees exactly where it can give up. If both needed the same ceremony, neither would stand out.</p>
 <p>Each guard produces the specific error the caller needs, carrying the key, the offending value, and the bounds. The caller decides policy:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (parseTimeout(&amp;cfg)) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">switch (parseTimeout(&amp;cfg)) {
     Ok { value } =&gt; { applyTimeout(value); },
     Err { error } =&gt; {
         switch (error) {
@@ -239,11 +239,11 @@ Result&lt;i64, ConfigError&gt; parseTimeout(Map&lt;str, str&gt;* cfg) {
             }
         }
     },
-}</code></pre>
+}</code></pre></div>
 <p>The outer failure is handled; the inner error is inspected and each category gets its own response. The switch is exhaustive, so a fourth failure mode is a compile error here until the caller handles it. Failure is a value, the value names its cases, and the compiler checks every caller.</p>
 <p>The outer switch answers "did it work?"; the inner answers "why not?" <code>useDefault</code> fits a missing key, <code>warnAndUseDefault</code> a non-number, and <code>clampToRange</code> an out-of-bounds value. Each response had the data it needed because the error type carried it.</p>
 <p>The real value of <code>Result</code> shows across layers. Suppose <code>loadSettings</code> calls <code>parseTimeout</code> and wants its own errors to mention the config path:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Result&lt;Settings, AppError&gt; loadSettings(str path) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Result&lt;Settings, AppError&gt; loadSettings(str path) {
     Map&lt;str, str&gt;* cfg = readConfigFile(path);
     if (cfg == null) {
         return AppError::NoConfig { .path = path };
@@ -255,7 +255,7 @@ Result&lt;i64, ConfigError&gt; parseTimeout(Map&lt;str, str&gt;* cfg) {
     }
 
     return Settings { .timeout = t.unwrap() };
-}</code></pre>
+}</code></pre></div>
 <p><code>AppError</code> wraps the lower-level errors, and each layer adds context only it possesses. <code>main</code> can switch on <code>AppError</code> and print a helpful message because no layer flattened the failure to a string. "What happens when the config is broken?" has a written, checkable answer.</p>
 <section><h2 id="s15-8">Exercises</h2></section>
 <section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>Distinguish <code>Option&lt;T&gt;</code> from <code>Result&lt;T, E&gt;</code> and give a function suited to each.</li><li><span class="ex-label">Comprehension</span>Coral has no exceptions and no propagation operator. State one advantage and one disadvantage of failure as a return value.</li><li><span class="ex-label">Implementation</span>Write <code>firstEven(Vec&lt;i32&gt;) Option&lt;i32&gt;</code> returning the first even number or <code>None</code>, with a range-for and early return, then with the iter adaptors.</li><li><span class="ex-label">Implementation</span>Write <code>parseInt(str) Result&lt;i64, ParseError&gt;</code> for base-10 integers with an optional leading minus. Choose and justify <code>ParseError</code>'s cases.</li><li><span class="ex-label">Design</span>List every way reading a database row into a <code>User</code> can fail and design a variant to carry them. Which failures are <code>Result</code> and which assertions?</li><li><span class="ex-label">Propagation</span>Rewrite 15.4's <code>loadConfig</code> with <code>andThen</code> and <code>mapErr</code> so the switch appears once. What is gained and lost?</li><li><span class="ex-label">Assertions</span>Choose <code>@assert</code>, <code>@assertOut</code>, <code>@compileError</code>, or <code>Result</code> for each and explain: a socket connect timeout; a negative array length; a generic instantiated with a non-movable type; a missing required command-line argument.</li><li><span class="ex-label">Methods</span><code>Option</code>'s <code>map</code>, <code>andThen</code>, and <code>orElse</code> mutate <code>self</code>. What happens when code needs the original, and is the in-place style better or worse?</li><li><span class="ex-label">Transformation</span>Given <code>Option&lt;i32&gt; maybe</code>, double it if present and otherwise set it to <code>0</code>, twice: with <code>map</code>/<code>orElse</code>, and with an explicit <code>switch</code>. Which is clearer, and what does each do to <code>maybe</code>?</li><li><span class="ex-label">Meta</span>Find a failure currently handled as a value whose only sensible response is "stop, the program is wrong." Should it be an assertion, or vice versa, and what changes for callers?</li></ol></section>

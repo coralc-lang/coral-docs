@@ -41,7 +41,7 @@
 <p>The framebuffer is graph paper read in reading order: left to right, then top to bottom. "Put a red pixel at (3, 2)" means "replace the three bytes starting at index <code>(2 * width + 3) * 3</code>." Every drawing operation in this chapter is that sentence with different numbers.</p>
 <p>PPM in binary <code>P6</code> form: magic <code>P6</code>, whitespace, decimal width, whitespace, height, whitespace, maximum channel value (<code>255</code>), exactly one whitespace byte, then raw RGB bytes. No compression, no header length, no library. The ASCII cousin <code>P3</code> writes the same header but spells every channel in decimal text, easier to read and far larger.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 import(lib) std::io::fs { fileOpen, fileClose, fileWrite, File, IoError };
 import(lib) std::fmt::fmt { formatInt };
@@ -129,7 +129,7 @@ void main() {
     }
     writePPM(&quot;/tmp/coral-framebuffer.ppm&quot;, &amp;img);
     println(&quot;wrote /tmp/coral-framebuffer.ppm ({}x{})&quot;, img.w, img.h);
-}</code></pre>
+}</code></pre></div>
 <p><code>Image::new</code> allocates <code>w * h * 3</code> zero bytes. <code>setPixel</code> computes the flat index and silently drops writes outside the image, letting algorithms wander a pixel past the edge without crashing. <code>appendInt</code> copies <code>formatInt</code>'s <code>String</code> bytes out. <code>writePPM</code> writes the header then pixels in a loop, because one <code>write</code> may write fewer bytes than requested.</p>
 <p class="step-label">Cost and notes</p>
 <p>Building the image is O(w × h) time and space. <code>writePPM</code> is another O(w × h) pass plus one linear write. Uncompressed, 1920×1080 is about six megabytes. <code>appendInt</code> allocates a <code>String</code> per integer, fine for four and wasteful in a loop.</p>
@@ -143,7 +143,7 @@ void main() {
 <p class="step-label">The approach</p>
 <p>Work in floating point on <code>[0, 1]</code> and convert to bytes only when writing a pixel. The conversion multiplies by 255, adds one half to round, and clamps to <code>[0, 255]</code>, so an overshooting value lands on black or white instead of wrapping. <code>Image</code> and <code>writePPM</code> are reused unchanged.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 // A color in linear [0, 1] per channel; bytes only at the very end.
@@ -195,7 +195,7 @@ void main() {
         Color { .r = 0.95, .g = 0.60, .b = 0.20 });
     writePPM(&quot;/tmp/coral-gradient.ppm&quot;, &amp;img);
     println(&quot;wrote /tmp/coral-gradient.ppm&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>The inner <code>x</code> loop is the optimization that matters, and it is a property of the image: every pixel in a row gets the same color, so compute it once per row instead of once per pixel. <code>toByte</code> is the single point where a float color becomes a byte, and it clamps before casting, so a briefly negative or above-one <code>Color</code> cannot wrap. The formula <code>a + (b - a) * t</code> is algebraically <code>(1 - t) * a + t * b</code> but does one fewer multiply and behaves slightly better at the endpoints.</p>
 <p class="step-label">Cost and notes</p>
 <p>The image is one pass, O(w × h), and per-row color work is constant. Floats are read and converted once per row, keeping expensive work out of the per-pixel path. The gradient is exact to floating-point rounding; the only quantization is the final byte conversion, which is why a gradient can show faint banding when the color changes by less than one byte across many pixels. That banding is inherent to eight-bit output, not the algorithm.</p>
@@ -209,7 +209,7 @@ void main() {
 <p class="step-label">The approach</p>
 <p>The algorithm handles all eight octants using absolute deltas, tracking error and stepping x and y independently according to direction. <code>plotSafe</code> drops negative coordinates before casting to <code>usize</code>.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 // Guard the cast: negative coordinates are off-image.
@@ -247,7 +247,7 @@ void main() {
     }
     writePPM(&quot;/tmp/coral-lines.ppm&quot;, &amp;img);
     println(&quot;wrote /tmp/coral-lines.ppm&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>The two <code>if</code> statements are the entire algorithm. <code>dx</code> is the positive horizontal extent and <code>dy</code> the negative vertical extent, so <code>err</code> measures how far the line has strayed from the diagonal. Doubling it and comparing against <code>dy</code> and <code>dx</code> decides independently whether to advance x and y. A step can advance both, one, or (at an endpoint) neither, which lets one loop draw shallow, steep, or exactly diagonal lines without a special case per octant. The loop terminates because each iteration advances toward the endpoint or breaks at the final pixel.</p>
 <p class="step-label">Cost and notes</p>
 <p>One iteration per pixel, a constant number of additions and comparisons, no floating point, division, or square root. A line spanning <code>n</code> pixels costs O(n), optimal since every pixel must be written. Integer arithmetic is exact as long as coordinates and deltas fit <code>isize</code>, so the line is identical on every machine, which is why the algorithm has survived since 1962.</p>
@@ -261,7 +261,7 @@ void main() {
 <p class="step-label">The approach</p>
 <p>Start at <code>(x, y) = (radius, 0)</code> with an error term that is exactly the midpoint test. Each step plots the eight symmetric points, advances y, and either keeps x or steps it in by one, updating the error. <code>plotPixel</code> guards the unsigned cast, and the eight-fold symmetry in <code>plot8</code> turns one arc into a circle.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 // Plot only if in-image; negative coordinates are dropped.
@@ -307,7 +307,7 @@ void main() {
     }
     writePPM(&quot;/tmp/coral-circles.ppm&quot;, &amp;img);
     println(&quot;wrote /tmp/coral-circles.ppm&quot;);
-}</code></pre>
+}</code></pre></div>
 <p><code>err</code> is the midpoint decision variable, kept as an integer because the tests need only its sign. Starting at <code>(radius, 0)</code>, the loop walks the first octant while <code>x &gt;= y</code> and stops at forty-five degrees. The two <code>if</code>s can both fire: when <code>err</code> is exactly zero the first makes it positive and the second consumes that, the intended transition. <code>plot8</code> writes the point and seven mirrors; the three lines swapping <code>x</code> and <code>y</code> reflect across the diagonal, filling the other four arcs. The <code>radius &lt; 0</code> guard cheaply refuses a meaningless request.</p>
 <p class="step-label">Cost and notes</p>
 <p>The loop runs about <code>radius / √2</code> times, so O(radius), with a handful of integer operations per iteration and no large multiplications, <code>sqrt</code>, <code>sin</code>, or <code>cos</code>. The full circle costs eight pixel writes per iteration, free work compared to evaluating the circle equation per pixel. That is why the midpoint method is standard for outlined and filled circles where a math library is unavailable or too slow.</p>
@@ -321,7 +321,7 @@ void main() {
 <p class="step-label">The approach</p>
 <p>The weight of A is the area of triangle PBC divided by the area of ABC, likewise for the others. Signed area is an edge function, a cross product, so only one normalization division is needed. Scan integer pixels in the triangle's bounding box; evaluate the three weights at each pixel center and keep the pixel when all are non-negative. Dividing every edge function by the signed area makes the test winding-independent.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 import(lib) std::math::math { minF64, maxF64, floor, ceil };
 
@@ -386,7 +386,7 @@ void main() {
         Color { .r = 0.1, .g = 0.2, .b = 1.0 });
     writePPM(&quot;/tmp/coral-triangle.ppm&quot;, &amp;img);
     println(&quot;wrote /tmp/coral-triangle.ppm&quot;);
-}</code></pre>
+}</code></pre></div>
 <p><code>edgeFn(a, b, p)</code> returns twice the signed area of triangle <code>a, b, p</code>, positive on one side of the directed edge and negative on the other. <code>area</code> is the same function on the triangle's own vertices, twice the whole signed area. Dividing each sub-area by the whole normalizes the weights to sum to one and flips every sign to match, so winding order does not matter. The bounding box limits the scan to the rectangle the triangle can touch, and testing the pixel center <code>(px + 0.5, py + 0.5)</code> keeps coverage consistent with the pixel-as-unit-square convention.</p>
 <p class="step-label">Cost and notes</p>
 <p>The scan visits every pixel in the bounding box, so O(bounding-box area), with three edge evaluations, three divisions, and, inside, three <code>lerp</code>s and a <code>toByte</code> triple per pixel. The three divisions are wasteful; a production rasterizer computes edge functions incrementally, adding a constant per step, and defers the single division by <code>area</code>, or avoids it by comparing unnormalized weights. The bounding box wastes work on long, thin triangles, where a scanline approach tracking each edge's x-range visits far fewer pixels. For a textbook the brute-force scan is clearer and completely correct.</p>
@@ -400,7 +400,7 @@ void main() {
 <p class="step-label">The approach</p>
 <p>Represent an affine transform as <code>a b c / d e f</code>, meaning <code>x' = a*x + b*y + c</code> and <code>y' = d*x + e*y + f</code>. The last row of the full three-by-three matrix is always <code>0 0 1</code>, which lets translation fit inside. <code>mul</code> returns <code>self</code> times <code>other</code>, so <code>self</code> is applied last and <code>other</code> first; <code>translate.mul(rotate).mul(scale)</code> therefore scales, rotates, then translates, the order almost every layout wants. Points are <code>P2</code>; the polygon outline reuses <code>plotLine</code> from 42.3.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 import(lib) std::math::math { sin, cos };
 
@@ -488,7 +488,7 @@ void main() {
     drawPolygon(&amp;img, &amp;out, 255, 200, 40);
     writePPM(&quot;/tmp/coral-transform.ppm&quot;, &amp;img);
     println(&quot;wrote /tmp/coral-transform.ppm&quot;);
-}</code></pre>
+}</code></pre></div>
 <p><code>mul</code> is just the three-by-three product with the constant last row folded away: the extra <code>+ self.c</code> and <code>+ self.f</code> are the left matrix's translation terms. Read <code>m</code> right to left: the unit square is stretched by <code>scale</code>, spun by <code>rotate</code>, then shifted by <code>translate</code>. In <code>drawPolygon</code>, <code>(i + 1) % n</code> closes the outline and the <code>n &lt; 2</code> guard refuses a polygon with nothing to connect.</p>
 <p class="step-label">Cost and notes</p>
 <p>Composing two transforms is a constant number of multiplies and adds, and a chain collapses to one matrix before any point is touched. Transforming <code>n</code> points is O(n), one matrix-vector multiply each. This is why graphics systems insist on matrices: a million vertices under fifty transforms pays for fifty compositions once, then one multiply per vertex. <code>sin</code> and <code>cos</code> are evaluated once when the rotation matrix is built.</p>
@@ -502,7 +502,7 @@ void main() {
 <p class="step-label">The approach</p>
 <p>Build the font once as a <code>Vec&lt;u8&gt;</code>, seven bytes per glyph, in a fixed order: space, A through Z, then digits. Each row is a five-bit binary literal, so the table reads like the letters. A lookup maps a character to a glyph index; <code>drawText</code> walks the string and, for each lit bit, fills a small square, advancing the pen by six times the scale (five columns plus a one-column gap).</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 // Append one glyph as seven row bytes, top row first, low five bits used.
@@ -603,7 +603,7 @@ void main() {
     drawText(&amp;img, &amp;font,  6, 48, &quot;GRAPHICS 42&quot;, 2, 120, 220, 255);
     writePPM(&quot;/tmp/coral-text.ppm&quot;, &amp;img);
     println(&quot;wrote /tmp/coral-text.ppm&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>The font table is the whole idea. Each glyph is seven rows, top to bottom, each row five bits, left to right, so <code>0b01110</code> for the top of an <code>A</code> is its cap. <code>glyphIndex</code> converts ASCII to the fixed glyph order with two range checks. <code>drawText</code> extracts each bit with a shift and mask, testing the high bit first for the leftmost column because <code>4 - col</code> counts down from four. The pen advances by <code>6 * scale</code> per character: five columns plus one of spacing. Unknown characters are skipped, leaving a blank rather than throwing.</p>
 <p class="step-label">Cost and notes</p>
 <p>Building the font costs a few hundred pushes once, so it is hoisted into <code>main</code>. Drawing <code>m</code> characters at scale <code>s</code> writes up to <code>m * 35 * s²</code> pixels, so cost grows with the square of the scale. Bit extraction is a shift and an AND per pixel, cheaper than any lookup. The whole font is a little over 250 bytes, why bitmap fonts were the only ones that fit in early machines.</p>
@@ -617,7 +617,7 @@ void main() {
 <p class="step-label">The approach</p>
 <p>Build a ray direction per pixel from a pinhole camera looking down the negative z-axis. Test every sphere and keep the nearest positive hit. If there is one, shade it with a Lambert term against one directional light; otherwise fill the pixel with a vertical sky gradient. Colors are clamped and written by <code>toByte</code> from 42.2. <code>Vec3</code> carries directions and points.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 import(lib) std::math::math { sqrt };
 
@@ -728,7 +728,7 @@ void main() {
     render(&amp;img, &amp;spheres);
     writePPM(&quot;/tmp/coral-spheres.ppm&quot;, &amp;img);
     println(&quot;wrote /tmp/coral-spheres.ppm&quot;);
-}</code></pre>
+}</code></pre></div>
 <p><code>hitSphere</code> is the quadratic in disguise. With a normalized direction the leading coefficient is one, so <code>b² - 4ac</code> shrinks to <code>b² - c</code>, where <code>b</code> is the dot of offset and direction and <code>c</code> is offset length squared minus radius squared. A negative discriminant means a miss, returning <code>-1.0</code>. Otherwise the roots are <code>-b ± √disc</code>; the code takes the near root, and only if it is behind the eye considers the far root, handling a camera inside a sphere. The <code>0.001</code> bias stops a ray starting on a surface from re-hitting it. <code>render</code> finds the nearest sphere and shades it: normal is hit point minus center, the Lambert term is the clamped dot with light, and a miss uses the sky gradient.</p>
 <p class="step-label">Cost and notes</p>
 <p>O(width × height × spheres): one quadratic solve per sphere per pixel, a few dots, one <code>sqrt</code>, no allocation. The per-hit <code>sqrt</code> dominates and can be avoided by comparing squared distances when only the nearest matters. Shadows, reflections, and multiple lights are small additions to the same per-pixel loop.</p>
@@ -742,7 +742,7 @@ void main() {
 <p class="step-label">The approach</p>
 <p>Map pixel coordinates onto a rectangle of the complex plane, run the iteration with a fixed cap, and choose a color from the escape count. The cap turns "forever" into "up to <code>maxIter</code>"; points reaching the cap are treated as inside. A simple palette maps the escape fraction through a curve to a color; the curve is art, but any monotone map produces a recognizable image.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 // Color by escape count; points that never escape stay black.
@@ -800,7 +800,7 @@ void main() {
     renderMandelbrot(&amp;img, 80);
     writePPM(&quot;/tmp/coral-mandelbrot.ppm&quot;, &amp;img);
     println(&quot;wrote /tmp/coral-mandelbrot.ppm&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>The iteration is complex multiplication by hand: <code>(zr + zi i)² = (zr² - zi²) + (2 zr zi) i</code>, and <code>+ c</code> adds the current point's parts. The new real part is computed into <code>next</code> before <code>zr</code> is overwritten, because the imaginary part still needs the old <code>zr</code>; swapping those lines is the classic bug and produces a wrong image rather than a crash. The escape test <code>zr*zr + zi*zi &lt;= 4.0</code> runs every iteration, and <code>n</code> records how many the point survived. <code>mandelbrotColor</code> turns <code>n</code> into a color and paints capped points black. The mapping divides by <code>width - 1</code> and <code>height - 1</code> so the first and last pixels land on the rectangle's edges, guarded for the one-pixel case.</p>
 <p class="step-label">Cost and notes</p>
 <p>Cost is image size times average iteration count, O(width × height × maxIter) worst case, though most exterior points escape much sooner and the boundary concentrates the work. A few hundred iterations at a few hundred pixels square takes a fraction of a second; deep zooms need arbitrary precision because <code>f64</code> runs out of mantissa long before the picture runs out of detail. Each pixel is independent, the textbook embarrassingly parallel workload, though this chapter stays single-threaded.</p>

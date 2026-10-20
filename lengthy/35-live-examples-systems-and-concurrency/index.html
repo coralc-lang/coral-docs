@@ -41,7 +41,7 @@
 <p class="step-label">The approach</p>
 <p>Write the broken version first, deliberately, because the failure is the lesson and because it never reproduces on demand. Then replace the plain <code>u64</code> with an <code>AtomicU64</code> and watch the count come out exact every time.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::thread {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::thread {
     threadCreate, threadJoin, Thread, ThreadError, AtomicU64
 };
 
@@ -78,7 +78,7 @@ pub void main() {
     if (c.isOk()) threadJoin(c.unwrap(), null);
     if (d.isOk()) threadJoin(d.unwrap(), null);
     println(&quot;atomic {}&quot;, atomic.value.load());  // always 2000000
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p><code>fetchAdd</code> is a single locked instruction on x86-64 (<code>lock xadd</code>), a few tens of cycles, serialising and indivisible. The plain increment is faster in isolation and wrong. The rule of thumb from <a href="../19-concurrency-and-parallelism/index.html">Chapter 19</a> is exact: use an atomic when the shared state is one integer (a counter, a flag, a ticket), and use a mutex the moment the state is anything larger. An atomic guards one cell; a mutex guards a region.</p>
 <p class="step-label">Edge cases</p>
@@ -93,7 +93,7 @@ pub void main() {
 <p class="step-label">The approach</p>
 <p>A ring buffer with <code>head</code> and <code>count</code>, protected by one mutex, with two condition variables. A <code>closed</code> flag lets the consumer drain and stop. The waits are all inside <code>while</code> loops, for the three named reasons (lost wakeup, spurious wakeup, stale predicate).</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
 import(lib) std::concurrent::thread {
     ConditionVar, threadCreate, threadJoin, Thread, ThreadError
 };
@@ -204,7 +204,7 @@ pub i32 main() {
     if (c.isOk()) threadJoin(c.unwrap(), null);
     q.destroy();
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>The sum prints 5050, the sum of one through a hundred, every time, though the interleaving of the two threads differs on every run. The ring arithmetic <code>(head + count) % cap</code> is the entire buffer discipline: <code>head</code> is the oldest slot, <code>count</code> is how many are live, and the modulo keeps the indices in range without ever moving a value. The <code>close</code> broadcast, called the poison pill, wakes both waiters so the consumer's loop ends on <code>false</code> and no thread is left asleep forever.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each push and pop takes one lock, one or two signals, and O(1) bookkeeping. The mutex is held only for the bookkeeping and is released before any work is done on the item, so the critical section is tiny. The backpressure is the point: a fast producer blocks when the buffer is full instead of letting memory grow until the machine dies, and that blocking is what keeps the two sides in step.</p>
@@ -220,7 +220,7 @@ pub i32 main() {
 <p class="step-label">The approach</p>
 <p>A compact pool built directly on <code>Mutex</code>, <code>ConditionVar</code>, and <code>threadCreate</code>. <code>std::concurrent::threadpool::ThreadPool</code> is the production version of exactly this structure; reading its source after writing this one is the best way to see that there is no hidden machinery.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
 import(lib) std::concurrent::thread {
     ConditionVar, threadCreate, threadJoin, Thread, ThreadError
 };
@@ -328,7 +328,7 @@ rawptr miniEntry(rawptr arg) {
     // thread entry: hand the pool to its worker loop
     ((MiniPool*)arg)-&gt;workerLoop();
     return null;
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>Submission is O(1): allocate a task, link it under the lock, signal. A worker's idle cost is zero. It sleeps on the condition variable and consumes nothing until signalled. The concurrency is bounded by the number of workers, which is a tuning decision: one per core for CPU-bound work, more for tasks that block on I/O, fewer when tasks contend for a shared lock. The pool replaces one thread creation per task with one per worker, and turns the per-task cost into a queue push.</p>
 <p class="step-label">Edge cases</p>
@@ -343,7 +343,7 @@ rawptr miniEntry(rawptr arg) {
 <p class="step-label">The approach</p>
 <p>Use the standard <code>ThreadPool</code>. Define a job that carries a pointer to the input, a pointer to the output, a range, and the function to apply. Allocate an array of jobs, submit each, then <code>deinit</code>, which drains all queued work before the workers exit. Because the input and output outlive the pool, and each job writes a disjoint range, no additional synchronisation is needed.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::threadpool { ThreadPool };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::threadpool { ThreadPool };
 import(lib) std::vec { Vec };
 import(lib) std::mman { alloc, dealloc };
 
@@ -405,7 +405,7 @@ pub bool parallelMap(const Vec&lt;f64&gt;* input, Vec&lt;f64&gt;* output, f64(f6
     pool.deinit();        // drains every queued task, then joins the workers
     dealloc&lt;MapJob&gt;(jobs);
     return true;
-}</code></pre>
+}</code></pre></div>
 <p>The chunking gives the first <code>extra</code> chunks one element more than the rest, so the pieces cover the vector exactly even when the length is not a multiple of the worker count. A fire-and-forget version that did not call <code>deinit</code> would return while the workers were still writing, and the caller would read a half-mapped vector. <code>deinit</code>'s drain-then-join is what makes the return value meaningful.</p>
 <p class="step-label">Cost and notes</p>
 <p>The wall-clock time should approach the single-threaded time divided by the number of workers, up to the overhead of submission and the fact that some workers finish before others. The overhead is real: each task carries a struct and a queue push, and for tiny vectors the parallel version is slower than a plain loop. Parallelism pays when each chunk is large enough to dwarf the coordination, which is why the chunk count is a parameter and not a constant.</p>
@@ -421,7 +421,7 @@ pub bool parallelMap(const Vec&lt;f64&gt;* input, Vec&lt;f64&gt;* output, f64(f6
 <p class="step-label">The approach</p>
 <p>A producer fiber pushes values into an <code>AsyncChannel</code> with a sleep between them to model latency; a consumer fiber receives and accumulates them. The top level spawns both and runs the scheduler.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::async;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::async;
 import(lib) std::io::ios { println };
 
 pub void producerStage(rawptr arg) {
@@ -460,7 +460,7 @@ pub i32 main() {
     // scheduler drained; tear the channel down
     ch.deinit();
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>The producer sleeps, then sends; the consumer awaits a receive and adds what arrives. The <code>send((rawptr)i)</code> casts the integer to the channel's raw-pointer element type, and the consumer casts it back with <code>(u64)got.unwrap()</code>. The channel is buffered with capacity four, so sends and receives do not have to meet exactly. A zero capacity would make it a rendezvous, where a send succeeds only against an already-parked receiver.</p>
 <p class="step-label">Cost and notes</p>
 <p>The run-time cost of a fiber switch is a stack swap, cheaper than a kernel context switch, and the stacks are heap blocks recycled as fibers finish. The <code>sleep</code> is wall-clock and does not consume a thread; the scheduler idles in a timed wait on the same clock and wakes when the next timer is due. The gain over threads appears when many tasks spend most of their lives waiting, which is the I/O-bound case: one driver thread can hold thousands of suspended fibers on a fraction of the memory that many threads would need.</p>
@@ -476,7 +476,7 @@ pub i32 main() {
 <p class="step-label">The approach</p>
 <p>A shared counter of tasks that have finished, a semaphore of four permits, and a worker function that waits for a permit, does its work, and posts it back. The pool of tasks is larger than the permits on purpose.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::semaphore { Semaphore };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::semaphore { Semaphore };
 import(lib) std::concurrent::thread {
     threadCreate, threadJoin, Thread, ThreadError
 };
@@ -516,7 +516,7 @@ pub void runLimited(u32 maxConcurrent, u32 taskCount) {
     gate.permits.destroy();
     // every task finished; report the tally
     println(&quot;completed {}&quot;, completed);
-}</code></pre>
+}</code></pre></div>
 <p>The example above creates and joins a thread per task for clarity; in production the tasks would be submitted to the pool from 34.3, and the semaphore would cap how many ran the guarded section at once. The essential lines are the three around the critical work: <code>wait</code>, do, <code>post</code>. Everything between the wait and the post runs under the cap, no matter how many tasks exist.</p>
 <p class="step-label">Cost and notes</p>
 <p><code>wait</code> and <code>post</code> are cheap kernel operations, far cheaper than creating a thread, and the queue of blocked waiters is handled by the kernel without spinning. The semaphore's promise is a maximum, unchanged by what happens inside: "never more than four connections open, whatever the work does," provided the work cannot throw a path that skips the post, which is why RAII or a single-exit structure matters. A binary semaphore, initialised to one, is almost a mutex, but its lack of ownership means any thread can release it; use the mutex to own a region and the semaphore to limit and to signal.</p>
@@ -532,7 +532,7 @@ pub void runLimited(u32 maxConcurrent, u32 taskCount) {
 <p class="step-label">The approach</p>
 <p>One mutex for the bookkeeping, two condition variables for the two waiting groups, a reader count, a writer-active flag, and a count of writers waiting for the priority rule.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
 import(lib) std::concurrent::thread { ConditionVar };
 
 pub struct RwLock {
@@ -599,7 +599,7 @@ pub struct RwLock {
         self.canRead.broadcast();       // otherwise the readers may enter
         self.mutex.unlock();
     }
-}</code></pre>
+}</code></pre></div>
 <p>The <code>writersWaiting &gt; 0</code> term in <code>readLock</code> is the whole anti-starvation policy; remove it and readers can barge past writers forever. The two broadcasts on release are deliberate: waking both groups and letting them recheck the predicates under the mutex is simpler and safer than computing which group should go next, and the priority rule sorts it out. Every wait is inside a loop, as the chapter's opening promise requires.</p>
 <p class="step-label">Cost and notes</p>
 <p>The lock is O(1) per operation, but read performance is the point: <code>readLock</code> and <code>readUnlock</code> touch the count and take the mutex, and any number of readers run their critical sections at once. The mutex is still held during the bookkeeping, so this is not lock-free; it is a way to shrink contention from "every access" to "every transition." Prefer the built-in <code>std::concurrent::rwlock</code> in production and read this version to understand what it does.</p>
@@ -615,7 +615,7 @@ pub struct RwLock {
 <p class="step-label">The approach</p>
 <p>A mutex, one condition variable, the number of parties, the count currently waiting, and a generation counter.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
 import(lib) std::concurrent::thread { ConditionVar };
 
 pub struct Barrier {
@@ -662,7 +662,7 @@ pub struct Barrier {
         }
         self.mutex.unlock();
     }
-}</code></pre>
+}</code></pre></div>
 <p>The last arrival skips the wait entirely: it has no reason to sleep, so it resets the count and wakes the others on its way out. The generation test <code>while (self.generation == myGen)</code> is what makes the barrier reusable; without it, a fast thread could fall through the next barrier using the previous round's signal.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each <code>waitAt</code> is O(1): one lock, one comparison, and a broadcast by the last arriver. The cost of the broadcast is O(parties) wakeups, which is exactly what a rendezvous is. A barrier is how a parallel algorithm separates its phases when each phase must see the full result of the last, and it is the primitive behind <code>parallel_for</code> implementations with dependencies.</p>
@@ -678,7 +678,7 @@ pub struct Barrier {
 <p class="step-label">The approach</p>
 <p>A job struct carries the data, the range, the cutoff, and an output slot for the partial sum. A recursive function fills the output; a thin thread entry calls it. The parent spawns the right half and computes the left half itself, then joins and adds.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::mman { alloc, dealloc };
 import(lib) std::concurrent::thread {
     threadCreate, threadJoin, Thread, ThreadError
@@ -755,7 +755,7 @@ pub f64 parallelSum(const Vec&lt;f64&gt;* data, usize cutoff) {
     };
     sumRange(&amp;root);
     return root.result;
-}</code></pre>
+}</code></pre></div>
 <p>Each internal node spawns exactly one thread, for the right half, and uses the current thread for the left, so the number of live threads is bounded by the depth of the recursion rather than by the number of leaves. The <code>right</code> job outlives the <code>threadJoin</code>, so freeing it afterward is safe; freeing it before the join would be the use-after-free the chapter's opening warns about.</p>
 <p class="step-label">Cost and notes</p>
 <p>The arithmetic is O(n), the same as a sequential loop, and the parallelism comes from running disjoint halves at once. The overhead is one thread creation per internal node, which is why the cutoff exists: below a few thousand elements, thread creation dominates and the sequential loop wins. This recursive shape is what you would feed into <code>std::concurrent::threadpool</code> or a work-stealing scheduler in production, so that a fixed set of workers runs all the tasks instead of creating a fresh thread at every fork.</p>
@@ -771,7 +771,7 @@ pub f64 parallelSum(const Vec&lt;f64&gt;* data, usize cutoff) {
 <p class="step-label">The approach</p>
 <p>A table of five mutexes. Each philosopher knows its seat, computes the two fork indices, and locks the smaller index before the larger. A fixed menu of meals keeps the run finite.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::mman { alloc, dealloc };
 import(lib) std::concurrent::mutex { Mutex };
 import(lib) std::concurrent::thread {
     threadCreate, threadJoin, Thread, ThreadError
@@ -863,7 +863,7 @@ pub bool dinner() {
     dealloc&lt;Seat&gt;(seats);
     table.destroy();
     return true;
-}</code></pre>
+}</code></pre></div>
 <p>The two lines that prevent the disaster are <code>first = left &lt; right ? left : right</code> and <code>second = left &lt; right ? right : left</code>. Swap them back to "left then right" and the program can hang; the ordering is not a stylistic choice, it is the correctness proof. The <code>created</code> array is there because a thread creation that fails must not be joined, and the seat array is grown on the heap rather than the stack precisely so its lifetime is obvious.</p>
 <p class="step-label">Cost and notes</p>
 <p>The lock and unlock are the same O(1) mutex operations as everywhere else; the ordering adds nothing but a comparison. What it buys is the absence of a class of bug that is invisible in testing and shows up under load on a customer's machine. The alternative fixes are a waiter who grants both forks only when both are free, or seating only four of the five philosophers so at least one can always make progress; both work, and both are more machinery than sorting two integers.</p>
@@ -879,7 +879,7 @@ pub bool dinner() {
 <p class="step-label">The approach</p>
 <p>A mutex protecting the token count and the last-refill timestamp, a monotonic clock for the elapsed time, and a wait loop that sleeps for exactly as long as the next token needs. <code>tryAcquire</code> is the non-blocking form for callers that would rather be rejected than delayed.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
 import(lib) std::time {
     Timespec, nowMonotonic, subTimespec, timespecToF64, sleepMs
 };
@@ -946,7 +946,7 @@ pub struct TokenBucket {
             sleepMs(waitMs);
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>refill</code> reads and writes only under the lock; it is deliberately a separate method so that both <code>tryAcquire</code> and <code>acquire</code> share the exact same accounting. The clock is monotonic, so a system clock adjustment cannot make tokens appear or vanish. And the wait is a sleep for the computed deficit rather than a wait on a condition variable, because the API's condition variable has no timed wait: nobody will signal the callback when time passes, so the only honest way to wake on the clock is to sleep until the clock says a token is due.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each call is O(1) arithmetic plus, in the blocking case, one sleep whose length is exactly the time until the next token. There is no polling loop spinning on the CPU and no timer thread; the laziness is the entire design. The capacity controls burstiness, and the rate controls the average, so the two numbers are independent dials: a large bucket with a small rate is a burst-tolerant limiter, a bucket of one is a strict metronome.</p>

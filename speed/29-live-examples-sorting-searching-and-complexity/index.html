@@ -38,7 +38,7 @@
 <p>The growable list is <code>import(lib) std::vec { Vec };</code>, and the sorting variations use <code>sortI32</code> from <code>import(lib) std::collections::sort { sortI32 };</code>. The integer and boolean types are built in. Each code block assumes those imports and is otherwise complete.</p>
 <section><h2 id="s29-1">Counting Steps: The Naive Idea, and Why It Nearly Works</h2></section>
 <p>Start by counting operations on the simplest algorithm, summing a list:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 sumAll(Vec&lt;i32&gt;* v) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i64 sumAll(Vec&lt;i32&gt;* v) {
     // accumulate in 64 bits so the sum cannot overflow i32
     i64 total = 0;
     // one pass, one add per element: the work is proportional to n
@@ -46,7 +46,7 @@
         total += (i64)v-&gt;at(i);
     }
     return total;
-}</code></pre>
+}</code></pre></div>
 <p>For n elements, the loop does one comparison, read, addition, and increment per element, plus setup and return, so a consistent accounting gives 4n + 2.</p>
 <p>Different accounting choices give 4n + 2, 3n + 5, or 4.5n + 1, all correct under some definition. The constants are accidents of counting; the stable fact is the shape: twice the input, twice the work.</p>
 <p>Keep the shape and discard the constants.</p>
@@ -58,21 +58,21 @@
 <p>Use O for an upper bound, Ω for a lower bound, and Θ only when both match. Saying "binary search is O(n)" is true but useless; its point is Θ(log n).</p>
 <section><h2 id="s29-3">Growth Rates: The Table You Should Memorise</h2></section>
 <p>These are the common complexity classes and their growth; read the last column for the difference.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">n          log2 n   n        n log2 n    n^2         2^n
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">n          log2 n   n        n log2 n    n^2         2^n
 --------------------------------------------------------------
 10         3.3      10       33          100         1,024
 100        6.6      100      664         10,000      1.27 × 10^30
 1,000      10       1,000    9,966       1,000,000   ~10^301
 10,000     13.3     10,000   132,877     100,000,000 unthinkable
-1,000,000  19.9     10^6     19,931,569  10^12       no</code></pre>
+1,000,000  19.9     10^6     19,931,569  10^12       no</code></pre></div>
 <p>At a billion operations per second and n = 10^6, the classes take:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Complexity      steps for n = 10^6   time at 10^9 steps/sec
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Complexity      steps for n = 10^6   time at 10^9 steps/sec
 -----------------------------------------------------------
 O(log n)        ~20                   instant
 O(n)            10^6                  ~1 millisecond
 O(n log n)      ~2 × 10^7             ~20 milliseconds
 O(n^2)          10^12                 ~17 minutes
-O(2^n)          astronomically large  longer than the universe</code></pre>
+O(2^n)          astronomically large  longer than the universe</code></pre></div>
 <p>Ordering matters more than constants: an O(n log n) sort beats an O(n^2) sort for large inputs no matter how tight the inner loop. Cheap classes are nearly free and expensive ones hopeless.</p>
 <p>In increasing order: O(1) constant, O(log n) logarithmic, O(n) linear, O(n log n) linearithmic, O(n^2) quadratic, O(n^3) cubic, O(2^n) exponential, O(n!) factorial. Exponential work explodes with every added item, so brute force over subsets or permutations only works for small n.</p>
 <section><h2 id="s29-4">Best, Worst, and Average Case</h2></section>
@@ -82,7 +82,7 @@ O(2^n)          astronomically large  longer than the universe</code></pre>
 <p>Amortised is not the same as average, as the next section shows.</p>
 <section><h2 id="s29-5">Amortised Analysis: Why Vec::push Is O(1)</h2></section>
 <p><code>Vec&lt;T&gt;::push</code> usually writes one element and bumps the length, but when full it doubles capacity and copies everything, which is O(n). Is <code>push</code> O(1) or O(n)?</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void push(T val) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void push(T val) {
     // the rare expensive case: the backing array is full
     if (self.len &gt;= self.cap) {
         // double the capacity, which is what makes the cost amortised O(1)
@@ -92,11 +92,11 @@ O(2^n)          astronomically large  longer than the universe</code></pre>
     // the common case: write and bump the length, both constant time
     self.data[self.len] = val;
     self.len++;
-}</code></pre>
+}</code></pre></div>
 <p>Usually <code>push</code> is constant work; when the vector is full it reallocates to twice the size and copies every element, which is O(n). So it is sometimes each.</p>
 <p>The answer is O(1) amortised: spread the total cost of a worst-case sequence over that sequence. A sequence of n pushes costs O(n) total, so the average per push is O(1), regardless of order.</p>
 <p>With doubling from capacity 1, growth copies 1 + 2 + 4 + ... + n/2 &lt; n elements total.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">1 + 2 + 4 + ... + n/2 &lt; n.</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">1 + 2 + 4 + ... + n/2 &lt; n.</code></pre></div>
 <p>The geometric series is bounded by about n moves, and the n pushes add n writes, so n pushes cost fewer than 2n operations, or O(1) each on average. The rare expensive pushes are paid for by the cheap ones before them.</p>
 <p>Doubling is why a dynamic array is the default container. Growing by a fixed amount instead would make every push copy the whole array, giving O(n) amortised cost.</p>
 <section><h2 id="s29-6">Linear Search: The Baseline</h2></section>
@@ -106,14 +106,14 @@ O(2^n)          astronomically large  longer than the universe</code></pre>
 <p>Scan a stack of unordered forms one by one until you find the name or run out.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Linear search is the brute force, and no better general method exists for an unsorted list. For repeated lookups, sort once and use binary search; for one lookup, the scan is optimal.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 linearSearch(Vec&lt;i32&gt;* v, i32 key) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i64 linearSearch(Vec&lt;i32&gt;* v, i32 key) {
     // scan from the front until the key turns up
     for (usize i = 0; i &lt; v-&gt;count(); i += 1) {
         if (v-&gt;at(i) == key) return (i64)i;
     }
     // -1 is not a legal index, so it can carry &quot;not found&quot;
     return -1;
-}</code></pre>
+}</code></pre></div>
 <p>The return type is i64 because every usize is a legal index, while −1 can mean "not found." <code>Option&lt;usize&gt;</code> is the fully honest alternative.</p>
 <p class="step-label">Time and space</p>
 <p>The loop runs at most n times: Θ(n) worst and average, O(1) best, and O(1) extra space. Any correct algorithm must inspect all elements in the worst case, since an unseen element could be the target.</p>
@@ -128,7 +128,7 @@ O(2^n)          astronomically large  longer than the universe</code></pre>
 <p>Open a dictionary in the middle, learn which half holds the word, discard the other half, and repeat. A thousand pages take about ten steps, since 2^10 ≈ 1000.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Linear search is Θ(n). Binary search discards half the remaining elements per comparison, so it needs log₂ n comparisons.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 binarySearch(Vec&lt;i32&gt;* v, i32 key) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i64 binarySearch(Vec&lt;i32&gt;* v, i32 key) {
     // inclusive window of positions that might still hold the key
     i64 lo = 0;
     i64 hi = (i64)v-&gt;count() - 1;
@@ -143,7 +143,7 @@ O(2^n)          astronomically large  longer than the universe</code></pre>
         else hi = mid - 1;
     }
     return -1;
-}</code></pre>
+}</code></pre></div>
 <p>The bounds are inclusive: <code>lo</code> and <code>hi</code> might still hold the target, and the loop runs while <code>lo &lt;= hi</code>. Compute the midpoint as <code>lo + (hi - lo) / 2</code>; <code>(lo + hi) / 2</code> can overflow when both are large, a famous binary-search bug. Move <code>hi</code> below <code>mid</code> for a smaller target, <code>lo</code> above it for a larger one. When they cross, the target is absent.</p>
 <p class="step-label">Time and space</p>
 <p>Each iteration halves the window, so Θ(log n) iterations (about 20 for a million elements, 30 for a billion) and O(1) space. A recursive version pays Θ(log n) stack for no benefit.</p>
@@ -158,7 +158,7 @@ O(2^n)          astronomically large  longer than the universe</code></pre>
 <p>Pick a pivot, partition the rest into smaller and larger, place the pivot between them, then recurse on each side. The pivot never moves again.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Repeated selection is Θ(n^2). Partitioning places one element permanently and divides the work; balanced splits give log n levels of n work, or Θ(n log n).</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 partition(Vec&lt;i32&gt;* v, i64 lo, i64 hi) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i64 partition(Vec&lt;i32&gt;* v, i64 lo, i64 hi) {
     // take the last element as the pivot
     i32 pivot = v-&gt;at((usize)hi);
     // i marks the end of the &quot;smaller than pivot&quot; region
@@ -194,7 +194,7 @@ void swapAt(Vec&lt;i32&gt;* v, i64 a, i64 b) {
     i32 tmp = v-&gt;at((usize)a);
     v-&gt;set((usize)a, v-&gt;at((usize)b));
     v-&gt;set((usize)b, tmp);
-}</code></pre>
+}</code></pre></div>
 <p><code>partition</code> takes the last element as pivot and walks <code>j</code> across the range, keeping everything at or below index <code>i</code> smaller than the pivot. Each small element advances <code>i</code> and is swapped into the small region; the pivot then swaps to <code>i + 1</code> and returns that index. <code>quickSortRange</code> recurses on the two independent sides.</p>
 <p class="step-label">Time and space</p>
 <p>Average and best are Θ(n log n); worst is Θ(n^2) when the pivot is always the smallest or largest, exactly what a last-element pivot does to sorted or reverse-sorted input. Recursion uses O(log n) average and O(n) worst space. The library's <code>partitionI32</code> uses median-of-three to avoid the bad case.</p>
@@ -209,7 +209,7 @@ void swapAt(Vec&lt;i32&gt;* v, i64 a, i64 b) {
 <p>Merging two sorted piles takes the smaller front repeatedly, which is linear. Split the unsorted pile in half, sort each half, and merge: log n levels of linear work.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Selection sort is Θ(n^2). Mergesort always splits at the midpoint, so it beats that in the worst case too, at the price of a second array.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void merge(Vec&lt;i32&gt;* v, Vec&lt;i32&gt;* scratch, i64 lo, i64 mid, i64 hi) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void merge(Vec&lt;i32&gt;* v, Vec&lt;i32&gt;* scratch, i64 lo, i64 mid, i64 hi) {
     // i walks the left run, j the right run, k the merged output
     i64 i = lo;
     i64 j = mid + 1;
@@ -253,7 +253,7 @@ void mergeSort(Vec&lt;i32&gt;* v) {
         scratch.push(0);
     }
     mergeSortRange(v, &amp;scratch, 0, (i64)n - 1);
-}</code></pre>
+}</code></pre></div>
 <p><code>mergeSortRange</code> splits at the midpoint, sorts each half, and merges. <code>merge</code> takes the smaller front while both runs remain, then copies the rest. One <code>scratch</code> vector is reused, keeping auxiliary space O(n) rather than O(n log n). The <code>&lt;=</code> comparison makes the sort stable: ties take the left run first.</p>
 <p class="step-label">Time and space</p>
 <p>There are log n levels, each merging every element once, so Θ(n log n) in all cases, with no pathological input. Space is O(n) for <code>scratch</code> plus O(log n) recursion. Mergesort is the safe sort: slightly slower in memory than quicksort, but stable with no bad cases.</p>
@@ -268,7 +268,7 @@ void mergeSort(Vec&lt;i32&gt;* v) {
 <p>Arrange the numbers as a max-heap, where every parent exceeds its children. The maximum is at the top; swap it to the end, shrink the heap, and restore the property. Each removal and re-heap costs logarithmic time.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Repeatedly scanning for the maximum is Θ(n^2). A heap keeps the maximum available with a logarithmic sift-down, stored directly in the array with no extra memory.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void siftDown(Vec&lt;i32&gt;* v, i64 n, i64 i) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void siftDown(Vec&lt;i32&gt;* v, i64 n, i64 i) {
     // repeatedly push the current node down toward the bottom
     while (true) {
         i64 largest = i;
@@ -296,7 +296,7 @@ void heapSort(Vec&lt;i32&gt;* v) {
         swapAt(v, 0, end);
         siftDown(v, end, 0);
     }
-}</code></pre>
+}</code></pre></div>
 <p>An array heap needs no pointers: children of index i are at 2i+1 and 2i+2, and the parent is at (i−1)/2. <code>siftDown</code> swaps with the larger child until the heap property holds or it reaches the bottom. The first loop builds a max-heap from the last internal node up; the second swaps the top to the end and sifts down over the shrinking heap.</p>
 <p class="step-label">Time and space</p>
 <p>Building the heap is O(n); n removals at O(log n) each give Θ(n log n) in all cases. Space is O(1), which distinguishes it from mergesort. Its cache-unfriendly accesses make it slower than tuned quicksort in practice, but its worst case is the good case.</p>
@@ -311,7 +311,7 @@ void heapSort(Vec&lt;i32&gt;* v) {
 <p>For survey answers from 1 to 5, make five boxes and drop each response into its box, then read the boxes in order. No comparisons are made.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Any comparison sort needs Ω(n log n) comparisons. Counting sort sidesteps that by counting occurrences and writing values out in order; when k is close to n, it beats every comparison sort.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void countingSort(Vec&lt;i32&gt;* v, i32 maxValue) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void countingSort(Vec&lt;i32&gt;* v, i32 maxValue) {
     // one counter slot per possible value in 0..maxValue
     usize k = (usize)maxValue + 1;
     Vec&lt;i32&gt; count = Vec&lt;i32&gt;::withCap(k);
@@ -332,7 +332,7 @@ void heapSort(Vec&lt;i32&gt;* v) {
             out += 1;
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>count[value]</code> ends up holding the number of copies of <code>value</code>; the second loop writes each value that many times. Ordering comes from the loop direction, not from comparisons.</p>
 <p class="step-label">Time and space</p>
 <p>Time is Θ(n + k), one pass to count and one over the value range to emit; when k is O(n), this is Θ(n), better than the comparison lower bound. Space is Θ(k), so a huge value range makes it a poor choice, as does non-integer data.</p>
@@ -342,13 +342,13 @@ void heapSort(Vec&lt;i32&gt;* v) {
 <p>Radix sort sorts one digit at a time with a stable counting sort, from least to most significant, in Θ(d · (n + b)) for d digits in base b. Each pass must preserve the previous pass's order, so stability is essential.</p>
 <section><h2 id="s29-12">Choosing a Sort</h2></section>
 <p>The five sorts side by side:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">algorithm      best        average      worst        space     stable
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">algorithm      best        average      worst        space     stable
 ----------------------------------------------------------------------
 quicksort      n log n     n log n      n^2          log n     no
 mergesort      n log n     n log n      n log n      n         yes
 heapsort       n log n     n log n      n log n      1         no
 counting sort  n + k       n + k        n + k        k         yes
-insertion      n           n^2          n^2          1         yes</code></pre>
+insertion      n           n^2          n^2          1         yes</code></pre></div>
 <p>Choose mergesort for a guaranteed worst case plus stability; quicksort for in-place speed with a median-of-three or randomised pivot; heapsort for a guaranteed worst case with minimal memory; counting sort for small integer keys; insertion sort for tiny lists.</p>
 <p>The Ω(n log n) lower bound applies to all comparison sorts; only counting sort escapes it, by exploiting a small key range. The right question is what you know about the data: size, key range, ties, and memory.</p>
 <section><h2 id="s29-13">Binary Search on the Answer</h2></section>
@@ -358,7 +358,7 @@ insertion      n           n^2          n^2          1         yes</code></pre>
 <p>Choose a truck size. If capacity C works, every larger capacity works, so "enough" flips from no to yes once; binary search finds that boundary.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Testing every capacity from the heaviest package to the total weight costs O(total × n). Binary search needs only O(log(total)) tests, each a linear feasibility check.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 bool canShip(Vec&lt;i32&gt;* weights, i64 capacity, i32 days) {
     // greedy fill: always load as many packages as fit today
@@ -397,7 +397,7 @@ i64 shipWithinDays(Vec&lt;i32&gt;* weights, i32 days) {
     }
     // lo is the first capacity that satisfies the predicate
     return lo;
-}</code></pre>
+}</code></pre></div>
 <p><code>canShip</code> greedily loads as many packages as fit each day, which is correct because order is fixed and capacity is the only limit. The search is binary search over a virtual array of capacities; <code>lo &lt; hi</code> with <code>hi = mid</code> and <code>lo = mid + 1</code> finds the first capacity satisfying the predicate.</p>
 <p class="step-label">Time and space</p>
 <p>O(n) per check and O(log(total)) checks give O(n log(total)) time and O(1) extra space. The predicate must be monotone, or halving is meaningless.</p>
@@ -412,7 +412,7 @@ i64 shipWithinDays(Vec&lt;i32&gt;* weights, i32 days) {
 <p>A rotated phone book still has one sorted half after any cut. If the key lies in that half, search it; otherwise search the other.</p>
 <p class="step-label">Brute force, then better</p>
 <p>A linear scan is O(n). Keep binary search and add one test per step to identify the sorted half, so the halving survives.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 searchRotated(Vec&lt;i32&gt;* v, i32 key) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i64 searchRotated(Vec&lt;i32&gt;* v, i32 key) {
     // standard inclusive binary-search window
     i64 lo = 0;
     i64 hi = (i64)v-&gt;count() - 1;
@@ -438,7 +438,7 @@ i64 shipWithinDays(Vec&lt;i32&gt;* weights, i32 days) {
     }
     // the window is empty, so the key is absent
     return -1;
-}</code></pre>
+}</code></pre></div>
 <p>If <code>val &gt;= v-&gt;at(lo)</code>, the left segment is sorted, and the key either lies inside it or in the right half. Otherwise the right segment is sorted, and the mirrored test applies. Each iteration discards half the window.</p>
 <p class="step-label">Time and space</p>
 <p>O(log n) time and O(1) space. The reasoning assumes distinct values; duplicates can make the pivot test ambiguous and degrade the worst case to O(n).</p>
@@ -453,7 +453,7 @@ i64 shipWithinDays(Vec&lt;i32&gt;* weights, i32 days) {
 <p>The equal values form one contiguous block. Find the first position whose value is at least the key, and the first whose value is greater; those are the block's start and one past its end.</p>
 <p class="step-label">Brute force, then better</p>
 <p>A linear scan is O(n). Binary search must keep searching after a match: one variant finds the leftmost valid position, the other the rightmost.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Range {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Range {
     i64 first;
     i64 last;
 }
@@ -493,7 +493,7 @@ Range searchRange(Vec&lt;i32&gt;* v, i32 key) {
         return Range { .first = -1, .last = -1 };
     }
     return Range { .first = first, .last = last };
-}</code></pre>
+}</code></pre></div>
 <p>Both helpers use a half-open window <code>[lo, hi)</code>, so "not found" naturally becomes <code>count</code>. <code>lowerBound</code> returns the first value not less than the key; <code>upperBound</code> the first value greater. The run <code>[lowerBound, upperBound)</code> is exactly the equal values. One existence test separates a real match from the next larger value.</p>
 <p class="step-label">Time and space</p>
 <p>Each bound is O(log n) time and O(1) space, so the pair is O(log n). The library's <code>binarySearchBy</code> returns an index or −1 and cannot report an insertion point.</p>
@@ -508,7 +508,7 @@ Range searchRange(Vec&lt;i32&gt;* v, i32 key) {
 <p>Find the second tallest person without ordering anyone else. Partition around a pivot; if it lands at the target slot, stop, otherwise keep only the side containing that slot.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Sorting costs O(n log n) and computes an unused ordering. Quickselect partitions and keeps one side, with expected work n + n/2 + n/4 + ... = O(n).</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void swapAt(Vec&lt;i32&gt;* v, i64 a, i64 b) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void swapAt(Vec&lt;i32&gt;* v, i64 a, i64 b) {
     i32 tmp = v-&gt;at((usize)a);
     v-&gt;set((usize)a, v-&gt;at((usize)b));
     v-&gt;set((usize)b, tmp);
@@ -543,7 +543,7 @@ i32 findKthLargest(Vec&lt;i32&gt;* v, i32 k) {
         else hi = p - 1;                       // answer is to the left
     }
     return v-&gt;at((usize)lo);
-}</code></pre>
+}</code></pre></div>
 <p>This is quicksort's partition with the comparison flipped: <code>&gt;=</code> gathers larger values on the left, so the kth largest lands at index k − 1. Instead of recursing into both sides, quickselect discards the side without the target.</p>
 <p class="step-label">Time and space</p>
 <p>Expected O(n), worst O(n^2) when the pivot is extreme, made unlikely by randomisation or median-of-three. This iterative version uses O(1) extra space; recursion would use O(log n).</p>
@@ -558,7 +558,7 @@ i32 findKthLargest(Vec&lt;i32&gt;* v, i32 k) {
 <p>Your left hand holds sorted cards; each new card slides left past every larger card until it lands in place.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Insertion sort is the brute-force O(n^2) sort, but it is O(n) on nearly sorted input, stable, and has a tight inner loop, which is why production sorts use it for small ranges.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void insertionSort(Vec&lt;i32&gt;* v) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void insertionSort(Vec&lt;i32&gt;* v) {
     // grow the sorted prefix one element at a time
     for (usize i = 1; i &lt; v-&gt;count(); i += 1) {
         i32 key = v-&gt;at(i);
@@ -571,7 +571,7 @@ i32 findKthLargest(Vec&lt;i32&gt;* v, i32 k) {
         // drop key into the gap that opened
         v-&gt;set((usize)(j + 1), key);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The outer loop grows the sorted prefix by one. The inner loop shifts larger elements right and drops <code>key</code> into the gap. The strict <code>&gt;</code> keeps equal elements in their original order, so the sort is stable.</p>
 <p class="step-label">Time and space</p>
 <p>Best case O(n) on sorted input; worst and average O(n^2); space O(1). Its best case and constant factor are what make it worth remembering.</p>
@@ -586,7 +586,7 @@ i32 findKthLargest(Vec&lt;i32&gt;* v, i32 k) {
 <p>A careful clerk writes each form's original position in a corner and breaks age ties by that position, so ties come out as they went in.</p>
 <p class="step-label">Brute force, then better</p>
 <p>Make the original position an explicit tie-break key. The array's <code>sortBy</code> is an unstable median-of-three quicksort, so decorate each record with its index and compare that when the primary keys tie.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Person {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Person {
     str name;
     i32 age;
 }
@@ -615,7 +615,7 @@ void sortByAgeStable(Vec&lt;Person&gt;* people) {
     for (usize i = 0; i &lt; keyed.count(); i += 1) {
         people-&gt;set(i, keyed.at(i).person);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The comparator returns true only when <code>a</code> must come strictly before <code>b</code>. Ages come first, and only a tie consults the distinct positions, so the order is total and the unstable sort has no arbitrary choice left. Decorating copies each <code>Person</code>, and restoring writes it back.</p>
 <p class="step-label">Time and space</p>
 <p>Decorating and restoring are O(n), and the sort is O(n log n) average, so O(n log n) total with an O(n) auxiliary vector. A truly stable mergesort avoids the vector but must thread the comparator through its merge.</p>

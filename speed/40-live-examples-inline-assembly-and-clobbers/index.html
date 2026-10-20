@@ -39,7 +39,7 @@
 <p class="step-label">The idea</p>
 <p>The shortest useful block has an empty template and one clobber, <code>"memory"</code>. No instructions are emitted; the block exists for the note card. <code>"memory"</code> says the block may read and write any memory, so values cannot stay in registers across it and accesses cannot move past it. <code>volatile</code> keeps a promise-only block from being deleted, and <code>::</code> skips the empty operand sections.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// the empty template emits nothing; the block is only its note card
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// the empty template emits nothing; the block is only its note card
 void compilerBarrier() {
     // volatile keeps a promise-only block from being deleted
     // &quot;memory&quot; is the clobber: the block may touch any memory
@@ -61,7 +61,7 @@ void main() {
     // publish keeps the barrier between the two stores
     publish(&amp;data, &amp;ready, 42u);
     println(&quot;data {} ready {}&quot;, data, ready);
-}</code></pre>
+}</code></pre></div>
 <p>Line by line: <code>asm volatile</code> is the statement, <code>""</code> the template, the first <code>:</code> opens and second closes an empty output section, the third opens empty inputs, and <code>"memory"</code> is the clobber list. It lowers to <code>__asm__ volatile("" ::: "memory")</code>, forbidding the compiler from moving <code>*ready = 1u</code> above <code>*data = value</code>. The barrier names no variables; it is about all memory.</p>
 <p class="step-label">Cost and notes</p>
 <p>No instructions and no run-time cost, only compile-time reloads the compiler might otherwise avoid. That is the point: a fence in the compiler's model, not the hardware's. If the processor must also observe the order, use a separate fence instruction with its own <code>"memory"</code> clobber. This is the standard library's <code>memoryBarrier</code>.</p>
@@ -75,12 +75,12 @@ void main() {
 <p class="step-label">The idea</p>
 <p>An output operand has an <code>=</code> constraint and binds a Coral lvalue. <code>"=r"(sp)</code> says the block writes a general-purpose register whose value then belongs in <code>sp</code>. The compiler chooses the register for <code>%0</code>; the template writes whatever <code>%0</code> is. A literal register uses a doubled percent, <code>%%rsp</code>, because a single <code>%</code> belongs to the placeholder.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize readStackPointer() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize readStackPointer() {
     usize sp;
     // &quot;=r&quot; is an output operand; the compiler picks the register for %0
     asm volatile { &quot;movq %%rsp, %0&quot; : &quot;=r&quot;(sp) }
     return sp;
-}</code></pre>
+}</code></pre></div>
 <p>The output section is <code>"=r"(sp)</code>: operand <code>%0</code> bound to <code>sp</code>. The template names <code>%%rsp</code> literally and the operand as <code>%0</code>. The compiler picks a register, the block fills it, and afterward the value is stored into <code>sp</code>. The <code>=</code> says <code>sp</code>'s prior value is dead, correct because nothing reads it first.</p>
 <p class="step-label">Cost and notes</p>
 <p>One register-to-register move and one store. The cost is in the constraint: <code>"=r"</code> lets the compiler fit the block into its existing allocation, which is why <code>"r"</code> is the default and a fixed register is reserved for instructions that demand one. <code>"=a"</code> here could force a spill.</p>
@@ -94,7 +94,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Name two output operands with the fixed-register constraints the instruction requires. <code>"=a"</code> and <code>"=d"</code> name the two written registers, each bound to a local. Outputs are numbered first, so they are <code>%0</code> and <code>%1</code>, though the template mentions neither. A block whose only clobbered registers are outputs needs no clobber list.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Timestamp {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Timestamp {
     u32 low;
     u32 high;
 }
@@ -105,7 +105,7 @@ Timestamp readTimestamp() {
     // two outputs &quot;=a&quot; and &quot;=d&quot;; outputs are numbered %0 and %1
     asm volatile { &quot;rdtsc&quot; : &quot;=a&quot;(lo), &quot;=d&quot;(hi) }
     return Timestamp { .low = lo, .high = hi };
-}</code></pre>
+}</code></pre></div>
 <p>The constraints pin the two halves to the registers the instruction reports through. Nothing is loaded before the block, since both operands are outputs, and afterward each named register is stored into its local. The locals are gathered into the struct, a type a caller can hold without knowing about registers.</p>
 <p class="step-label">Cost and notes</p>
 <p>A few cycles and two register-to-memory stores. Fixed constraints cost nothing here, because the instruction has only one place for each half. The signature is entirely Coral, and that is the property to preserve: a register name in a public signature means the abstraction has leaked.</p>
@@ -120,7 +120,7 @@ Timestamp readTimestamp() {
 <p>The template moves arguments with no fixed constraint into ABI registers, issues the call, and reads the result. <code>"=a"(ret)</code> stores the result. <code>"0"(number)</code> ties the call number to output zero, sharing the result register. Three inputs use fixed-register constraints for the first three argument registers; the last three use <code>"r"</code> and the template moves them. Every destroyed register not already an operand is clobbered, and <code>"memory"</code> says the call may touch arbitrary memory.</p>
 <p class="step-label">The implementation</p>
 <p>This is the general six-argument wrapper; the standard library's <code>mmap</code> is a specialized form of the same shape.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i64 rawSyscall6(usize number, usize arg1, usize arg2, usize arg3,
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i64 rawSyscall6(usize number, usize arg1, usize arg2, usize arg3,
                 usize arg4, usize arg5, usize arg6) {
     i64 ret;
     // the template moves only the args the compiler was free to place
@@ -153,7 +153,7 @@ void main() {
     // fd 1 is standard output
     sysWrite(1, msg, 25u);
     println(&quot;done&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>Operand numbering is the heart: outputs first, then inputs, so <code>%0</code> is <code>ret</code>, <code>%1</code> <code>number</code>, <code>%2</code> <code>arg1</code>, through <code>%7</code> <code>arg6</code>. <code>"D"</code>, <code>"S"</code>, and <code>"d"</code> place the first three arguments, so the template moves only <code>%5</code>, <code>%6</code>, and <code>%7</code>. <code>"0"</code> makes <code>number</code> and <code>ret</code> one register: it holds the call number at entry, and the template copies the result back. <code>"rcx"</code> and <code>"r11"</code> are clobbered because the call uses them; <code>"r8"</code>, <code>"r9"</code>, and <code>"r10"</code> because the template writes them. <code>"memory"</code> prevents caching across the block.</p>
 <p class="step-label">Cost and notes</p>
 <p>A handful of moves, the call, and register pressure. <code>"r"</code> inputs are cheap because the compiler picks; fixed constraints are expensive because a live register may need spilling. Ask for a fixed register only when the instruction requires it. <code>sysWrite</code> is what the rest of the program should see, knowing nothing about <code>%5</code> or <code>"r10"</code>.</p>
@@ -167,7 +167,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p><code>volatile</code> stops the compiler deleting or duplicating the block: a caller ignoring the result would otherwise leave a dead block. <code>"memory"</code> stops reordering other accesses across it, making it a fence. The cell carries <code>"+m"</code>: <code>+</code> says read and write, so the compiler must reload rather than reuse a cached copy. The register carrying the addend in and the old value out is read-write, either <code>"+r"</code> or an input tied to the output with a digit constraint.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::thread { AtomicU64 };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::thread { AtomicU64 };
 import(lib) std::io::ios { println };
 
 u64 atomicFetchAdd(u64* cell, u64 delta) {
@@ -194,7 +194,7 @@ void main() {
     AtomicU64 counter = AtomicU64 { .value = 0 };
     counter.fetchAdd(1u);                   // the library&#x27;s version of the same operation
     println(&quot;library {}&quot;, counter.load());
-}</code></pre>
+}</code></pre></div>
 <p><code>"=r"(previous)</code> is <code>%0</code>; <code>"+m"(*cell)</code> is <code>%1</code>. <code>"0"(delta)</code> is tied to operand zero, so the addend arrives in the register that leaves the previous value. The register is both input and output without a separate <code>"+r"</code>, and <code>+</code> on memory says the cell is read and written. <code>"cc"</code> is present because the operation writes condition codes, and <code>"memory"</code> orders other accesses.</p>
 <p class="step-label">Cost and notes</p>
 <p>One locked instruction, tens of cycles, serialising and indivisible. The <code>"memory"</code> clobber forces reloads around the block, exactly what an atomic should force, because another thread may have changed memory. Compare <code>AtomicU64::fetchAdd</code>, the same operation with a reviewed note card and the version to use in real programs.</p>
@@ -202,7 +202,7 @@ void main() {
 <p>Remove <code>volatile</code> and the block becomes deletable when its result is unused, precisely when a lock-free update must still happen. Remove <code>"memory"</code> and the compiler may hoist a load above or sink a store below. A bare <code>"=m"</code> instead of <code>"+m"</code> tells the compiler the old value is dead, and it may discard a store another thread would observe. Each is a silent miscompile.</p>
 <p class="step-label">Variation</p>
 <p>Compare-and-swap has the same shape. The instruction reads and writes the accumulator, so the accumulator is a read-write operand, <code>"+a"</code>, not a clobber:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool compareSwap(u64* cell, u64 expected, u64 desired) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool compareSwap(u64* cell, u64 expected, u64 desired) {
     u64 seen = expected;
     asm volatile {
         &quot;lock cmpxchgq %2, %1&quot;
@@ -212,7 +212,7 @@ void main() {
         : &quot;memory&quot;, &quot;cc&quot;
     }
     return seen == expected;
-}</code></pre>
+}</code></pre></div>
 <p>Writing <code>"rax"</code> in the clobber list instead of binding <code>"+a"(seen)</code> claims the accumulator is destroyed while also feeding it an expected value, the contradiction E0402 names. The compiler does not check it today, so the wrong version builds and misbehaves.</p>
 <section><h2 id="s40-6">A Read-Only Probe: Four Clobbers, or Four Outputs</h2></section>
 <p class="step-label">The problem</p>
@@ -221,7 +221,7 @@ void main() {
 <p>They are either outputs or clobbers, never both. If you want the values, bind each register as an output, make selectors read-write, and leave the clobber list empty. If you want only to run the instruction, bind no operands and name all four as clobbers. Writing both is the contradiction E0402 describes.</p>
 <p class="step-label">The implementation</p>
 <p>The capturing form, with the two selectors as read-write operands and no clobbers:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct CpuLeaf {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct CpuLeaf {
     u32 eax;
     u32 ebx;
     u32 ecx;
@@ -245,7 +245,7 @@ CpuLeaf cpuProbe(u32 leaf, u32 subleaf) {
 // the same four registers, now described as clobbers instead
 void cpuProbeDiscard() {
     asm volatile { &quot;cpuid&quot; ::: &quot;eax&quot;, &quot;ebx&quot;, &quot;ecx&quot;, &quot;edx&quot; }
-}</code></pre>
+}</code></pre></div>
 <p>In the capturing form the four registers are all operands. The selectors use <code>+</code>, so <code>a</code> and <code>c</code> are initialised before the block and are read-write. Since the whole destroyed set is accounted for, the clobber list is empty. In the discarding form the four registers are clobbers and nothing is captured. Both are honest; writing operands <em>and</em> clobbers claims the registers are simultaneously live and destroyed.</p>
 <p class="step-label">Cost and notes</p>
 <p>The capturing form costs four stores and constrains the compiler to four fixed registers. The discarding form costs nothing beyond the instruction and constrains nothing, because with no operands there is nothing to allocate. It is rarely what you want, but as a probe or serialising barrier it cleanly demonstrates a clobber-only block.</p>
@@ -257,17 +257,17 @@ void cpuProbeDiscard() {
 <p class="step-label">The problem</p>
 <p>These two mistakes make an <code>asm</code> block look correct and behave unpredictably: a block that touches memory without saying so, and a block with a side effect the optimizer deletes. Both are invisible at the source and vary with the optimisation level.</p>
 <p>The first wrong way: no <code>"memory"</code>. Consider a store, then a block that announces it, with no <code>"memory"</code> clobber.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void signalWrong(u64* data, u64* ready) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void signalWrong(u64* data, u64* ready) {
     *data = 42u;
     // no &quot;memory&quot; clobber: the block never claims to touch data&#x27;s memory
     asm volatile { &quot;movq $1, (%0)&quot; : : &quot;r&quot;(ready) }
-}</code></pre>
+}</code></pre></div>
 <p>Because the block does not claim to touch arbitrary memory, the compiler may move <code>*data = 42u</code> after the block, or keep a copy in a register and skip the store if nothing reads it. The other thread sees the announcement first or no payload at all. The fix is 39.1's barrier folded in: add <code>"memory"</code>, and the store cannot cross. A block writing memory through a pointer must claim <em>all</em> memory, because the compiler cannot know what else the write aliases.</p>
 <p>The second wrong way: no <code>volatile</code>. A block whose purpose is a side effect on a device or shared word, with no outputs and no <code>volatile</code>, is dead code to the optimizer.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void pokeWrong(rawptr mmio) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void pokeWrong(rawptr mmio) {
     // no output and no volatile: the optimizer sees a dead block
     asm { &quot;movq $1, (%0)&quot; : : &quot;r&quot;(mmio) }
-}</code></pre>
+}</code></pre></div>
 <p>With no output and no <code>volatile</code>, the block has no observable result and is removed entirely. The program compiles, runs, and never pokes the device. <code>asm volatile</code> marks side effects that must not be dropped, reordered, or duplicated. A block whose output the caller uses is safe without <code>volatile</code>; a block whose only result is in memory or the world is not.</p>
 <p class="step-label">Cost and notes</p>
 <p>The fixes cost nothing at run time; <code>"memory"</code> and <code>volatile</code> are notes, not instructions. They do cost optimisation: a <code>volatile</code> block with a <code>"memory"</code> clobber cannot be hoisted, combined, or elided. The nearest reserved code is E0403, a volatile write defeated by a non-volatile read. The specific mistakes above are not individually coded, and no E04xx check runs today.</p>
@@ -279,14 +279,14 @@ void cpuProbeDiscard() {
 <p class="step-label">The problem</p>
 <p>These mistakes concern the operands: an input the template quietly modifies, and a clobber that collides with a live operand. Both contradict the note card and block, and both are what a checker would catch if one existed.</p>
 <p>The first wrong way: an input modified without <code>+</code>. The template writes its operand, but the constraint says input-only.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 badIncrement(u64 x) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 badIncrement(u64 x) {
     // &quot;r&quot;(x) says input-only, but the template writes that operand
     asm volatile { &quot;addq $1, %0&quot; : : &quot;r&quot;(x) }
     return x;
-}</code></pre>
+}</code></pre></div>
 <p><code>"r"(x)</code> tells the compiler <code>x</code> is read, not written, so after the block it may still hold the old value or reuse the register. The block wrote to a register the compiler believed it owned. The fix is <code>"+r"(x)</code>, saying the block reads the old value and produces the new one. The nearest reserved code is E0401.</p>
 <p>The second wrong way: a clobber overlapping a live operand. A block binds an input to a fixed register and also names that register as a clobber.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 addViaFixedReg(u64 a, u64 b) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 addViaFixedReg(u64 a, u64 b) {
     u64 out;
     // &quot;c&quot; fixes b in RCX, so listing &quot;rcx&quot; as a clobber contradicts it
     asm volatile {
@@ -296,7 +296,7 @@ void cpuProbeDiscard() {
         : &quot;rcx&quot;               // wrong: RCX is also a live input
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p><code>"c"(b)</code> places <code>b</code> in the fixed register, and <code>"rcx"</code> says that register is destroyed. Both cannot be true: the input would be destroyed before the block reads it, and which statement the compiler believes depends on the optimisation level. Delete <code>"rcx"</code>: a register that is already an operand is accounted for. This is E0402.</p>
 <p class="step-label">Cost and notes</p>
 <p>The correct versions are free, correcting only the compiler's model. The wrong versions build, because constraints are copied through and clobber lists never inspected. The misbehaviour is a stale value, a wrong register, or an optimisation-dependent result, none pointing back to the block.</p>
@@ -311,7 +311,7 @@ void cpuProbeDiscard() {
 <p>Put every <code>asm</code> block behind a function with an ordinary Coral signature, in a module whose only job is target-specific code. Inside, <code>flag (arch)</code> selects the branch that assembles on the current target and provides a fallback. Callers import the module and call the function, never seeing a register, constraint, or clobber. This is <a href="../20-ffi-and-interoperability/index.html">Chapter 20</a>'s FFI wrapper applied one level down.</p>
 <p class="step-label">The implementation</p>
 <p>The target-specific module, the only file in the program that mentions a register:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// cycles.crl, quarantined target code
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// cycles.crl, quarantined target code
 pub u64 readCycleCounter() {
     u32 lo = 0u;
     u32 hi = 0u;
@@ -326,9 +326,9 @@ pub u64 readCycleCounter() {
     }
     // the two halves are gathered into one Coral integer
     return ((u64)hi &lt;&lt; 32u) | (u64)lo;
-}</code></pre>
+}</code></pre></div>
 <p>And the program that uses it, which never sees the assembly:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import cycles;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import cycles;
 import(lib) std::io::ios { println };
 
 void main() {
@@ -337,7 +337,7 @@ void main() {
     u64 t1 = readCycleCounter();
     // the caller never sees a register or a constraint
     println(&quot;elapsed ticks {}&quot;, t1 - t0);
-}</code></pre>
+}</code></pre></div>
 <p>The module exports one function with a pure Coral signature, <code>u64 readCycleCounter()</code>. <code>flag (arch)</code> decides at compile time whether the target branch is included, so on a non-x86 target the asm is not compiled and the fallback defines the result. The caller writes <code>readCycleCounter()</code> and nothing else.</p>
 <p class="step-label">Cost and notes</p>
 <p>No run-time cost; if the compiler inlines the small function, the call disappears. The cost is organisational and small: one module, a handful of lines. A port touches one file. For another architecture, only <code>cycles.crl</code> changes, or a sibling implementation is added, as the standard library adds platform files. The rest of the program does not change.</p>

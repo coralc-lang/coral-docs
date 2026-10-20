@@ -37,14 +37,14 @@
 <div class="table-wrap"><table><tbody><tr><td>ABI</td><td><strong>14</strong></td></tr><tr><td>Export</td><td><code>tree_sitter_coral</code></td></tr><tr><td>Size</td><td>~295 KB</td></tr><tr><td>Root node</td><td><code>source_file</code></td></tr><tr><td>Metadata</td><td><code>coral.node-types.json</code> (185 KB)</td></tr></tbody></table></div>
 <h3 id="do-not-use-the-zed-build">Do not use the Zed build</h3>
 <p>The <code>coral.wasm</code> shipped in the Zed extension is <strong>ABI 15</strong> and is rejected by web-tree-sitter:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">Incompatible language version 15. Compatibility range 13 through 14.</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">text</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-text">Incompatible language version 15. Compatibility range 13 through 14.</code></pre></div>
 <p>Both files are side modules and look structurally identical, the difference is only the generated parser ABI. Regenerate with:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-sh">/home/cerie/Documents/coral-zed/build-web.sh ./coral.wasm</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">sh</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-sh">/home/cerie/Documents/coral-zed/build-web.sh ./coral.wasm</code></pre></div>
 <p>That runs <code>tree-sitter generate --abi 14</code> into a temp directory, so the ABI 15 parser used by Zed is never touched. No downloads: <code>tree-sitter</code>, <code>clang</code> and <code>wasm-ld</code> are all local.</p>
 <h3 id="loading-it">Loading it</h3>
 <p>web-tree-sitter must be initialised before any language module loads, and <code>tree-sitter.wasm</code> (the runtime) has to be served alongside it.</p>
 <p>The site vendors the whole set under <code>assets/tree-sitter/</code>: <code>coral.wasm</code> (ABI 14), <code>tree-sitter.wasm</code> and <code>tree-sitter.js</code> (web-tree-sitter <strong>0.23.2</strong>, the last line that accepts ABI 14), plus <code>highlights.scm</code>. <code>assets/js/script.js</code> initialises it with <code>locateFile</code> pointed at that directory and falls back to the regex highlighter if the wasm fails to load.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-js">const Parser = window.TreeSitter;                     // vendored UMD build
+<div class="code-block"><div class="code-head"><span class="code-lang">js</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-js">const Parser = window.TreeSitter;                     // vendored UMD build
 
 await Parser.init({ locateFile: (f) =&gt; `./tree-sitter/${f}` });
 const Coral = await Parser.Language.load(
@@ -55,23 +55,23 @@ const Coral = await Parser.Language.load(
 const parser = new Parser();
 parser.setLanguage(Coral);
 const tree = parser.parse(source);
-tree.rootNode.toString();                             // S-expression</code></pre>
+tree.rootNode.toString();                             // S-expression</code></pre></div>
 <p><code>parser.parse()</code> returns <code>null</code> on timeout; guard for it if you want cancel support.</p>
 <h3 id="what-the-tree-looks-like">What the tree looks like</h3>
 <p>Nodes follow <code>coral.node-types.json</code>. Coral is <strong>type-first</strong>, so declarations carry the type before the name:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">(struct_declaration
+<div class="code-block"><div class="code-head"><span class="code-lang">text</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-text">(struct_declaration
   name: (identifier)
   (generic_params (generic_param (identifier)))
-  body: (field_declaration_list …))</code></pre>
+  body: (field_declaration_list …))</code></pre></div>
 <p>A few node names worth knowing, because they do not match Rust or C:</p>
 <div class="table-wrap"><table><thead><tr><th>Node</th><th>Meaning</th></tr></thead><tbody><tr><td><code>struct_declaration</code>, <code>union_declaration</code>, <code>variant_declaration</code>, <code>enum_declaration</code></td><td>the type declarations</td></tr><tr><td><code>trait_declaration</code>, <code>extend_declaration</code></td><td>traits and extensions</td></tr><tr><td><code>c_string</code></td><td>a <code>C"…"</code> literal, distinct from <code>string_literal</code></td></tr><tr><td><code>base_type</code> wrapping <code>primitive_type</code></td><td><code>u32</code>, <code>bool</code>, …</td></tr><tr><td><code>asm_statement</code> → <code>asm_template</code> / <code>asm_section</code> / <code>asm_operand</code></td><td>inline assembly, broken out of the template strings and <code>:</code>-separated operand lists</td></tr><tr><td><code>call_expression</code>, <code>path_expression</code>, <code>cast_expression</code></td><td>ordinary calls, paths, casts</td></tr><tr><td><code>attribute</code></td><td><code>#[[…]]</code></td></tr><tr><td><code>tuple_type</code></td><td><code>struct(A, B)</code></td></tr></tbody></table></div>
 <p>There is <strong>no <code>fn</code> keyword</strong>, functions are declared type-first, e.g. <code>usize count() { return N; }</code> inside a struct body.</p>
 <h3 id="highlighting">Highlighting</h3>
 <p><code>highlights.scm</code> from the Coral extension is a valid tree-sitter query and runs in the browser, with one edit: the ABI-14 grammar has no <code>doc_comment</code> node, so that single capture line is dropped from the vendored copy (the general <code>comment</code> capture covers documentation comments instead).</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-js">const query = new Parser.Query(Coral, highlightsScm);
+<div class="code-block"><div class="code-head"><span class="code-lang">js</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-js">const query = new Parser.Query(Coral, highlightsScm);
 for (const m of query.captures(tree.rootNode)) {
   // m.name, m.node.startIndex, m.node.endIndex
-}</code></pre>
+}</code></pre></div>
 <p>Capture names are the usual TextMate-style ones (<code>keyword</code>, <code>type</code>, <code>function.method</code>, <code>string.special</code>, <code>punctuation.special</code>, …).</p>
 <blockquote><p><strong>Ordering matters.</strong> In this grammar the generic fallbacks, identifiers coloured by leading capitalisation, e.g. <code>^[A-Z]</code> → <code>@type</code>, must come <strong>first</strong> in the query file. Tree-sitter returns overlapping captures and the consumer keeps the last one, so a catch-all placed last swallows every specific rule. This is the single most common way a highlights query silently collapses to one colour.</p></blockquote>
 <h3 id="known-limitation">Known limitation</h3>
@@ -79,9 +79,9 @@ for (const m of query.captures(tree.rootNode)) {
 <hr />
 <section><h2 id="coralc-serve-the-language-server"><code>coralc --serve</code>, the language server</h2></section>
 <p>JSON-RPC 2.0 over stdio with <strong>standard LSP <code>Content-Length</code> framing</strong> (not newline-delimited). One object per frame, length in <strong>bytes</strong>.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-js">{ &quot;Content-Length&quot;: 143 }\r\n
+<div class="code-block"><div class="code-head"><span class="code-lang">js</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-js">{ &quot;Content-Length&quot;: 143 }\r\n
 \r\n
-{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;result&quot;:{…}}</code></pre>
+{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;result&quot;:{…}}</code></pre></div>
 <p>Full protocol: <code>coralc/coral-docs/PROTOCOL.md</code>.</p>
 <h3 id="current-state">Current state</h3>
 <p>Verified against the installed compiler.</p>
@@ -90,25 +90,25 @@ for (const m of query.captures(tree.rootNode)) {
 <p>The language server does <strong>not</strong> currently surface errors that the CLI does. Same file, same build, same session:</p>
 <div class="table-wrap"><table><thead><tr><th>file</th><th>error</th><th><code>coralc FILE</code></th><th>over LSP</th></tr></thead><tbody><tr><td>parse error</td><td><code>fn broken( {</code></td><td><code>P0001</code></td><td>clean</td></tr><tr><td>semantic error</td><td>undeclared identifier</td><td><code>T0001</code></td><td>clean</td></tr></tbody></table></div>
 <p>Reproduce:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-sh">printf &#x27;fn broken( {\n}\n&#x27; &gt; /tmp/only.crl
+<div class="code-block"><div class="code-head"><span class="code-lang">sh</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-sh">printf &#x27;fn broken( {\n}\n&#x27; &gt; /tmp/only.crl
 coralc /tmp/only.crl -o /tmp/x              # -&gt; [P0001]
-python3 .../tools/lsp-diagnostics.py /tmp/only.crl   # -&gt; clean</code></pre>
+python3 .../tools/lsp-diagnostics.py /tmp/only.crl   # -&gt; clean</code></pre></div>
 <p>If you are building anything that depends on server diagnostics for this site, drive the compiler directly instead.</p>
 <h3 id="tooling">Tooling</h3>
 <p>All in <code>/home/cerie/Documents/coral-vscode/tools/</code>:</p>
 <div class="table-wrap"><table><thead><tr><th>Command</th><th>Purpose</th></tr></thead><tbody><tr><td><code>node tools/lsp-probe.js FILE --method textDocument/hover</code></td><td>probe any LSP method per position</td></tr><tr><td><code>node tools/lsp-probe.js --list</code></td><td>methods it can drive</td></tr><tr><td><code>node tools/vscode-diagnostics.js FILE</code></td><td>what VS Code renders</td></tr><tr><td><code>python3 tools/lsp-diagnostics.py FILE</code></td><td>raw wire payload</td></tr></tbody></table></div>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-sh">cd /home/cerie/Documents/coral-vscode
+<div class="code-block"><div class="code-head"><span class="code-lang">sh</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-sh">cd /home/cerie/Documents/coral-vscode
 node tools/lsp-probe.js /path/to/file.crl --method textDocument/hover
 node tools/vscode-diagnostics.js /path/to/file.crl
-python3 tools/lsp-diagnostics.py /path/to/file.crl</code></pre>
+python3 tools/lsp-diagnostics.py /path/to/file.crl</code></pre></div>
 <p><code>lsp-probe.js</code> prints resolved positions then the unresolved tokens, which is the fastest way to find out what a given build actually understands.</p>
 <hr />
 <section><h2 id="building-it-yourself">Building it yourself</h2></section>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-sh"># browser wasm (ABI 14)
+<div class="code-block"><div class="code-head"><span class="code-lang">sh</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-sh"># browser wasm (ABI 14)
 /home/cerie/Documents/coral-zed/build-web.sh ./coral.wasm
 
 # Zed extension, which also regenerates the ABI 15 wasm
-cd /home/cerie/Documents/coral-zed &amp;&amp; ./build.sh</code></pre>
+cd /home/cerie/Documents/coral-zed &amp;&amp; ./build.sh</code></pre></div>
       <nav class="chapter-nav"><span></span><span></span></nav>
     </article>
     <footer class="site-footer">

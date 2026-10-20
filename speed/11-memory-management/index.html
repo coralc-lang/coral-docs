@@ -46,13 +46,13 @@
 <p>The region is visible in the code. A value declared without allocation lives on the stack; one requested from the allocator lives on the heap behind a pointer; one declared at module scope lives in the static region. <code>Item item;</code> chooses the stack; <code>Item* item = alloc&lt;Item&gt;(1);</code> chooses the heap. There is no fourth region.</p>
 <p>A large local struct eats the small, fixed stack, while the same data on the heap is limited mainly by available memory. A function reading a gigabyte-long file allocates a heap buffer rather than a huge local array. The region decides both lifetime and capacity.</p>
 <p>All three regions side by side:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 local = 42;              // stack: dies when the call returns
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 local = 42;              // stack: dies when the call returns
 i64* heap = alloc&lt;i64&gt;(1);   // heap: lives until dealloc
-if (heap != null) { *heap = 7; dealloc&lt;i64&gt;(heap); }</code></pre>
+if (heap != null) { *heap = 7; dealloc&lt;i64&gt;(heap); }</code></pre></div>
 <section><h2 id="s11-3">The Pointer: The Raw View</h2></section>
 <p>A pointer holds an address, the location of another value. It is the raw view of memory. A pointer is written as the pointed-to type followed by <code>*</code>: <code>i32*</code>, <code>str*</code>, and <code>i32**</code> for a pointer to a pointer.</p>
 <p>The ampersand takes a value's address; the asterisk follows a pointer to the value. <code>ptr-&gt;field</code> reaches a field through a pointer, while <code>.</code> accesses a field of a value directly. <code>r.width</code> is the width of <code>r</code>; <code>p-&gt;width</code> follows <code>p</code> to the struct and takes its width. The arrow is the dot after climbing the pointer.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Rectangle {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Rectangle {
     f64 width;
     f64 height;
 }
@@ -64,23 +64,23 @@ pub extend Rectangle {
 Rectangle r = Rectangle { .width = 5.0, .height = 3.0 };
 Rectangle* p = &amp;r;
 p-&gt;height = 4.0;
-println(&quot;{}&quot;, p-&gt;area());</code></pre>
+println(&quot;{}&quot;, p-&gt;area());</code></pre></div>
 <p>A pointer is exact: one address, not a range or handle. That is its power, since it costs nothing, and its danger, since the program must ensure the address still points at a live value. Every tool in this chapter exists for that responsibility.</p>
 <p>A pointer is a house address on a card: the card is not the house, and following it is useful until the house is torn down and the address points at an empty lot.</p>
 <p>A pointer has a type, and the compiler holds the program to it. An <code>i32*</code> points to an <code>i32</code>, and a <code>const u8*</code> points to bytes that must not be written. You cannot hand an <code>i32*</code> where a <code>u64*</code> is expected without a cast, and <code>(u64*)p</code> states that you know what you are doing.</p>
 <section><h2 id="s11-4">Explicit Null</h2></section>
 <p><code>null</code> is the pointer value that points at nothing. It is first-class and explicit: a pointer is either an address or <code>null</code>, and the code must say which it is using.</p>
 <p>The classic pointer mistake is the null dereference, and Coral does not conjure <code>null</code> into places the program did not put it. A function returns <code>null</code> only where the code writes <code>return null</code>. When <code>alloc&lt;T&gt;</code> cannot satisfy a request it returns <code>null</code>, and callers check or have decided the allocation cannot fail.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u8* buf = alloc&lt;u8&gt;(4096);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u8* buf = alloc&lt;u8&gt;(4096);
 if (buf == null) {
     println(&quot;out of memory&quot;);
     return;
-}</code></pre>
+}</code></pre></div>
 <p>When absence is legitimate, <code>Option&lt;T&gt;</code> says so more strongly than a pointer that happens to be null. It forces inspection before unwrapping and is the type-safe spelling of may point at nothing; <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a> develops it. Choose by type: <code>Option&lt;T&gt;</code> when the compiler should make you handle absence, a null check for raw machinery.</p>
 <section><h2 id="s11-5">The Allocation Primitives</h2></section>
 <p>Heap memory is requested through the memory module in typed elements rather than raw bytes: you allocate ten <code>u64</code>s, not eighty anonymous bytes. The primitives live in <code>std::mman</code>, and <code>alloc</code>, <code>dealloc</code>, and <code>realloc</code> are available without an explicit import in ordinary code.</p>
 <p><code>alloc&lt;T&gt;(count)</code> requests space for <code>count</code> elements of <code>T</code> and returns a pointer, or <code>null</code> if <code>count</code> is zero or the allocator cannot satisfy it. <code>dealloc&lt;T&gt;(ptr)</code> returns a block to the allocator. <code>realloc&lt;T&gt;(ptr, newCount)</code> resizes an allocation; on success the original pointer may no longer be valid, so keep the returned one.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64* numbers = alloc&lt;u64&gt;(10);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64* numbers = alloc&lt;u64&gt;(10);
 if (numbers == null) return;
 
 numbers[0] = 1;
@@ -90,84 +90,84 @@ for (usize i = 2; i &lt; 10; i += 1) {
 }
 
 numbers = realloc&lt;u64&gt;(numbers, 20);
-dealloc&lt;u64&gt;(numbers);</code></pre>
+dealloc&lt;u64&gt;(numbers);</code></pre></div>
 <p>The typed interface keeps the size right: the type parameter names the element type and the count names the number of elements, so no <code>@sizeof</code> multiplication is needed, and the returned pointer already has the right type. A raw <code>malloc</code> hands back an untyped pointer and requires casts and recomputation; <code>alloc&lt;u64&gt;</code> hands back a <code>u64*</code>.</p>
 <p><code>alloc&lt;u64&gt;(10)</code> means reserve room for ten u64 numbers. Because the kind is named in the call, the block comes back typed, so you cannot treat it as characters or addresses.</p>
 <p>The module provides typed bulk operations: <code>zero&lt;T&gt;</code> fills a block with zero bytes, <code>copy&lt;T&gt;</code> copies elements, <code>move&lt;T&gt;</code> does the same when the blocks may overlap, and <code>equal&lt;T&gt;</code> compares blocks element by element.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">zero&lt;u64&gt;(numbers, 20);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">zero&lt;u64&gt;(numbers, 20);
 copy&lt;u64&gt;(backup, numbers, 20);
-if (equal&lt;u64&gt;(backup, numbers, 20)) println(&quot;identical&quot;);</code></pre>
+if (equal&lt;u64&gt;(backup, numbers, 20)) println(&quot;identical&quot;);</code></pre></div>
 <p>The primitives are the vocabulary; every allocation policy in this chapter implements or wraps them.</p>
 <section><h2 id="s11-6">The Allocator Abstraction</h2></section>
 <p>The primitives ask a global allocator, and the allocator is a value the program can replace. The <code>Allocator</code> type from <code>std::allocator</code> is a context pointer and three function pointers.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Allocator {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Allocator {
     rawptr ctx;
     rawptr(rawptr, usize) alloc;
     void(rawptr, rawptr) free;
     rawptr(rawptr, rawptr, usize) realloc;
-}</code></pre>
+}</code></pre></div>
 <p><code>ctx</code> is the allocator's private state: a region, a free list, a count. The three function pointers are its operations, each taking the context first. Any implementation can supply them, so a program can install a policy and every allocation flows through it. This is <code>FILE*</code> promoted to a full type.</p>
 <p>The default allocator is installed by <code>initDefaultAllocator</code> and wraps <code>malloc</code> as an <code>Allocator</code> (<code>libcAllocator</code>); <code>alloc&lt;T&gt;</code> calls <code>ensureDefaultAllocator</code> first. The library also ships TLSF (<code>std::tlsf</code>), which finds a block in constant time, and mimalloc (<code>std::mimalloc</code>). Either can be installed. The choice is a value the program assigns.</p>
 <p>Because allocation is a value, a program can wrap, count, confine, and change it, and the primitives need not know. The allocation strategy is a decision the program makes in code.</p>
 <section><h2 id="s11-7">The Fixed Buffer Allocator</h2></section>
 <p>The fixed buffer allocator is the arena in its smallest form: a buffer handed in advance, a cursor, and nothing else. Each allocation checks whether the request fits; if it does, it returns the next aligned piece and advances the cursor.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">FixedBufferAllocator arena;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">FixedBufferAllocator arena;
 u8 backing[4096];
 arena.init(backing, 4096);
 
-Allocator a = arena.allocator();</code></pre>
+Allocator a = arena.allocator();</code></pre></div>
 <p>The allocator never grows. When the buffer is full, allocations return <code>null</code> and the program decides what that means. Its hard bound is the buffer's size, and its cost is a compare and an add. It fits a known working set: a game frame, a request handler, a boot loader.</p>
 <p>Resetting sets the used count to zero, abandoning all blocks at once, which is right when a whole batch dies together. <code>remaining</code> reports the space left so a program can check before a burst.</p>
 <section><h2 id="s11-8">The Stack Fallback Allocator</h2></section>
 <p>The stack fallback allocator uses a small fixed buffer first and a general allocator when the buffer is exhausted. It is initialized with a fallback allocator and carries a one-kilobyte buffer inside the struct. Allocations try the buffer first; when it is full, the request goes to the fallback.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">StackFallbackAllocator sfa;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">StackFallbackAllocator sfa;
 sfa.init(defaultAllocator);
-Allocator a = sfa.allocator();</code></pre>
+Allocator a = sfa.allocator();</code></pre></div>
 <p>Most allocation requests in a well-written program are small and short-lived. The stack allocator serves those from its buffer with no heap round trip or thread contention, and only rare large or long-lived requests touch the general heap.</p>
 <section><h2 id="s11-9">The Arena</h2></section>
 <p>The arena is the fixed buffer with growth. Like the fixed buffer, it hands out blocks from one contiguous region and advances a cursor, and freeing an individual block does nothing. Unlike the fixed buffer, when its region fills it asks its backing allocator for a larger region, moves its contents, and continues.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">ArenaAllocator arena;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">ArenaAllocator arena;
 arena.init(defaultAllocator, 4096);
 
 Token* tokens = arena.pushType&lt;Token&gt;(256);
 arena.reset();
-arena.deinit();</code></pre>
+arena.deinit();</code></pre></div>
 <p><code>push(size)</code> requests a raw byte block, and <code>pushType&lt;T&gt;(count)</code> requests space for <code>count</code> elements of <code>T</code> and returns a typed pointer. <code>reset</code> abandons everything allocated since the last reset, <code>remaining</code> reports space left, and <code>deinit</code> returns the whole region to the backing allocator.</p>
 <p>The arena fits batch-shaped work: a parser builds a tree that dies when its result is consumed, or a handler builds a response from pieces that die together. Allocation is a bump, release a single store.</p>
 <p>Do not use an arena for data freed one piece at a time. It has no per-block free by design: <code>reset</code> abandons everything at once. If half a batch must outlive the other half, use the scoped allocator or the general heap. Match the allocator to the lifetime.</p>
 <section><h2 id="s11-10">The Pool Allocator</h2></section>
 <p>The pool allocator handles fixed-size work. It is initialized with a source allocator, a block size, and a block count; it asks the source for one large region, slices it into blocks, and links them into a free list, each block beginning with a pointer to the next free one.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">PoolAllocator pool;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">PoolAllocator pool;
 pool.init(defaultAllocator, @sizeof(Node), 1024);
 
 rawptr n = pool.allocBlock();
-pool.freeBlock(n);</code></pre>
+pool.freeBlock(n);</code></pre></div>
 <p>Allocating pops the free-list head; freeing pushes it back. Both are a handful of instructions regardless of block count, and free blocks carry the list where their payload will go, so no per-block metadata is stored. The pool cannot grow: an empty free list means allocation fails, and the bound is explicit.</p>
 <p>The library also provides <code>Pool&lt;T&gt;</code> in <code>std::pool</code>. It is built empty, grows its backing store when the free list runs dry, and hands out typed blocks:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Pool&lt;Node&gt; pool = Pool&lt;Node&gt;::new();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Pool&lt;Node&gt; pool = Pool&lt;Node&gt;::new();
 Node* n = pool.acquire();     // null if the grow allocation failed
 // ... use n ...
 pool.release(n);
-pool.dispose();</code></pre>
+pool.dispose();</code></pre></div>
 <p>A pool fits a value created and destroyed many times with the same type and size: tree nodes, connection buffers, game objects. Reuse costs two pointer stores instead of an allocator round trip, and the small region stays in cache. Look here first when profiling shows allocation churn.</p>
 <section><h2 id="s11-11">The Scoped Allocator</h2></section>
 <p>The scoped allocator remembers what it handed out so it can return it all in one call. It is initialized with a backing allocator and a capacity, and records every allocation's pointer and size. <code>freeAll</code> returns every pointer to the backing allocator, and <code>deinit</code> frees the records.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">ScopeAlloc scope;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">ScopeAlloc scope;
 scope.init(defaultAllocator, 1024);
 
 rawptr buf = scope.alloc(256);
 Header* h = scope.allocType&lt;Header&gt;(1);
 scope.freeAll();
-scope.deinit();</code></pre>
+scope.deinit();</code></pre></div>
 <p>The scoped allocator is the manual <code>defer</code> discipline: the program decides when the batch is done and says so once. Each block is released through the backing allocator, so it fits when blocks must return to the general heap. <code>bytesUsed</code> reports tracked memory; after <code>freeAll</code> it is zero.</p>
 <section><h2 id="s11-12">The Logging Allocator</h2></section>
 <p>The logging allocator counts. It wraps a parent allocator and records requested bytes, released bytes, outstanding bytes, and call counts in <code>totalAlloced</code>, <code>totalFreed</code>, <code>currentUsed</code>, <code>allocCount</code>, and <code>freeCount</code>, plus a tracking table of every outstanding pointer and size.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">LoggingAllocator logger;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">LoggingAllocator logger;
 logger.init(defaultAllocator);
 
 Allocator a = logger.allocator();
 rawptr p = a.alloc(a.ctx, 100);
-a.free(a.ctx, p);</code></pre>
+a.free(a.ctx, p);</code></pre></div>
 <p>The logging allocator changes nothing about behavior; it only watches. Install it, run a representative workload, and check whether the outstanding count returns to the baseline. A <code>currentUsed</code> that does not return to zero is the leak, located by policy and quantified in bytes.</p>
 <p>Because allocation is a value, observation is just another implementation of the same three function pointers. The production allocator and the leak-hunt allocator are two values of the same type, and the program cannot tell them apart.</p>
 <section><h2 id="s11-13">Choosing an Allocator</h2></section>
@@ -177,7 +177,7 @@ a.free(a.ctx, p);</code></pre>
 <section><h2 id="s11-14">defer: The Paired Release</h2></section>
 <p>Manual memory management means pairing every acquisition with a release that happens no matter how the code exits. <code>defer</code> makes the pair airtight.</p>
 <p>A <code>defer</code> names a cleanup action for the current block. When the block exits, by falling off the end, returning, or any other path, the deferred action runs, in reverse order of the defers issued. The acquisition and release sit together, which makes the pair visible and correct.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void processFile(str path) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void processFile(str path) {
     Result&lt;File, IoError&gt; fo = fileOpen(path, &quot;r&quot;);
     if (fo.isErr()) return;
     File f = fo.unwrap();
@@ -189,28 +189,28 @@ a.free(a.ctx, p);</code></pre>
 
     Result&lt;isize, IoError&gt; n = fileRead(f, buf, 4096);
     if (n.isOk()) handle(buf, n.unwrap());
-}</code></pre>
+}</code></pre></div>
 <p>Whatever happens after the two <code>defer</code> statements, the buffer is deallocated and the file is closed. They run in reverse order: the buffer is released first, then the file is closed, so the buffer never outlives code that might still look at it.</p>
 <p><code>defer</code> does for resources what the stack does for local variables: it ties a resource's life to a block by declaration. The smart pointer types are <code>defer</code> in type form, and the drop trait is <code>defer</code> supplied by the compiler.</p>
 <p><code>defer</code> is a note to your future self: when this block ends, no matter how, close the file. Writing it next to the line that opened the file keeps the pair together.</p>
 <section><h2 id="s11-15">The Unique Pointer</h2></section>
 <p>The smart pointer is the ownership rule made into a type. <code>SmartPtr&lt;T&gt;</code> holds a heap-allocated value and owns it: disposing the pointer deallocates the value. It is a unique owner, the type's way of saying exactly one thing is responsible for the memory.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct SmartPtr&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct SmartPtr&lt;T&gt; {
     T* ptr;
     // ...
-}</code></pre>
+}</code></pre></div>
 <p>A <code>SmartPtr&lt;T&gt;</code> is initialized with a value, which it allocates and copies into a fresh block; <code>init</code> returns <code>bool</code>, false on allocation failure. <code>get</code> returns the value, <code>set</code> replaces it, <code>data</code> and <code>constData</code> return raw pointers, <code>isValid</code> reports a live value, and <code>take</code> returns the value and relinquishes the block.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">SmartPtr&lt;u64&gt; p;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">SmartPtr&lt;u64&gt; p;
 if (!p.init(42)) return;
 println(&quot;{}&quot;, p.get());
 p.set(7);
 println(&quot;{}&quot;, p.get());
-p.dispose();</code></pre>
+p.dispose();</code></pre></div>
 <p>A unique owner is the simplest ownership shape: one thing owns the memory, the memory dies with the owner, and there is never a question of who frees it. The ownership is the meaning of the type, not a convention to remember.</p>
 <p>A unique pointer is like owning a pet: exactly one owner, so there is no argument about who frees it. Because <code>SmartPtr&lt;T&gt;</code> conforms to <code>@drop</code>, a local releases itself at scope exit unless disposed earlier, and <code>dispose</code> cancels the pending drop, so the block is freed exactly once.</p>
 <section><h2 id="s11-16">The Shared Pointer</h2></section>
 <p>The shared pointer is the unique pointer with a count. <code>SharedPtr&lt;T&gt;</code> holds a value and a reference count stored together in the heap beside the value, in a <code>RefCount</code> struct holding one <code>usize</code>. Every holder uses the same count, and the last holder to be disposed frees the value and the count together.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct RefCount {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct RefCount {
     usize count;
 }
 
@@ -218,9 +218,9 @@ pub struct SharedPtr&lt;T&gt; {
     T* ptr;
     RefCount* rc;
     // ...
-}</code></pre>
+}</code></pre></div>
 <p>Initializing sets the count to one. Disposing decrements it, and at zero it deallocates both the value and the count. <code>refCount</code> reports how many holders share the value, and <code>get</code>, <code>data</code>, <code>constData</code>, and <code>isValid</code> behave as the unique pointer's. Because the fields are just <code>ptr</code> and <code>rc</code>, a new holder increments the count by hand:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">SharedPtr&lt;Config&gt; a;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">SharedPtr&lt;Config&gt; a;
 if (!a.init(loadConfig())) return;
 
 SharedPtr&lt;Config&gt; b;
@@ -230,14 +230,14 @@ b.rc-&gt;count += 1;
 
 println(&quot;{} holders&quot;, a.refCount());
 a.dispose();
-println(&quot;{} holder&quot;, b.refCount());</code></pre>
+println(&quot;{} holder&quot;, b.refCount());</code></pre></div>
 <p>The shared pointer fits a value whose lifetime belongs to several places: a shared configuration, a cached resource, a document open in several views. Its cost is the count, an increment and decrement per copy and release, plus the zero check.</p>
 <p>A shared pointer is like a library book with a checkout tally: several readers may hold it, and it returns to the shelf when the last one is done. Each new holder adds one, each release subtracts one, and zero frees the resource.</p>
 <p>The unique pointer says one owner; the shared pointer says many owners, counted. Between them they cover the ownership shapes a program needs, and the choice states the value's life.</p>
 <p>A common beginner mistake is to copy the two fields and forget the count:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">SharedPtr&lt;Config&gt; b;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">SharedPtr&lt;Config&gt; b;
 b.ptr = a.ptr;
-b.rc  = a.rc;          // but no increment here, so the count lies</code></pre>
+b.rc  = a.rc;          // but no increment here, so the count lies</code></pre></div>
 <p>Now two holders believe they share one resource, but the tally says one. When the first is disposed, the value is freed while the second still uses it: the classic use-after-free. The count is the entire reason the shared pointer is safe, so the increment must be written.</p>
 <section><h2 id="s11-17">Ownership: Unique, Shared, and the Writer's Choice</h2></section>
 <p>Ownership answers who is responsible for this memory. The unique pointer says exactly one owner, and the memory dies with it; the shared pointer says many owners, counted, and the memory dies when the last one goes.</p>
@@ -250,10 +250,10 @@ b.rc  = a.rc;          // but no increment here, so the count lies</code></pre>
 <section><h2 id="s11-19">Lifetimes Are the Writer's Job</h2></section>
 <p>A lifetime is the span from creation to release. Coral has no lifetime syntax or checking, and the lifetime is what the writer makes it. Four rules keep the job sane.</p>
 <p>A stack value's lifetime is its block. A local dies when its function returns, and any pointer to it dies with it. The classic C bug is returning the address of a local:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64* bad() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64* bad() {
     u64 x = 3;
     return &amp;x;      // the address of a dead value
-}</code></pre>
+}</code></pre></div>
 <p>The pointer is returned, the frame is popped, and the address belongs to another function's stack; reading through it reads whatever moved in. Coral does not stop you, because the signature is the memory aid: returning a value that outlives the call means returning a heap value or a copy.</p>
 <p>Heap values live until released: when <code>dealloc</code> is called, when the owning smart pointer is disposed, or when its arena is reset or its scope is freed. Every acquisition names a release, and <code>defer</code> writes the pair in one place.</p>
 <p>The release must happen at the right moment. Too early is a use-after-free; too late is a leak. The right moment is after the last use and before anyone else needs the block: dispose after the borrowers are done, reset the arena after the batch is consumed, free the scope after the phase ends.</p>
@@ -263,17 +263,17 @@ b.rc  = a.rc;          // but no increment here, so the count lies</code></pre>
 <section><h2 id="s11-20">Threads and Sharing</h2></section>
 <p>The hard truth about threads is that the memory model's front line is sharing. When two threads touch the same memory and at least one writes, the result depends on the hardware's ordering, not the program. Coral does not prove thread-safety; it provides tools, and the most important is the mutex.</p>
 <p><code>Mutex</code> wraps the platform's lock. Its declaration is an opaque block of storage sized for the platform's mutex, with operations that have no surprises.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Mutex {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Mutex {
     rawptr impl[6];      // pthread_mutex_t is 40 bytes on 64-bit
 
     void init()    { /* pthread_mutex_init   */ }
     void lock()    { /* pthread_mutex_lock   */ }
     void unlock()  { /* pthread_mutex_unlock */ }
     void destroy() { /* pthread_mutex_destroy*/ }
-}</code></pre>
+}</code></pre></div>
 <p>The mutex rhythm is initialize, lock before touching the shared value, unlock after, destroy when done. The value several threads share lives behind the lock, and every access goes through the locked region. The lock serializes access, so work inside cannot overlap across threads. The discipline is the program's: forgetting one access races exactly that access.</p>
 <p>Worker threads are created with <code>threadCreate</code>, which takes a function of one raw pointer and returns a <code>Result</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct State {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct State {
     Mutex lock;
     u64   counter;
 }
@@ -291,11 +291,11 @@ state.counter += 1;               // the only way to touch the counter
 state.lock.unlock();
 
 threadJoin(t, null);
-state.lock.destroy();</code></pre>
+state.lock.destroy();</code></pre></div>
 <p>The library also provides a thread pool, semaphores, and read-write locks. For a single word shared between threads, it ships <code>AtomicU64</code> and <code>AtomicU32</code> with <code>load</code>, <code>store</code>, and <code>fetchAdd</code>. Atomics protect one word; a shared structure uses a mutex. Shared memory requires explicit synchronization.</p>
 <section><h2 id="s11-21">The Mutex and the Locked Value</h2></section>
 <p>A value read often and written occasionally, shared between threads, needs safe mutation. Class languages automate this with an interior-mutability wrapper; Coral uses a mutex and a plain struct, and the check is the lock.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct SharedCounter {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct SharedCounter {
     Mutex lock;
     u64   value;
 }
@@ -304,40 +304,40 @@ void increment(SharedCounter* c) {
     c-&gt;lock.lock();
     c-&gt;value += 1;
     c-&gt;lock.unlock();
-}</code></pre>
+}</code></pre></div>
 <p>The struct states the pattern openly: the lock and the value it protects, side by side, so the reader knows the value is not to be touched except through the lock. There is no wrapper magic or type machinery to decode. Coral expresses interior mutability as ordinary fields and an ordinary lock.</p>
 <p>The cost is discipline: every access must lock, and a forgotten lock is a forgotten race. The payoff is that the program can be read. The locked region is the two lines between lock and unlock, and a reviewer can check every one.</p>
 <section><h2 id="s11-22">Uninitialized Memory and the Init Discipline</h2></section>
 <p>The classic C failure is the uninitialized variable: memory is reserved, never written, and the program reads whatever was there before. Coral has no checker for this; the defence is the discipline of initialization.</p>
 <p>The discipline has three parts. A value is initialized when declared or constructed, and a factory declares, fills every field, and returns. Memory needing a known state is given one on purpose, with <code>zero&lt;T&gt;</code> for a zero block. A value is not read before it is written.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 total = 0;                       // initialized at birth
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 total = 0;                       // initialized at birth
 for (usize i = 0; i &lt; n; i += 1) {
     total += values[i];
-}</code></pre>
+}</code></pre></div>
 <p>The rule is that uninitialized memory is not a value the program has built yet. A declaration reserves the bytes; the assignment fills them; between the two, the memory is the allocator's business. The compiler does not pretend otherwise, and initialization happens where the reader can see it.</p>
 <section><h2 id="s11-23">comptime Checks Before the Program Exists</h2></section>
 <p>A <code>comptime</code> block runs during compilation, when concrete types are known, and performs the program's own assertions before a single instruction runs.</p>
 <p>Its natural use is checking properties the type system does not express. The compiler knows a struct's size; whether that size is acceptable is the program's decision. A <code>comptime</code> block can ask directly and refuse to build:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">comptime {
     if (@sizeof(BigStruct) &gt; 4096) {
         @compileError(&quot;BigStruct too large for the DMA ring&quot;);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The compiler refuses to build because the program caught its own bug: a struct that would overflow a four-kilobyte ring slot becomes a build error, and <code>@compileError</code> states why.</p>
 <p>The same mechanism checks an enum's count against a table's length, a computed buffer size against a platform limit, or an alignment against a requirement. The check is free at runtime because it never runs: it is a refusal, not a test.</p>
 <section><h2 id="s11-24">Bounds Checks: The Libraries Assert</h2></section>
 <p>What compile-time checks cannot prove, the library checks at runtime. Container accesses are bounds-checked: the vector's <code>at</code> compares every index against the length, and an outside index is reported rather than silently read. The actual code from <code>std::vec</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">T at(usize i) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">T at(usize i) {
     @assertOut(i &lt; self.len, &quot;Index Out of bounds&quot;);
     return self.data[i];
-}</code></pre>
+}</code></pre></div>
 <p><code>@assertOut</code> is a plain language construct, written where the access happens and visible to anyone opening the file. A vector knows its length, a hash map its table size, and a string its byte count. The difference is between corrupting adjacent memory and catching the bug at once with "Index Out of bounds."</p>
 <p>The check is the default because the containers make it so. The raw pointer stays reachable: <code>atPtr</code> returns it, and <code>data</code> is public where present. Code that indexes a raw pointer has left the checked path deliberately, for speed. Safety is a library behavior, not a language promise.</p>
 <section><h2 id="s11-25">Marking the Low-Level Exception</h2></section>
 <p>Coral has no <code>unsafe</code> keyword and no attribute that silences safety warnings, because there is no distinct unsafe subset. Low-level code marks itself with <code>#[[no_drop_all]]</code>, the same attribute the library uses to take manual control.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_drop_all]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[no_drop_all]]
 
-pub struct ArenaAllocator { /* ... */ }</code></pre>
+pub struct ArenaAllocator { /* ... */ }</code></pre></div>
 <p>The attribute disables automatic cleanup for the whole file and declares ownership manual. The memory module writes size headers into blocks, reinterprets bytes with casts, and frees with explicit <code>dealloc</code>. There is no separate warning to silence, because the low-level operations are ordinary features, and using them is stated at the top of the file.</p>
 <p>Ordinary application code carries no marker, so a low-level cast or raw pointer stands out precisely because it is not the norm. Modules that must live close to the metal declare the exception once, at the top, so every reader knows what follows is reviewed.</p>
 <section><h2 id="s11-26">The Failure Modes</h2></section>
@@ -358,14 +358,14 @@ pub struct ArenaAllocator { /* ... */ }</code></pre>
 <p>AddressSanitizer instruments a program to detect memory failures while it runs. It records, for every block, where it was allocated, how large it is, and whether it was freed. An overflow, use-after-free, or double-free is reported with the allocation site. The several-fold slowdown makes it a test-build tool.</p>
 <p>Valgrind watches every memory access from outside, without recompilation. It catches the same failures and reports the allocation's history: where it was allocated, how it grew or shrank, and where the pointer that should have freed it went. The sanitizer instruments the build; Valgrind observes the run, and a program can use both.</p>
 <p>The tools turn a leak into a named thing:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">definitely lost: 4,096 bytes in 1 block
-by loadConfig (config.crl:476)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">definitely lost: 4,096 bytes in 1 block
+by loadConfig (config.crl:476)</code></pre></div>
 <p>The "definitely lost" line names the batch's size, 4,096 bytes, and the allocation stack points at the arena's <code>init</code> line, which in turn points at the loader's release. The fix is <code>arena.reset()</code> on the path that missed it, an early return before the reset or a call that never reached it.</p>
 <p>The type system prevents one class of failures, <code>comptime</code> checks prevent another, the checked containers catch a third at runtime, and the tools verify the combination on the paths that ran. No single mechanism catches everything, so a program that wants certainty layers them: cheap in the shipping build, expensive in the test build.</p>
 <section><h2 id="s11-29">A Worked Example: The Arena-Backed Loader</h2></section>
 <p>The chapter's pieces assemble into a loader that reads a configuration file into a batch of records, processes the batch, and releases it, using the arena for the batch and the scoped allocator for records that must outlive it.</p>
 <p>The batch is a natural arena: the file is read into a buffer, records are built from the buffer's data, and the whole result is alive and dead at once.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void loadConfig(str path) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void loadConfig(str path) {
     Result&lt;File, IoError&gt; fo = fileOpen(path, &quot;r&quot;);
     if (fo.isErr()) return;
     File f = fo.unwrap();
@@ -381,10 +381,10 @@ by loadConfig (config.crl:476)</code></pre>
     parseInto(buf, (usize)r.unwrap(), &amp;arena);
     report(&amp;arena);
     arena.deinit();
-}</code></pre>
+}</code></pre></div>
 <p>The buffer and records come from the arena, and <code>deinit</code> returns the whole batch at once. The <code>defer</code> closes the file no matter how the parse turns out, even on an early return.</p>
 <p>Records the rest of the program keeps outlive the batch, so the loader copies them into a scope that is released when the larger phase ends; <code>freeAll</code> returns them individually to the general heap:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">ScopeAlloc keep;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">ScopeAlloc keep;
 keep.init(defaultAllocator, 64);
 
 for (usize i = 0; i &lt; kept; i += 1) {
@@ -394,16 +394,16 @@ for (usize i = 0; i &lt; kept; i += 1) {
 reportRecords(&amp;keep);
 
 keep.freeAll();
-keep.deinit();</code></pre>
+keep.deinit();</code></pre></div>
 <p>The batch is an arena, the long-lived records are a scope, and the file is a <code>defer</code>, so the memory behavior is written in the code at each decision. Nothing scans the heap, nothing pauses, and the loader's memory is accounted for line by line.</p>
 <section><h2 id="s11-30">The Drop Trait: The Compiler-Provided Release</h2></section>
 <p><code>defer</code> binds a release to a block by writing it; <code>@drop</code> binds a release to a type, and the compiler emits it when a value goes out of scope, automatically, exactly once, on every exit path. This is RAII made compiler-provided: the destructor is a trait conformance, visible and guaranteed.</p>
 <p>The trait is compiler-provided, so any type in any program may conform. The conformance is an ordinary extend block naming the trait with a colon:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend&lt;T&gt; SmartPtr&lt;T&gt; : @drop {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend&lt;T&gt; SmartPtr&lt;T&gt; : @drop {
     void drop() {
         self.dispose();
     }
-}</code></pre>
+}</code></pre></div>
 <p>The compiler finds every local whose type conforms and emits the type's drop at the end of the scope where it dies. Drops run innermost-scope-first and in reverse declaration order, exactly like <code>defer</code>. Never call <code>drop()</code> by hand on the normal path; E1301 forbids it because the scope will also call it.</p>
 <p><code>defer</code> is the explicit pair, written by hand, and <code>@drop</code> is the type-level pair: the release is part of the type and every value carries it on scope exit. The two compose. A one-off resource gets <code>defer</code>; a type that owns its release gets the conformance once and inherits it everywhere.</p>
 <p>Most standard library modules free by hand and carry <code>#[[no_drop_all]]</code>, deliberately. The trait is implemented and supported, and <code>SmartPtr&lt;T&gt;</code> and <code>SharedPtr&lt;T&gt;</code> are examples, but most files free explicitly to keep compile times down because every program compiles the library.</p>

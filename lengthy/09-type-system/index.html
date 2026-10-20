@@ -50,14 +50,14 @@
 <section><h2 id="s9-4">Type Inference</h2></section>
 <p>Coral is explicit about types, but it infers where explicitness buys nothing. Two mechanisms do the inferring: the <code>var</code> declaration and type parameters.</p>
 <p>The <code>var</code> declaration infers a variable's type from its initializer. A variable declared with <code>var</code> takes its type from the expression that initializes it, and the compiler substitutes the inferred type at the declaration. Ranged <code>for</code> loops use <code>var</code> for the loop variable, inferring each element's type from the collection being iterated:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">for (var arg : args) _fprintOne(1, arg);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">for (var arg : args) _fprintOne(1, arg);</code></pre></div>
 <p>The variable <code>arg</code> is typed by the argument pack, one type per element, and the compiler knows that type before it checks the loop body. The <code>var</code> declaration is inference where the code fully determines the type; the compiler just fills it in.</p>
 <p>Coral uses no Hindley-Milner inference, and no global type inference reconstructs a program's types from its uses. Inference here is local and declaration-directed: a type is stated, or inferred from a stated expression, and the compiler never guesses a type across a whole program. The philosophy decides this. The type system's rigor comes from the types being visible, and a type the compiler guesses is a type the reader does not see. The <code>var</code> declaration infers at the point where the type is already written in the code, the initializer, so the reader sees the initializer and knows the type.</p>
 <p>A worked example shows where inference stops. These declarations are explicit where it matters and inferred where the initializer decides:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var count = 42u;          // unsigned, from the literal. it can hold up to u64, unless the compiler proves that never uses that much space
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">var count = 42u;          // unsigned, from the literal. it can hold up to u64, unless the compiler proves that never uses that much space
 var ratio = 3.14;         // f64, from the literal
 var total = a + b;        // the type of a + b, which is the operand type
-var item = lookup(key);   // the return type of lookup</code></pre>
+var item = lookup(key);   // the return type of lookup</code></pre></div>
 <p>Each <code>var</code> names its type through its initializer, and every initializer is a stated expression. A reader can retype each <code>var</code> just by reading the line, because the type is visible in the code it is inferred from. The compiler never assembles a type from a distant use, and the reader never has to run the inference to understand the program. Inference is a convenience for writing the obvious type, and the obvious type is always right there in the text.</p>
 <p>A common beginner mistake is to read <code>var</code> as "this variable can hold anything" or "the type can change later." It cannot. <code>var count = 42u;</code> fixes <code>count</code> to the unsigned type of that literal for its whole life; a later <code>count = "hello";</code> is a type error, not a reassignment of meaning. <code>var</code> saves you from writing the type once, at the declaration, and never makes the type flexible after that.</p>
 <section><h2 id="s9-5">Generic Types</h2></section>
@@ -66,7 +66,7 @@ var item = lookup(key);   // the return type of lookup</code></pre>
 <p>The generic is the third option. Write the structure once with a placeholder for the element type, then let the compiler stamp out a concrete version for each type the program actually uses. That placeholder is the type parameter. By convention the first is T, the second U, meaning "the element type, whatever it turns out to be." The generic declaration is a recipe, not a finished type. It becomes a real type the moment the program names the parameter.</p>
 <p>If that still feels abstract, picture a cookie cutter. The cutter is shaped like a vector, but it has a hole where the element type goes. Pressing it into <code>u32</code> dough gives a <code>Vec&lt;u32&gt;</code>; pressing the same cutter into <code>str</code> dough gives a <code>Vec&lt;str&gt;</code>. One cutter, many cookies, and each cookie is a complete, ordinary type.</p>
 <p>Here are three real recipes from the standard library. <code>Vec</code> comes from <code>collections/vec.crl</code>, <code>Pair</code> from <code>collections/iter.crl</code>, <code>Arr</code> from <code>collections/arr.crl</code>. Only a field has been elided, where the ellipsis shows; everything else is written exactly as it appears in the library:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec&lt;T&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Vec&lt;T&gt;
 {
     T* data;
     usize len;
@@ -86,7 +86,7 @@ pub struct Arr&lt;T, N&gt;
     T data[N];
 
     ...
-}</code></pre>
+}</code></pre></div>
 <p>Read the three slowly, field by field. This is the whole idea of generics, and it fits in these lines.</p>
 <p><code>Vec</code> takes one parameter: the element type. That parameter shows up in the fields. <code>T* data</code> is a pointer to elements of whatever T is, and when the program uses <code>Vec&lt;u32&gt;</code> the line becomes <code>u32* data</code>, the length and capacity stay <code>usize</code>, and every method that mentions T follows the same substitution. The parameter is a knob the declaration leaves open, and the use turns it.</p>
 <p><code>Pair</code> takes two parameters, the types of its two fields, and each field is one: <code>T first</code> and <code>U second</code>. Two knobs, and the use names both. A pair of a string view and a number is <code>Pair&lt;str, u64&gt;</code>, and the substitution fills both fields.</p>
@@ -94,7 +94,7 @@ pub struct Arr&lt;T, N&gt;
 <p>A generic type becomes a real type at the use. <code>Vec&lt;u32&gt;</code> picks the element type. <code>Map&lt;str, i64&gt;</code> names the key type and the value type. <code>Arr&lt;u8, 64&gt;</code> names the element and the count. Writing the type name and putting arguments between the angle brackets is called instantiating the generic, and each instantiation is a complete, ordinary type, nothing about <code>Vec&lt;u32&gt;</code> is unfinished or provisional, and nothing is slower than a hand-written struct.</p>
 <p>Instantiation happens at compile time, so the arguments must be knowable at compile time. The count in <code>Arr&lt;u8, N&gt;</code> cannot be a value computed at runtime: <code>Arr&lt;u8, someVariable&gt;</code> fails the moment the compiler cannot know <code>someVariable</code>'s value while building. That is what "compile-time value" means in this chapter, and the compiler refuses to guess.</p>
 <p>Generic types compose, and composition is where they earn their keep. A vector of maps is <code>Vec&lt;Map&lt;str, u64&gt;&gt;</code>. A map of vectors is <code>Map&lt;str, Vec&lt;f64&gt;&gt;</code>. A pair of containers is <code>Pair&lt;Vec&lt;u8&gt;, Vec&lt;u8&gt;&gt;</code>. Read nested generics from the inside out: the innermost argument is the element, the next layer is the container, and each layer is a substitution into the layer around it. The standard library composes freely, a JSON value's object field is a vector of pairs of a string view and a <code>JsonValue</code>. Written once, the composition reads as its own description:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;Pair&lt;str, JsonValue&gt;&gt; fields;   // a JSON object&#x27;s list of name-value pairs</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Vec&lt;Pair&lt;str, JsonValue&gt;&gt; fields;   // a JSON object&#x27;s list of name-value pairs</code></pre></div>
 <p>Read from the inside out, exactly as the paragraph above says: <code>JsonValue</code> is the element, <code>Pair</code> names it along with its string key, and <code>Vec</code> is the list. The type states the structure of a JSON object in one line. No comment needed, the nested generics are the description. The type system checks the composition layer by layer, and a mismatch at any layer is an error at that layer.</p>
 <p>Because each instantiation is its own type, the checks stay exact. A <code>Vec&lt;u64&gt;</code> is not interchangeable with a <code>Vec&lt;str&gt;</code>; a function that takes one will not accept the other. A void-pointer design would happily absorb that confusion at runtime. Here it is a compile error. The recipe is shared; the results are distinct.</p>
 <p>Why this matters: this exactness is what stops the bug where a vector of the wrong element type is passed to a function written for another. In a void-pointer design that mistake is a runtime corruption; here it is a sentence in the error that names both container types at the line where they meet.</p>
@@ -120,11 +120,11 @@ pub struct Arr&lt;T, N&gt;
 <p>Simply put, Coral does not write down what a generic needs; it checks what the body actually uses. If the body calls <code>area()</code>, then <code>area()</code> is the requirement, verified the moment the generic is used with a concrete type. The signature stays clean, and the body is the specification.</p>
 <section><h2 id="s9-9">Type Aliases</h2></section>
 <p>A type alias names an existing type. The <code>typedef</code> declaration creates the alias, giving a name to a type that already exists. The name is just an alternative spelling of the type.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub typedef SigHandler = void(i32);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub typedef SigHandler = void(i32);</code></pre></div>
 <p>The <code>typedef</code> names the function type a signal handler has: a function taking an <code>i32</code> and returning nothing. <code>SigHandler</code> is shorthand for that type, and the two names mean the same type. The standard library uses <code>typedef</code>s to name function types, which show up throughout the library as parameters and fields. A <code>void(void*) func</code> is written plain when it is short, and given a <code>typedef</code> name when it is long or reused often.</p>
 <p>A <code>typedef</code> is a pure alias: it introduces no new type. A variable of type <code>SigHandler</code> and a variable of type <code>void(i32)</code> have the same type, and the two are interchangeable. The alias exists for the reader, so a complex type is named and readable, and for the writer, so the complex type is written once. The alias is the documentation of the type. That sets up the contrast with the next section: a <code>typedef</code> is the same type under a nicer name, so nothing is protected. A <code>distinct</code> is a new type under an honest name, so everything is.</p>
 <p>The standard library's most used handle is the generic pointer, worth meeting here because it appears throughout the language's conventions. A small helper module wraps a raw pointer in a struct of exactly one field, a <code>rawptr</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Any
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Any
 {
     rawptr p;
 
@@ -149,66 +149,66 @@ pub Any wrap(rawptr value)
     Any a;
     a.p = value;
     return a;
-}</code></pre>
+}</code></pre></div>
 <p>The struct's point is twofold. First, the pointer gains a name and a home for its operations. The module's <code>wrap</code> function builds an <code>Any</code> from a <code>rawptr</code>. The <code>ptr</code> method reads the pointer back. <code>isNull</code> tests whether it holds null. The generic <code>as&lt;T&gt;</code> method returns the pointer viewed as <code>T*</code>, the typed extraction, the cast with the type named in the call, the thread function in the concurrency chapter reading its argument with <code>arg.as&lt;SumJob&gt;()</code>. Second, because the handle is its own type rather than a spelling of <code>void*</code>, nothing converts implicitly. A <code>rawptr</code> becomes an <code>Any</code> only through <code>wrap</code>, and an <code>Any</code> becomes a typed pointer only through <code>as&lt;T&gt;</code> or <code>ptr</code>. Every translation is written. That is the honest meaning of the name <code>any</code>: it holds anything, and the program states, at the boundary, what anything becomes. It is not <code>void*</code> protected, the struct carries no provenance, no bounds, no type tag. But unlike a <code>rawptr</code> it has a surface for the operations the handle needs, and unlike a <code>typedef</code>, that surface exists because the type is a distinct struct and not an alias.</p>
 <section><h2 id="s9-10">Distinct Types</h2></section>
 <p>A distinct type creates a new type from an existing one. The <code>distinct</code> declaration names a type and states the type it is built from. The new type is not interchangeable with the base type, even though the two share a representation.</p>
 <p>The standard library is full of them, and they make a good introduction because each one exists for a real reason. These are the actual declarations from the library:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct File = i32;         // io/fs.crl
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub distinct File = i32;         // io/fs.crl
 pub distinct Dir = void*;        // io/fs.crl
 pub distinct TcpSocket = i32;    // io/net.crl
-pub distinct Thread = void*;     // concurrent/thread.crl</code></pre>
+pub distinct Thread = void*;     // concurrent/thread.crl</code></pre></div>
 <p>A <code>File</code> is an <code>i32</code> under the hood, but it is not an <code>i32</code> in the type system. <code>TcpSocket</code> is an <code>i32</code> too. A file descriptor, a TCP socket, a process id, and a raw error integer can all be the same number, and a program that mixes them up has bugs. The distinct type makes the distinction real. A function that takes a <code>File</code> does not accept a raw <code>i32</code>, and it does not accept a <code>TcpSocket</code> either, even though both are <code>i32</code>s wearing different colors. The compiler refuses to pass a socket where a file is expected, and the confusion it refuses has ended many C programs.</p>
 <p>The distinct type is the newtype of other languages, and it is Coral's answer to the guide's question about newtypes. It wraps a representation and refuses to mix with it, and the compiler checks the distinction, so the confusion it prevents is prevented at compile time. It differs from a one-field <code>struct</code> in a subtle way. A <code>struct</code> creates a type whose fields you reach through <code>.field</code>. A <code>distinct</code> gives you back the base type's operations: you can compare two <code>File</code>s, pass a <code>File</code> to a function expecting the platform's <code>i32</code> through a cast, and otherwise treat the handle as the integer it is, just not a raw one.</p>
 <p>A distinct type has its base type's representation, size, and layout, so it crosses the FFI boundary for free and costs nothing at runtime. The standard library uses it exactly there: the file, thread, and socket types are distinct wrappers around platform handles, so the library's API is typed while the platform's handles stay raw. When the library must hand the OS an int, it casts the distinct type to its base. The conversion is explicit, visible, and honest.</p>
 <p>A small story shows the distinct type doing its job, and it is the classic one. A program handles two kinds of numbers that look identical: a price in dollars and a price in euros, both <code>u64</code> cents. Written as plain u64s, nothing stops the program from adding a dollar price to a euro price, storing one where the other was expected, or comparing them as though they were the same currency. Each of those mistakes is a real bug, the kind that ships as a wrong invoice. Written as distinct types, the confusion becomes impossible:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct USD = u64;   // cents
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub distinct USD = u64;   // cents
 pub distinct EUR = u64;   // cents
 
 USD subtotal = USD(3499);
 EUR vat = EUR(700);
-EUR total = subtotal + vat;   // error: USD is not EUR</code></pre>
+EUR total = subtotal + vat;   // error: USD is not EUR</code></pre></div>
 <p>The compiler rejects the addition line, which is the entire point: the values have the same bits, the same size, the same speed, and different types. A confusion the writer would have made silently is now a refusal, on the line that made it. The distinct type charges a small cost: saying which is which at every boundary. In exchange, you never pay the large cost of one currency mixed with another.</p>
 <p>In plain words, a <code>distinct</code> type is a sticky label. Under the label, <code>USD</code> is just a <code>u64</code>, and it costs nothing extra at run time. But the compiler reads the label, and it refuses to mix two values whose labels disagree. The label is the whole safety mechanism.</p>
 <p>The other side of the distinct type is the boundary where the handle must become a raw integer for the platform. The library walks to the edge and casts:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">File cfg = openConfig();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">File cfg = openConfig();
 i32 raw = (i32)cfg;      // the distinct File, reduced to its base at the FFI boundary
-libc.close(raw);</code></pre>
+libc.close(raw);</code></pre></div>
 <p>The cast is the visible translation the section promised. Inside the program the handle is a <code>File</code>; at the platform's edge it becomes the <code>i32</code> the platform wants, and the conversion is written in the code. Nothing converts on its own, section9.16 again, so the distinct type stays distinct until the line that says otherwise, and that line is a cast any reader can see. The boundary cast complements the currency refusal: the type keeps the program safe from itself, and it keeps the platform's door open with a written pass.</p>
 <p>That is the contrast with the previous section's typedef, and the two belong side by side. A <code>typedef</code> gives a complex type a shorter name, and the name is the same type: a <code>SigHandler</code> and its underlying function type are interchangeable, because the alias protects nothing. A <code>distinct</code> gives a new name a new identity, and it enforces that identity: a <code>USD</code> is not a <code>EUR</code>, even though both are u64s. The alias is a convenience for the reader; the distinct type is a safety boundary for the program. The standard library uses both, in the right places, <code>typedef</code> where a name is all that is needed, <code>distinct</code> where mixing must be impossible.</p>
 <p>A common mistake is to reach for <code>distinct</code> when a <code>typedef</code> is all you wanted, or the other way around. Ask one question: must the two values be impossible to confuse? If yes, <code>distinct</code>; if you only wanted a shorter, clearer spelling of an existing type, <code>typedef</code>. Reaching for <code>distinct</code> everywhere adds casts at every boundary for safety you did not need, and reaching for <code>typedef</code> where safety was needed leaves the exact confusion you meant to prevent.</p>
 <section><h2 id="s9-11">Opaque Types</h2></section>
 <p>An opaque type hides its implementation. The user sees the type's name and its operations; the internals are not part of what the type shows you. "Opaque" is exactly the right word: you can see through glass to the mechanism, but an opaque type is frosted. You know its size and its behavior, never its insides.</p>
 <p>In Coral the opaque pattern is a struct whose fields are a fixed block of storage, written for the implementation's benefit rather than the user's. <code>Regex</code> is the canonical example. This is the real declaration from <code>text/regex.crl</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Regex
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Regex
 {
     rawptr impl[8];
     bool compiled;
     usize groupCount;
     u8* findBuf;
     usize findBufCap;
-}</code></pre>
+}</code></pre></div>
 <p>The regex holds eight void pointers and a handful of working fields: an opaque handle to the platform's compiled pattern, a flag saying whether <code>compile</code> has run, the number of capture groups, and a buffer for <code>find</code> results. The fields are storage, sized to hold the implementation, and the methods interpret that storage. <code>compile</code> writes the pattern in; <code>matches</code> reads it. The user of <code>Regex</code> never touches the storage. The user calls <code>compile</code>, <code>matches</code>, and <code>find</code>, and the type's meaning is its methods. Open <code>regex.crl</code> and you will see what goes inside <code>impl</code>, but no program that merely uses <code>Regex</code> ever needs to know. That is the point.</p>
 <p>An opaque type is the boundary between a library and its clients. The library knows the implementation; the client knows the interface. Because the type hides the details, the library can change them, swap the eight pointers for two <code>u64</code>s, move the buffer elsewhere, without changing the type, and the client's code never depended on them. The opacity is encapsulation, expressed through the type. For the C programmer, the <code>rawptr impl[8]</code> pattern is the one from the classic "handle" APIs. <code>FILE*</code> is an opaque handle hiding exactly this idea. Coral just makes the handle a type you can name, size, and store by value.</p>
 <section><h2 id="s9-12">The Sum Type: Enums</h2></section>
 <p>The enum is the sum type: a type whose value is one of a named set of alternatives. The alternatives are the variants, and the enum's value is exactly one variant at a time. It is called a "sum" type because a value is the sum of its possibilities. It is this, or it is that, exactly one at a time.</p>
 <p>Here is a real enum from the standard library: the log level from <code>io/log.crl</code>.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub enum LogLevel
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub enum LogLevel
 {
     Debug,
     Info,
     Warn,
     Error,
     Fatal
-}</code></pre>
+}</code></pre></div>
 <p>A <code>LogLevel</code> value is one of the five levels, exactly. The enum names the variants, and the type's values are those variants. The enum is how Coral says "one of these": a log level is one of five, a file is one of the platform's kinds, an opcode is one of the instruction set, a JSON value is one of the kinds of JSON. Think of every time a dynamic program has checked <code>if (kind == "circle") ... else if (kind == "square")</code>. The strings carry the alternatives, and a typo quietly invents a new one. An enum removes the strings and the typos: the alternatives are written once, the compiler knows them all, and a value cannot be anything else.</p>
 <p>If you are new to enums, the plain version is this: an enum is a list of the only allowed values, written down once and given a name. Instead of remembering that the number 2 means "green," you write <code>TrafficLight::Green</code> and the compiler checks the spelling. The type is the list.</p>
 <p>A <code>variant</code> is the same idea with payloads. Where an enum's alternatives are bare names, a variant's alternatives each carry their own fields, so a variant value is a tag plus the data for that tag. The variants chapter develops them in full; here the enum stands in as the representative sum type, and the only difference is whether the alternatives carry data.</p>
 <p>The enum is a tagged union in the sense that the type carries its alternatives, and it is the honest sum type: the alternatives are exhaustive, and a value is always one of them. The compiler knows them all, which is what makes exhaustive checking possible. A <code>switch</code> over an enum, described in the control flow chapter, is checked against the enum's variants, and a switch that misses one is reported. Exhaustiveness is the type system's rigor applied to the sum type: add a sixth level tomorrow, and every switch that handled the old five is flagged for the miss. A dynamic program simply does the wrong thing. Exhaustiveness is the sum type's superpower.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">if (level == LogLevel.Error) { ... }</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">if (level == LogLevel.Error) { ... }</code></pre></div>
 <p>The enum's variants are compared with the equality operator, and the compiler checks those comparisons. An enum value cannot be a variant that is not in the type, because the type's values are its variants, and the compiler knows every one.</p>
 <p>The alternative the enum replaces shows why it deserves a type of its own. A protocol handler wants to say what it is reading: plain text, a JSON document, or raw bytes. Written with strings, the kind could be anything, "json", "Json", "JSON", a typo, a value from a file, and every comparison site must remember the exact spelling, forever, everywhere. Written as an enum, the alternatives exist once, the compiler knows them all, and the handler's <code>if (kind == ProtocolKind.Json)</code> is checked:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub enum ProtocolKind
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub enum ProtocolKind
 {
     Text,
     Json,
@@ -220,16 +220,16 @@ void handle(ProtocolKind kind)
     if (kind == ProtocolKind.Json) { /* one parser */ }
     else if (kind == ProtocolKind.Binary) { /* another */ }
     // Text needs no special branch: both others were visited
-}</code></pre>
+}</code></pre></div>
 <p>A value of the enum is one of the three, no more. The typos, the aliases, and the invented fifth format do not exist, because the type does not contain them. The compiler knows the alternatives, and the day a fourth format is added, every site that handles kinds becomes a compile-time question again, flagged by the very checks that once skipped over the unknown case. The enum is how the type system says "this value is one of these," with the list kept in one place and enforced everywhere.</p>
 <section><h2 id="s9-13">The Product Type: Structs</h2></section>
 <p>The struct is the product type: a type that holds several values together, each with a name. It is called a "product" type because a value combines all its fields, a time is this many seconds and this many nanoseconds, and the combination carries every field at once. The struct is the shape of the language's data, and it is the collection of everything this book has built.</p>
 <p>This one is the <code>Timespec</code> from the time module:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Timespec
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Timespec
 {
     i64 sec;
     i64 nsec;
-}</code></pre>
+}</code></pre></div>
 <p><code>Timespec</code> is the product of a second and a nanosecond. The struct's fields are the components, and the struct's value is the tuple of those components. The product type composes: a struct's fields are types, and a field can be a struct, a vector, an option, a result, an enum. <code>JsonValue</code> is a product of a type and the fields for each kind of value, and the product composes the sum, the vectors, and the strings into one type. An enum says which kind of JSON this is, and the fields hold whatever that kind needs, an <code>i64</code> for an integer, an <code>f64</code> for a float, a <code>Vec&lt;str&gt;</code> for a string array, exactly one of which is meaningful for the marked kind.</p>
 <p>The struct's fields are named, and the naming is the whole point. The unnamed product type, the tuple, exists in other languages, and Coral's chapter on functions explained why it does not exist here: an unnamed aggregate is a value without meaning. The struct names its fields, and the names carry the meaning. The product is built from named components, and those names are part of the type. <code>ts.sec</code> and <code>ts.nsec</code> tell a reader which is which without a comment; <code>ts[0]</code> and <code>ts[1]</code> would force everyone to guess.</p>
 <p>Why this matters: names are the cheapest documentation a type can carry. A reader who sees <code>ts.sec</code> never has to remember whether seconds come first; the field name answers before the comment is read. This is the same reason the chapter's <code>struct</code> is the product of choice for anything that will travel, the name is what survives the trip.</p>
@@ -239,13 +239,13 @@ void handle(ProtocolKind kind)
 <p>The option type is the safe alternative when absence is a real possibility that should be checked. An <code>Option&lt;T&gt;</code> is either <code>Some</code>, carrying a <code>T</code>, or <code>None</code>, carrying nothing, and the type forces the caller to handle both. A map's lookup returns an option, and the caller handles <code>Some</code> and <code>None</code> before using the value. The option is checked absence, and the type makes the check visible. And it is a <em>value</em>, not a pointer: <code>Option&lt;u64&gt;</code> says plainly "I hold a number, or I hold nothing," and the compiler makes you look inside before you use the number. The pointer demands the same shape of reasoning, but the option spells it in the type instead of in a comment, and the compiler enforces what the comment only suggested. In <code>HashMap</code>, <code>Set</code>, and the many library lookup functions, the option is the language's own way of saying "look first, and handle both answers."</p>
 <p>In plain words, an <code>Option</code> is a box that is either holding a value or visibly empty. A nullable pointer is different: it is a claim that something is at an address, and the claim can be wrong with no warning in the type. The <code>Option</code> puts the emptiness in the type, so an empty box is not a surprise you discover later, it is a fact the compiler makes you look at before you reach inside.</p>
 <p>Worth walking through once, because it is the everyday shape of absent values in Coral. A phone directory maps names to numbers. Asking for a name that is not in the directory has no answer, and the lookup says so in its type:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Option&lt;u64&gt; findNumber(str name);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Option&lt;u64&gt; findNumber(str name);
 
 Option&lt;u64&gt; hit = findNumber(&quot;ada&quot;);
 if (hit.isSome())
     println(&quot;found: {}&quot;, hit.unwrap());
 else
-    println(&quot;no such entry&quot;);</code></pre>
+    println(&quot;no such entry&quot;);</code></pre></div>
 <p>The function returns no sentinel, no 0 meaning "not found," no null, no -1. It returns a value whose type says "a number, or nothing," and the <code>if</code> is where the program decides what each answer means. C's alternative is a return code plus an out-parameter, or a special value that could be a real phone number, or a null pointer that could be a real address. Every one is a convention the next programmer must learn by reading. The option is the same convention, written in the type and checked by the compiler, and a caller that forgets to look inside is refused at the call. Absence is not an accident of a value; it is the type's statement, and the type is checked.</p>
 <p>Coral has no non-null assertion operator and no safe navigation operator. No symbol asserts a pointer is non-null mid-expression, and no operator navigates a chain of may-be-absent values. Their absence is the same choice as the absence of tuples and closures: operations are explicit methods, and the explicit methods are the readable form. The option's methods, <code>unwrap</code> with its assertion and <code>unwrapOr</code> with its default, cover the cases the operators serve, and they say what they do.</p>
 <section><h2 id="s9-15">What Coral Does Not Have</h2></section>
@@ -260,16 +260,16 @@ else
 <p>The full matrix of implicit coercions is therefore empty. A <code>u8</code> does not convert to a <code>u16</code>. A <code>u32</code> does not convert to a <code>u64</code>. An <code>i32</code> does not convert to an <code>i64</code>, and an integer does not convert to a float. The widening conversions other languages perform silently are explicit casts in Coral, and so are the narrowing conversions. Nothing converts silently, because an invisible conversion is one that goes unnoticed, and an unnoticed conversion is a bug waiting for a value it cannot represent. The rule is strict and total, harder at first, easier forever after: the compiler never shuffles a value's type behind your back.</p>
 <p>The one implicit adaptation is the literal. An integer literal takes the type its context requires: a plain <code>0</code> is a <code>u64</code> where a <code>u64</code> is expected, a plain <code>2</code> in <code>cap * 2</code> is a <code>u64</code>, and a plain <code>16</code> passed to an allocation function is the count the function expects. Literals adapt because a literal is a value the writer means, not a stored value with a fixed type, and this adaptation is the only implicit typing the language performs. And even this is a rule, not chaos: literals adapt, variables never.</p>
 <p>Here is the beginner trap this rule sets. Because a literal adapts, <code>u64 big = 5;</code> compiles fine. But a <em>stored</em> <code>u32</code> does not widen, so the next line does not:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u32 small = 5;
-u64 big = small;      // error: u32 is not u64, write (u64)small</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u32 small = 5;
+u64 big = small;      // error: u32 is not u64, write (u64)small</code></pre></div>
 <p>The literal <code>5</code> could be either type, so it takes what the context asks. The variable <code>small</code> already has a type, and the compiler will not quietly change it for you. That is the whole distinction, and it catches people who expect "smaller numbers always fit in bigger boxes."</p>
 <p>The empty matrix is the type-first principle applied to conversion. The rigor lives in the explicit casts: a program that converts is a program that says it converts. The reader sees every type change, and the compiler checks every one.</p>
 <section><h2 id="s9-17">Explicit Conversions</h2></section>
 <p>Every conversion is written explicitly, and Coral has two explicit forms, both visible at the call site.</p>
 <p>The C-style cast is the type in parentheses before the expression:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">(u32)code
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">(u32)code
 (char)(&#x27;A&#x27; + digit - 10)
-(const T*)self.data</code></pre>
+(const T*)self.data</code></pre></div>
 <p>The parenthesized type converts the expression to that type. The cast covers every conversion: widening and narrowing, sign changes, float to integer, integer to pointer, pointer to integer, and the pointer conversions. Each cast states its target type, and the compiler checks each for validity. When the standard library hands an OS call an integer, it writes <code>(i32)descriptor</code>; when it changes a shift width, it writes <code>(u64)hi</code>. The parentheses are everywhere, and their meaning never changes: "I know the type changes here, deliberately, now."</p>
 <section><h2 id="s9-18">Integer and Floating-Point Promotion</h2></section>
 <p>The promotions deserve their own section because the guide names them, and Coral's answer is the empty one again. A Coral expression has no promotion step.</p>
@@ -283,27 +283,27 @@ u64 big = small;      // error: u32 is not u64, write (u64)small</code></pre>
 <p>Text converts to a view or a string through the constructors. A string literal is a view, a C string is a view through <code>fromCstr</code>, and a buffer with a length is a view through <code>fromParts</code>. A view becomes a string through the string's <code>from</code> constructor, which copies the text into an owning buffer. The conversions are constructors, and the constructors are the explicit form. The two directions are the chapter's whole lesson: value-to-text is a formatting call, text-to-value is a parsing call, and nothing happens by multiplication or adjacency the way <code>"" + x</code> pretends to.</p>
 <p>The standard library's text conversions compose. The print functions convert their arguments to text and write them, using the formatting machinery per argument. The parsers convert text to values, using the parsing machinery. Each conversion is a named function, checked by the compiler, and each says in its signature what it converts and what it produces. The string conversion protocols are the functions, and the functions are explicit.</p>
 <p>A worked example ties the conversions together, the way real programs use them. A table of powers prints with the numbers right-aligned into columns of six characters, and every step is an explicit call:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">for (u64 i = 1; i &lt;= 10; i++)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">for (u64 i = 1; i &lt;= 10; i++)
 {
     u64 sq = i * i;
     print(&quot;{}  {}\n&quot;,
           fmt::padRight(fmt::formatUint(i, 10, false), 3, &#x27; &#x27;),
           fmt::padRight(fmt::formatUint(sq, 10, false), 6, &#x27; &#x27;));
-}</code></pre>
+}</code></pre></div>
 <p>Each number converts with <code>fmt::formatUint</code>, which says what it does in its name, the value, the base, and whether the digits should be uppercase, and the columns are shaped with <code>fmt::padRight</code>, which pads the converted text to a width with a chosen padding character. Nothing in the line happens by magic. No string-concatenation operator pretends to turn a number into text, and no "add a string to a number" hides the conversion. The number becomes text because a function was called that makes text, and the reader sees both facts, convert, then pad, in the same line where they happen. The conversions are visible, and visibility is the point the chapter has been making since the empty matrix: a type change in Coral is never an accident, because it is never unspoken.</p>
 <section><h2 id="s9-20">Compile-Time Type Reasoning</h2></section>
 <p>The <code>comptime</code> block is Coral's compile-time machinery, and it gives the type system a role at compile time beyond checking. A <code>comptime</code> block runs during compilation, and it can compare types.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">comptime
 {
     switch (@typeof(T))
     {
         i32 =&gt; { ... },
         f64 =&gt; { ... }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The pattern <code>i32</code> asks whether the type parameter is <code>i32</code>, and the matching arm selects the code for that case. The checks run at compile time, the compiler knows the type, and only the selected case is compiled. The <code>comptime</code> type dispatch is how the generic print functions select the formatting for each argument type, and it is the language's compile-time type reasoning. Inside a generic function, <code>T</code> is a compile-time fact, the compiler fills it in before the program runs, and <code>comptime</code> is the dialog box where the body says "if that fact is this, do this; if it is that, do that."</p>
 <p>Seeing the machinery in the actual shape the standard library uses helps, because the pattern is a recognizer: the print machinery checks the concrete type of each argument and chooses the formatter that knows that type. In miniature, the same recognizer looks like this:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">comptime
 {
     switch (@typeof(T))
     {
@@ -312,7 +312,7 @@ u64 big = small;      // error: u32 is not u64, write (u64)small</code></pre>
         str =&gt; { _printView(val); return; },
         else =&gt; { @compileError(&quot;print: unsupported type&quot;); }
     }
-}</code></pre>
+}</code></pre></div>
 <p>When the compiler instantiates the print function for a <code>u64</code> argument, it evaluates the block with <code>T</code> known to be <code>u64</code>, takes the first branch, and compiles exactly that call, the other branches vanish before the program exists. No branch is decided by looking at a value at runtime. The decision is made about the type, at build time, and the surviving code is plain, direct, and fast. A reader meets <code>comptime</code> and knows the whole block is a build-time decision wearing the shape of a runtime decision.</p>
 <p>The <code>comptime</code> block is not reflection, because it does not run at runtime. The compiler resolves the type comparisons before the program runs, and the compiled program contains only the selected code. No runtime type tag, no runtime lookup, no value that carries its type. The <code>comptime</code> machinery is the type system's power at the compile-time stage, and the runtime stays clean of type machinery. A reader sees <code>comptime</code> and knows the code around it disappears before execution: what survives is exactly one branch, chosen by a fact the compiler already knows.</p>
 <section><h2 id="s9-21">Static and Dynamic, and the Boundary</h2></section>
@@ -324,7 +324,7 @@ u64 big = small;      // error: u32 is not u64, write (u64)small</code></pre>
 <p>Duck typing is the runtime version of the idea that a value's behavior is what matters: if it quacks like a duck, it is a duck, and the check happens when the method is called. In a duck-typed language you can pass anything with an <code>area()</code> to the code that wants an <code>area()</code>; the failure, a string with no <code>area()</code>, appears at the call, at runtime. Coral has no duck typing, because its checks happen at compile time and a value's behavior is established by its type.</p>
 <p>Protocol-oriented design is the compile-time version of the idea. A protocol is a named set of rules, and a type's conformance to the protocol is declared and checked. The trait is the protocol, the implementation block establishes conformance, and the generic function over the trait calls the protocol's methods. This is the previous chapter's trait machinery, and it answers the duck-typing question: the duck-ness is a declared fact, checked by the compiler. The shape of a duck is checked when it is defined, not when it quacks.</p>
 <p>A minimum of machinery makes the design concrete. A storefront calls its payment providers through one door: every provider can <code>charge(cents)</code> and can answer <code>canCancel(order)</code>. The door is a trait, the protocol, and each provider declares that it implements it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait PaymentProvider
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait PaymentProvider
 {
     void charge(u64 cents);
 }
@@ -341,53 +341,53 @@ struct Stripe { /* other state */ }
 extend Stripe : PaymentProvider
 {
     void charge(u64 cents) { /* the other gateway&#x27;s protocol */ }
-}</code></pre>
+}</code></pre></div>
 <p>The checkout function takes the protocol, not a provider:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void checkout(any PaymentProvider provider, u64 cents)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void checkout(any PaymentProvider provider, u64 cents)
 {
     provider.charge(cents);
-}</code></pre>
+}</code></pre></div>
 <p>The duck-typed version of the same call site would check that <code>charge</code> exists when the call runs, and the check would be needed for every provider, forever, at runtime. The Coral version declares both conformance blocks once, and the checkout call is checked at build time: <code>checkout(paypal, 2500)</code> compiles because <code>PayPal</code> declares the trait, and it would not compile if some third provider, or a string, were passed by accident. The protocol is the one door, the types state that they fit through it, and the compiler is the doorman who checks every visitor before the shop opens. The duck is checked at its definition, and the quack is part of the signed declaration.</p>
 <p>The structural typing version of the idea, where a type qualifies by having the right shape without declaring it, is not Coral's model. Coral's conformance is nominal: a type implements a trait because it has an implementation block, not because it happens to have the right methods. That conformance is explicit, and the compiler checks the explicit form. If two structs both happen to have a field called <code>name</code>, neither implements the <code>Named</code> trait unless one says so; a coincidence of shape proves nothing. The protocol is the interface, the implementation is the declaration, and the checking is where the rigor lives.</p>
 <section><h2 id="s9-23">What a Type Is</h2></section>
 <p>A type is an agreement between the program and the compiler. When a value has a type, the compiler knows what can be done with it: what operations exist, what memory it occupies, what it can become. The agreement runs both ways. The type promises the compiler what the value is, and the compiler promises the program that every use of the value is checked against that promise. A program that compiles is one whose values were used according to their types.</p>
 <p>The type is also a promise to the reader. A signature like</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Result&lt;Config, ParseError&gt; loadConfig(str path)   // and its call sites</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Result&lt;Config, ParseError&gt; loadConfig(str path)   // and its call sites</code></pre></div>
 <p>tells the reader everything the code needs to know before the body is read: the function takes text, and it produces either a configuration or a parse error. The reader can see the shape of the program, the paths and the outcomes, without executing a line. This is the sense in which the type system is the documentation: the types say what the program means, and the explanation says why. When you read <code>Option&lt;u64&gt;</code> as a return type, the function tells you the truth it could have hidden: sometimes there is no answer, and you must look. Reading the type tells you what the body is bound to do.</p>
 <p>The type is finally a promise the machine keeps. A <code>u64</code> is sixty-four bits, an <code>f64</code> is the IEEE double format, a pointer is an address, a struct is its fields laid out in order. The type determines the representation, and the representation determines the cost. The rigor of the type system is not academic; the same rigor decides how many bytes a value occupies and how the hardware treats it. The type is where the language's abstraction meets the machine's reality, and the meeting is exact.</p>
 <section><h2 id="s9-24">The Type Checker at Work</h2></section>
 <p>The compiler's type checker is the enforcement arm of the type system. It walks the program, giving every expression a type, and verifies that every use matches what its type allows. The checking is the machine that makes the types real.</p>
 <p>The checker gives each expression the type the rules say it has. A literal has its type, a variable has its declared type, a function call has its return type, an operator has the type its operands produce. The checker then verifies the seams: an assignment requires the same type on both sides, a function argument requires the declared parameter type, an operation requires the operand types its rules demand. A mismatch is an error at the seam, reported with the code that caused it.</p>
 <p>A worked example shows a mismatch caught. The vector's <code>count()</code> method returns a <code>usize</code>, and a function that uses it where a pointer is expected cannot stand:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize n = v.count();      // correct: usize from usize
-u64* p = v.count();       // error: usize is not u64*, and no conversion exists</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize n = v.count();      // correct: usize from usize
+u64* p = v.count();       // error: usize is not u64*, and no conversion exists</code></pre></div>
 <p>The second line fails because a <code>u64</code> is not a pointer to <code>u64</code>, and Coral has no implicit conversion that would pretend it is. The checker reports the mismatch at the assignment, where the types meet, and the error names the types involved. The reader sees the error and knows the fix: the program meant a pointer, or it meant a number, and the types say which. In a dynamic language that same second line would run, and then crash, or worse, corrupt memory, at the first <code>*p</code>. Here it never ships.</p>
 <p>In plain words, the type checker is a careful proofreader. It reads every line and asks one question wherever two values meet, an assignment, a call, an operation: "are these the same type?" If the answer is no, it stops and says exactly which two types it saw. It never guesses what you meant.</p>
 <p>The same seam catches the subtler mistake, the one where both sides are nearly right. A function that expects a struct value receives a pointer to one, or an <code>i32</code> reaches a <code>u64</code> parameter. The mismatch is not a category error, it is a "these two types are close, and not the same" error:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 total = 0;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 total = 0;
 u64* slot = &amp;total;     // correct: u64* receives the address of a u64
 i32 count = 3;
-u64 c = count;          // error: i32 is not u64, and no implicit widening exists</code></pre>
+u64 c = count;          // error: i32 is not u64, and no implicit widening exists</code></pre></div>
 <p>The last line is the kind of mistake C compilers wave through with a quiet warning, if that: in C an <code>i32</code> widens to a <code>u64</code> silently, and the bug that follows is a negative count that becomes four billion. Coral's checker refuses the line, and the refusal is the conversion policy of section9.16 wearing its enforcement uniform. The writer must write the cast, and the cast is the statement that the widening was seen and intended. The checker never decides a type change on its own; it reports the seam and waits for the writer's word.</p>
 <p>The checking is total: it covers the whole program. Every expression is typed, every seam is verified, and every function is checked against its own signature before it is used. That totality is what makes the type system's promises real. A program that compiles has been checked everywhere, not just in the parts the compiler noticed. The rigor is uniform, and the uniformity is the trust.</p>
 <section><h2 id="s9-25">A Worked Example: Modeling With Types</h2></section>
 <p>Designing types is the first act of writing a Coral program, and a worked example shows the act. A small inventory system must track items, each with a name, a quantity, and a category. The categories are fixed: tool, material, and consumable.</p>
 <p>The categories are an enum, because they are a fixed set of named alternatives:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub enum Category
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub enum Category
 {
     Tool,
     Material,
     Consumable
-}</code></pre>
+}</code></pre></div>
 <p>The item is a struct, a product of its fields, with the category as an enum field:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Item
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Item
 {
     str name;
     u64 quantity;
     Category category;
-}</code></pre>
+}</code></pre></div>
 <p>A lookup by name may find an item or nothing, so the lookup returns an option. A restock operation must find the item and then add to it, so the two steps chain through the option's methods:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Option&lt;Item&gt; findItem(str name)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Option&lt;Item&gt; findItem(str name)
 {
     return Option&lt;Item&gt;::None;
 }
@@ -405,9 +405,9 @@ void restock(str name, u64 amount)
     {
         // the item has vanished; the caller is told, loudly
     }
-}</code></pre>
+}</code></pre></div>
 <p>Now the report every inventory needs: how much of each category is on hand. The enum pays off here, because the alternatives are the type's own values and the comparison is a plain equality:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 tools = 0;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 tools = 0;
 u64 materials = 0;
 u64 consumables = 0;
 for (u64 i = 0; i &lt; items.count(); i++)
@@ -418,7 +418,7 @@ for (u64 i = 0; i &lt; items.count(); i++)
     else if (it.category == Category::Consumable) consumables += it.quantity;
 }
 println(&quot;tools: {}  materials: {}  consumables: {}&quot;,
-        tools, materials, consumables);</code></pre>
+        tools, materials, consumables);</code></pre></div>
 <p>The categories are compared by equality to the enum's variants, and the comparisons are checked. A category value is always one of the three, so the chain covers the world without an else, and a value could not be "gadget" even if a typo tried, there is no such variant to hold. Write the same report with string categories and the compiler cannot help. Write it with an enum and the alternatives are the type's own, spelled once, checked everywhere they are used.</p>
 <p>The types carry the program's meaning. The enum names the categories and prevents a typo from inventing a new one. The option names the possibility of absence and forces the restock code to handle it: the <code>else</code> is not optional, because <code>isSome()</code> can be false and the code must say what happens then. The struct names the fields and their types. The type system is not decoration here; it is the program's structure, and the compiler checks every decision the structure makes. Try to add a new category as a string and the enum rejects it. Try to use a quantity before checking the option and the compiler points at the line. Try to total the categories with a misspelled variant and the same line fails. The model is the plan, and the types hold it.</p>
 <section><h2 id="s9-26">Types and the Machine: Layout</h2></section>
@@ -426,7 +426,7 @@ println(&quot;tools: {}  materials: {}  consumables: {}&quot;,
 <p>A struct's fields are laid out in declaration order, each field at the address the platform's alignment requires. A struct with a <code>u64</code>, a <code>u8</code>, and a <code>u64</code> puts its first <code>u64</code> at the start, its <code>u8</code> after it, and its second <code>u64</code> at the next alignment boundary, with padding between the <code>u8</code> and the <code>u64</code>. That padding is the platform's price for alignment, and the size of the struct includes it. The order of the fields decides the padding, which is why you arrange a struct's fields with the wider fields first when memory matters. This is a practical lesson, not trivia: two structs holding the same fields in the other order can differ by several bytes each, and a million of them in a vector differ by millions of bytes.</p>
 <p>In plain words, alignment is the machine's demand that a value of a given size start at an evenly spaced address. To obey that demand the compiler leaves small gaps, called padding, between some fields. The gaps are invisible in the source but real in memory, so the order you declare fields in can make a struct bigger or smaller.</p>
 <p>The arithmetic is worth seeing once with real structs, because the sizes are the point. The three fields below are the same three fields in two orders, and the order moves eight bytes:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Interleaved
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Interleaved
 {
     u8 tiny;
     u64 big;
@@ -438,7 +438,7 @@ struct Grouped
     u8 tiny;
     u8 tiny2;
     u64 big;
-}</code></pre>
+}</code></pre></div>
 <p>Interleaved puts a <code>u64</code> between two one-byte fields, and each <code>u8</code> pays the wide field's alignment: one byte at offset zero, seven bytes of padding, eight for the <code>u64</code>, one byte, and seven more bytes of padding, twenty-four bytes. Grouped places the two small fields together, pocketed before the <code>u64</code>, and pays one alignment pad of six bytes total: sixteen bytes. Same fields, same types, eight bytes of difference, and <code>@sizeof(Interleaved)</code> and <code>@sizeof(Grouped)</code> print 24 and 16 on the platforms Coral targets. A vector of a million Interleaved values holds eight million bytes of padding the Grouped form never pays. That is real memory, at the price of field order, which is why the wider-fields-first habit is worth having. The padding is the platform's price for alignment, and the order of the fields decides how many times you pay it.</p>
 <p>The fixed-width integers are their widths: a <code>u8</code> is one byte, a <code>u16</code> two, a <code>u32</code> four, a <code>u64</code> eight, and a pointer is the platform's word size. An <code>f32</code> is four bytes in the single-precision IEEE format, an <code>f64</code> eight in the double format. An enum is an integer wide enough for its variants, and a distinct type has exactly its base type's layout. A <code>Vec</code> is three fields, a pointer and two length words, and its size is the sum with alignment, no matter how many elements it holds, because the elements live elsewhere, on the heap. The <code>Vec</code>'s header size is what your struct costs when it holds a <code>Vec</code>; the elements are a separate bill, paid when they are allocated.</p>
 <p>The <code>@sizeof</code> operator reports a type's size, and the standard library uses it where a size must be known exactly: the memory pool computes its block size as the maximum of the element size and a pointer size, so every block is at least large enough to hold a free-list link. The layout is the C ABI, because Coral's types are C's types, and a struct compiled by Coral has the same layout the platform's C compiler would give it. The layout is not an abstraction; it is the bytes, and the types are the plan for the bytes.</p>

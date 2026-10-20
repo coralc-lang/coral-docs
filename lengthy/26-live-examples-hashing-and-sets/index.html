@@ -35,7 +35,7 @@
 <p>Sets are maps without values. A set answers exactly one question, "is this thing present?", and enforces that each thing appears at most once. If a map is the coat check, a set is the guest list: a doorman who can tell you instantly whether a name is on the list, and who refuses to write the same name twice.</p>
 <p>One more piece of vocabulary before the problems. The library has a second associative container, <code>Map</code>, an ordered tree: it keeps keys sorted and gives O(log n) lookups instead of O(1). In exchange, its iteration is deterministic and in order (<a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>, 16.3). Choosing between them is a statement about your problem. If you iterate and need the keys sorted, use <code>Map</code>. If you only ever look things up, use <code>HashMap</code>. And a recurring trick in these problems is to store not the answer directly but a <em>complement</em> or a <em>prefix</em>. Instead of asking "have I seen this value?", ask "have I seen the value that would complete this pair?" That inversion is the single most useful hashing idea, and it appears three times below.</p>
 <p>Every implementation here needs the two little functions the containers are handed. For integer keys they are almost trivial:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize hashI32(i32 k) { return (usize)k; }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize hashI32(i32 k) { return (usize)k; }
 bool eqI32(i32 a, i32 b) { return a == b; }
 
 usize hashU8(u8 k) { return (usize)k; }
@@ -48,7 +48,7 @@ usize hashStr(str k) {
     }
     return h;
 }
-bool eqStr(str a, str b) { return a.equals(b); }</code></pre>
+bool eqStr(str a, str b) { return a.equals(b); }</code></pre></div>
 <p>The <code>hashStr</code> is the classic djb2. It is not a cryptographic hash; it is chosen for speed, which is all a hash table needs. The equality functions look almost too simple to be necessary. They matter for exactly the collision case: after hashing to the same slot, the table compares the stored key against yours to tell a true match from a coincidence.</p>
 <section><h2 id="s26-1">Two Sum (Unsorted)</h2></section>
 <p class="step-label">The problem</p>
@@ -60,7 +60,7 @@ bool eqStr(str a, str b) { return a.equals(b); }</code></pre>
 <p class="step-label">The better approach</p>
 <p>One pass with a hash map from value to the position where it was last seen. For each number, compute the complement <code>target - number</code> and ask the map whether the complement has been seen. If it has, we have our pair: the stored position and the current one. If not, record the current number and move on. This is the complement trick. We do not store what we have and later look for a match in the future. We store what we have and immediately check whether the past already contains its partner.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::hashmap { HashMap };
 import(lib) std::io::ios { println };
 
@@ -84,7 +84,7 @@ Vec&lt;i32&gt; twoSum(const Vec&lt;i32&gt;* v, i32 target) {
         seen.insert(x, (i32)i);
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>Two corners are handled deliberately. The complement is computed in <code>i64</code> and range-checked before it is cast back, because <code>target - x</code> can overflow a 32-bit subtraction. A wrapped complement would be looked up as a plausible-looking number and could produce a wrong match. And we insert the current number <em>after</em> the lookup, not before, so a number is never paired with itself. That ordering is the difference between finding distinct indices and returning <code>[i, i]</code> for an input like <code>[3]</code> with target 6.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear on average: one pass, and each map lookup and insertion is O(1) on average because the table keeps its probe chains short. Space is linear; in the worst case the map holds every element. Compare the brute force's quadratic time. The trade is memory for time, the signature trade of hashing, and it is almost always worth making.</p>
@@ -100,7 +100,7 @@ Vec&lt;i32&gt; twoSum(const Vec&lt;i32&gt;* v, i32 target) {
 <p class="step-label">The better approach</p>
 <p>A set. Walk the array once. For each value, if the set already contains it, return yes; otherwise add it. Each value is tested in constant average time and inserted once.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::set { Set };
 import(lib) std::io::ios { println };
 
@@ -117,7 +117,7 @@ bool containsDuplicate(const Vec&lt;i32&gt;* v) {
         seen.insert(x);
     }
     return false;
-}</code></pre>
+}</code></pre></div>
 <p>This is the simplest shape a hashing answer can take, and it is worth internalizing, because the deduction and membership problems that follow are all built from it. Insert-if-absent and contains are the set's entire vocabulary for this problem.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear on average: one membership test and possibly one insertion per element. Space is linear in the worst case, because the set may hold every element. If memory is tight and the values are known to lie in a small range, a <code>Bitset</code> (<a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>) replaces the set with one bit per possible value and constant-time tests, both smaller and faster. An optimization worth mentioning, to show that "use a set" is a default, not a law.</p>
@@ -133,7 +133,7 @@ bool containsDuplicate(const Vec&lt;i32&gt;* v) {
 <p class="step-label">The better approach</p>
 <p>Two sets. Load the second array into a set. Call it the "present in B" set. Then walk the first array. For each value present in B and not yet in the result set, add it to both the result and the result set. The result set enforces "each value once," and it is the reason this does not degenerate.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::set { Set };
 import(lib) std::io::ios { println };
 
@@ -156,7 +156,7 @@ Vec&lt;i32&gt; intersection(const Vec&lt;i32&gt;* a, const Vec&lt;i32&gt;* b) {
         }
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The <code>emitted</code> set is the deduplication guard, the piece most first attempts forget. Without it, a value appearing three times in <code>a</code> is pushed three times. If the result may be sorted, an alternative is to collect everything and sort at the end. But the set version keeps the result in the order the distinct values first appear in <code>a</code>, which is often what a caller wants.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear on average in the combined lengths, with constant average work per element. Space is linear: two sets, each at most as large as its source array. The <code>Set</code> type has this operation built in as <code>intersection</code> (<a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>, 16.5). We write it by hand here to see the machinery; then prefer the built-in.</p>
@@ -172,7 +172,7 @@ Vec&lt;i32&gt; intersection(const Vec&lt;i32&gt;* a, const Vec&lt;i32&gt;* b) {
 <p class="step-label">The better approach</p>
 <p>Detect the cycle. Keep a set of every value you have seen. At each step, compute the digit-square sum. If it is 1, the number is happy. If it is already in the set, we have closed a loop, so the number is unhappy. Otherwise record it and continue. The set turns an infinite process into a finite one, because the values are bounded (the digit-square sum of even a large number is far smaller than the number), so only finitely many distinct values can appear before a repeat.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::set { Set };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::set { Set };
 import(lib) std::io::ios { println };
 
 usize hashI32(i32 k) { return (usize)k; }
@@ -195,7 +195,7 @@ bool isHappy(i32 n) {
         n = digitSquareSum(n);
     }
     return n == 1;
-}</code></pre>
+}</code></pre></div>
 <p>The loop condition carries the whole algorithm: continue only while we have neither arrived at 1 nor returned to a value we have seen. When it exits, <code>n</code> is either 1 (happy) or a repeated value (unhappy). The <code>digitSquareSum</code> helper is plain arithmetic, reusable by any digit problem from <a href="../24-live-examples-warm-up-and-fundamentals/index.html">Chapter 24</a>.</p>
 <p class="step-label">The cost</p>
 <p>Time is bounded by the number of distinct values reachable from <code>n</code> before a repeat. For the digit-square process that is a small constant, well under a hundred, for any 32-bit input, so in practice it is constant time. Space is a small constant too. The asymptotic story is subtler than it looks, because the input is bounded. This is a problem about a finite state machine, and the set is just a way to find the cycle in it.</p>
@@ -211,7 +211,7 @@ bool isHappy(i32 n) {
 <p class="step-label">The better approach</p>
 <p>One pass with a hash map counting how often each prefix sum has occurred. Seed the map with the empty prefix, <code>0 -&gt; 1</code>, because a subarray starting at the very first element has an "empty prefix" on its left. Walk the array maintaining the running prefix sum. At each position, the number of subarrays ending here that sum to k equals the number of past prefixes equal to <code>prefix - k</code>; add that count to the total. Then record the current prefix. The seed is the detail that trips people: forget it and you miss every subarray that begins at index zero.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::hashmap { HashMap };
 import(lib) std::io::ios { println };
 
@@ -237,7 +237,7 @@ i32 subarraySum(const Vec&lt;i32&gt;* v, i32 k) {
         }
     }
     return total;
-}</code></pre>
+}</code></pre></div>
 <p>The order inside the loop matters: count the completions against the <em>past</em> prefixes first, then add the current prefix to the map. Add first, and a subarray of length zero counts itself. This is the same insert-after-lookup discipline as 25.1, for the same reason.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear on average: one pass, two map operations per element. Space is linear: the map holds up to one entry per distinct prefix sum, at most the length. This is where the prefix-sum idea from <a href="../24-live-examples-warm-up-and-fundamentals/index.html">Chapter 24</a> grows up. There we used it to answer one range query in constant time. Here we use a map of all prefixes to count every range in one pass.</p>
@@ -253,7 +253,7 @@ i32 subarraySum(const Vec&lt;i32&gt;* v, i32 k) {
 <p class="step-label">The better approach</p>
 <p>One pass, a map from character to last-seen index, and a <code>start</code> index for the window's left edge. For each character at index i, if it was last seen at or after <code>start</code>, move <code>start</code> to just past that occurrence. Then update the character's last-seen position to i and record the window length <code>i - start + 1</code>. Because <code>start</code> only ever moves forward, the window never revisits. Each character is processed once.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::hashmap { HashMap };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::hashmap { HashMap };
 import(lib) std::io::ios { println };
 
 usize hashU8(u8 k) { return (usize)k; }
@@ -276,7 +276,7 @@ usize lengthOfLongestSubstring(str s) {
         }
     }
     return best;
-}</code></pre>
+}</code></pre></div>
 <p>The guard <code>prev.unwrap() &gt;= start</code> is the whole subtlety. Without it, a character seen long ago and already left behind by the window would wrongly yank <code>start</code> backwards, and the window would shrink for no reason. The map remembers the last position of every character ever seen. Only positions that fall inside the current window may move its left edge.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: both <code>start</code> and <code>i</code> only advance, so at most n forward movements of either. Space is at most the size of the alphabet, since the map holds one entry per distinct character; for byte input, at most 256 entries, effectively constant. This is a rare case where the hashing answer is not just faster asymptotically but dramatically so on inputs with long repeated runs.</p>
@@ -292,7 +292,7 @@ usize lengthOfLongestSubstring(str s) {
 <p class="step-label">The better approach</p>
 <p>One pass to build a frequency map, a second pass to find the first character with frequency one. The second pass follows the original order, which is why the map must be indexed by the character and not by anything order-destroying.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::hashmap { HashMap };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::hashmap { HashMap };
 import(lib) std::io::ios { println };
 
 usize hashU8(u8 k) { return (usize)k; }
@@ -315,7 +315,7 @@ i32 firstUniqChar(str s) {
         }
     }
     return -1;
-}</code></pre>
+}</code></pre></div>
 <p>In the second pass, the lookup is guaranteed to succeed, because every character in the string was inserted in the first pass. The <code>unwrap</code> is safe, and a reader can verify that at a glance. That is the standard justification for <code>unwrap</code> from <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>: not "it will probably work" but "the code above makes it impossible to be absent."</p>
 <p class="step-label">The cost</p>
 <p>Time is linear: two passes, each a constant-time hash operation per character. Space is at most the alphabet size, 256 entries for bytes, constant regardless of string length. That constant is worth naming: for fixed-alphabet input, a fixed-size array of 256 counters would replace the map with a raw array and be faster still. The map's advantage shows only when the alphabet is sparse or large. <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>'s discussion of <code>Bitset</code> versus <code>Set</code> is the same trade.</p>
@@ -332,7 +332,7 @@ i32 firstUniqChar(str s) {
 <p>A hash map from the sorted-letter signature to the list of indices of words that share it. For each word, build its signature (copy the bytes, sort them, reassemble), append the word's index to the list under that signature. At the end, the map's values are the groups.</p>
 <p>This is where the problem teaches something the integer-keyed problems did not: the key is a string, and the string is <em>built fresh</em> for each word. A <code>str</code> in Coral is a borrowed view, a pointer and a length, so a map keyed by <code>str</code> stores the address of the bytes, not the bytes themselves. If those bytes live in a temporary that is freed, the key dangles. We must keep the signature bytes alive for as long as the map uses them. The clean way to say that is to own every signature in a list that outlives the map, and hand the map views into that list.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::text::string { String };
 import(lib) std::collections::hashmap { HashMap };
 import(lib) std::collections::sort { sortBy };
@@ -389,7 +389,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; groupAnagrams(const Vec&lt;str&gt;* words) {
         }
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>Two ownership details carry this code. First, <code>keyStore</code> owns every signature <code>String</code>. The map's <code>str</code> keys are views into <code>keyStore</code>'s heap buffers, and because <code>keyStore</code> is never cleared or freed until the function returns, those views stay valid. Even when <code>keyStore</code> grows and its internal array of <code>String</code> structs is reallocated, the <em>bytes</em> each <code>String</code> points to do not move, so the views survive. That point is worth pausing on; it is exactly the borrowed-versus-owned distinction of <a href="../17-text-unicode-formatting-and-parsing/index.html">Chapter 17</a>. Second, the map is keyed on <code>str</code>, and the <code>Vec&lt;i32&gt;</code> values are mutated through <code>getPtr</code> rather than copied out, so appending an index edits the list in place instead of a copy that would then have to be written back.</p>
 <p class="step-label">The cost</p>
 <p>Let n be the number of words and L the average length. Building each signature costs O(L log L) to sort, so the total is O(n · L log L). The sorting dominates, not the hashing. The map operations are O(1) on average each, for O(n) of them. Space is linear in the total input size, because every signature is stored. If L is small and bounded, this is effectively linear in n, which is why the practical speed is excellent.</p>
@@ -405,7 +405,7 @@ Vec&lt;Vec&lt;i32&gt;&gt; groupAnagrams(const Vec&lt;str&gt;* words) {
 <p class="step-label">The better approach</p>
 <p>One pass with two maps: <code>source -&gt; target</code> and <code>target -&gt; source</code>. For each pair, if the source is already mapped, its target must equal the current one; if the target is already mapped, its source must equal the current one; otherwise record both. Lengths must match up front, or the answer is immediately no. This is the same complement-of-a-lookup discipline as 25.1, doubled to enforce the bijection.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::hashmap { HashMap };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::hashmap { HashMap };
 import(lib) std::io::ios { println };
 
 usize hashU8(u8 k) { return (usize)k; }
@@ -432,7 +432,7 @@ bool isIsomorphic(str a, str b) {
         }
     }
     return true;
-}</code></pre>
+}</code></pre></div>
 <p>The second map is the part first attempts omit, and it is the whole reason the graph has to be a bijection rather than just a function. With only <code>toB</code>, <code>"badc"</code> and <code>"baba"</code> would pass <code>b -&gt; b</code>, <code>a -&gt; a</code>, but then <code>d -&gt; b</code> would be recorded even though <code>b</code> already owns the target <code>b</code>; the return map catches that duplication.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear on average: one pass, a constant number of hash operations per character. Space is at most the alphabet, one entry per distinct character in each direction, effectively constant for byte input. This is the smallest example in the chapter of needing two hashed structures at once, and the reason is always the same: a function is not enough when you also need injectivity.</p>
@@ -448,7 +448,7 @@ bool isIsomorphic(str a, str b) {
 <p class="step-label">The better approach</p>
 <p>Split the sentence, check the lengths match, then run the exact two-map bijection check of 25.9, keyed on the pattern byte one way and the word <code>str</code> the other. The sentence's word views live for the whole call, so it is safe to store them as map values.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::hashmap { HashMap };
 import(lib) std::text::strutil { splitVec };
 import(lib) std::io::ios { println };
@@ -488,7 +488,7 @@ bool wordPattern(str pattern, str sentence) {
         }
     }
     return true;
-}</code></pre>
+}</code></pre></div>
 <p><code>splitVec</code> hands back <code>str</code> views into <code>sentence</code>, so the words are borrowed, not copied, and the two maps hold one view and one byte per token. The <code>equals</code> calls are the equality functions of the two maps wearing their public clothes: the same comparison the table would run after a hash collision.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear in the combined length of the pattern and sentence, because splitting and the two hash operations per token are each constant average work per byte. Space is linear in the number of words, which is unavoidable since the words must all be seen. The map keyed on <code>str</code> borrows the sentence, so no word bytes are duplicated.</p>
@@ -504,7 +504,7 @@ bool wordPattern(str pattern, str sentence) {
 <p class="step-label">The better approach</p>
 <p>Insert every value into a set. Then for each value, check whether <code>value - 1</code> is present. If it is, this value is in the middle of a run that another value will start, so skip it. If it is not, this value starts a run; walk upward with <code>contains</code> until the chain breaks, and record the length. Each value is probed a constant number of times in total.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::set { Set };
 import(lib) std::io::ios { println };
 
@@ -530,7 +530,7 @@ usize longestConsecutive(const Vec&lt;i32&gt;* v) {
         if (len &gt; best) best = len;
     }
     return best;
-}</code></pre>
+}</code></pre></div>
 <p>The set removes duplicates as it loads, so repeated values cost nothing extra. The <code>contains(x - 1)</code> guard is what stops the algorithm from re-walking the same run from every one of its members; without it the inner loop could total quadratic work even though each individual walk is short.</p>
 <p class="step-label">The cost</p>
 <p>Time is linear on average: building the set is <code>O(n)</code>, and every value starts at most one walk and is extended by at most one walk, so the total inner-loop work across the whole function is <code>O(n)</code>. Space is linear, the set of distinct values. This is the classical case where a set turns an ordering question (<code>O(n log n)</code> by sorting) into an adjacency question (<code>O(n)</code> by hashing).</p>
@@ -546,7 +546,7 @@ usize longestConsecutive(const Vec&lt;i32&gt;* v) {
 <p class="step-label">The better approach</p>
 <p>A frequency map, then a vector of buckets indexed by frequency. The number of buckets is <code>n + 1</code>, because no value can appear more often than the array is long. Placing each distinct value costs one map lookup and one push; reading the top buckets costs at most <code>n</code> steps. This is <code>O(n)</code> average and needs no comparator at all, which sidesteps the problem that a comparator function cannot see the frequency map.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::collections::hashmap { HashMap };
 import(lib) std::io::ios { println };
 
@@ -589,7 +589,7 @@ Vec&lt;i32&gt; topKFrequent(const Vec&lt;i32&gt;* v, i32 k) {
         f--;
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p><code>buckets.atPtr(freq)</code> returns a pointer to the inner vector, so <code>push</code> edits the bucket in place instead of copying it; this is the same <code>getPtr</code>-style reasoning that 25.8 used for map values. <code>count.get(key).unwrap()</code> is safe because every key came out of the map itself, the "the code above makes absence impossible" justification from 25.7.</p>
 <p class="step-label">The cost</p>
 <p>Time is <code>O(n)</code> on average: one pass to count, one pass over the distinct keys to fill buckets, and one pass down the buckets. Space is <code>O(n)</code>, the map plus the buckets. The bucket approach beats the <code>O(d log d)</code> sort and, unlike a <code>PriorityQueue</code>, needs no comparator that could see the counts.</p>
@@ -605,7 +605,7 @@ Vec&lt;i32&gt; topKFrequent(const Vec&lt;i32&gt;* v, i32 k) {
 <p class="step-label">The better approach</p>
 <p>Use bitsets, one machine word per ledger. Bit <code>d</code> of a row's mask means digit <code>d</code> has been seen in that row. Checking a cell is an AND against three masks; marking it is an OR. Twenty-seven <code>i32</code> masks index the rows, then the columns, then the boxes. This is compact, avoids any allocation per group, and makes the three membership tests a single byte test each.</p>
 <p class="step-label">The implementation</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 bool isValidSudoku(const Vec&lt;u8&gt;* board) {
@@ -629,7 +629,7 @@ bool isValidSudoku(const Vec&lt;u8&gt;* board) {
         }
     }
     return true;
-}</code></pre>
+}</code></pre></div>
 <p>The constant <code>48</code> is the byte <code>'0'</code>, so <code>(i32)v - 48</code> turns a digit character into its value. Bit <code>d</code> is <code>1 &lt;&lt; d</code>, and <code>d</code> ranges from 1 to 9, safely inside a 32-bit integer. The three mask indices partition the flat 27-slot vector into rows at <code>0..8</code>, columns at <code>9..17</code>, and boxes at <code>18..26</code>, which is why the same <code>mask.at</code> call serves all three checks.</p>
 <p class="step-label">The cost</p>
 <p>Time and space are both constant: 81 cells, each visited once, and 27 integers of ledger. There is no <code>n</code> here; the board size is part of the problem. The bitmask makes the constant small, and it is the same trick as <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>'s <code>Bitset</code>, scaled down to a single word per group.</p>

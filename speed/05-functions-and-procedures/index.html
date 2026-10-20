@@ -36,48 +36,48 @@
 <p>Functions come in many shapes: plain, generic, variadic, methods, static methods, and extern declarations. They share the same syntax and rules, and all follow type-first: the type comes first.</p>
 <section><h2 id="s5-2">Declaration</h2></section>
 <p>A function declaration states the name, parameters and types, and return type. The return type comes first, then the name, parameter list, and body.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 countLines(str text)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 countLines(str text)
 {
     u64 lines = 1;
     for (u64 i = 0; i &lt; text.len; i++)
         if (text.ptr[i] == &#x27;\n&#x27;) lines++;
     return lines;
-}</code></pre>
+}</code></pre></div>
 <p>Read this as "a u64 called countLines that takes a str." Everything before the name is the answer's type; everything in parentheses is what you hand it.</p>
 <p>The return type leads, so the reader does not search the body to learn what the function produces. A call to countLines returns something storable in a u64.</p>
 <p><code>u64 lines = 1;</code> starts at one because "number of lines" is one more than the number of newline separators; the last line need not end with a newline. This is easier than special-casing trailing newlines.</p>
 <p>The loop is the plain for from the control-flow chapter: <code>u64 i = 0;</code> initializes the counter, <code>i &lt; text.len</code> is the run condition, and <code>i++</code> steps it. <code>text.ptr[i]</code> reads the i-th character. A str is a pointer and a length: <code>.ptr</code> is the characters and <code>.len</code> is how many. The loop compares each byte to a newline.</p>
 <p>The declaration says everything: a string view in, a count out, before the body.</p>
 <p>A function returning nothing uses void. It prints, modifies, or releases something, and the compiler rejects any attempt to use its result. void means no value, not an unknown kind.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void printGreeting(str name)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void printGreeting(str name)
 {
     println(&quot;Hello, {}!&quot;, name);
-}</code></pre>
+}</code></pre></div>
 <p>println takes a format string and one argument per {} placeholder, so name fills the placeholder and a newline is appended. Parameters are the function's inputs and are local variables initialized from the arguments. A parameter is a fresh copy, not a reference to the caller's variable (5.6).</p>
 <section><h2 id="s5-3">Generic Function Syntax</h2></section>
 <p>Generic functions work for many types. They introduce type parameters in angle brackets, available in the parameter list, return type, and body.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub T max&lt;T&gt;(T a, T b)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub T max&lt;T&gt;(T a, T b)
 {
     if (a &gt; b) return a;
     return b;
-}</code></pre>
+}</code></pre></div>
 <p>Without generics you would write maxU64, maxI64, maxF64, and so on, one copy per type, and a new type would need library edits. The generic version works for any type supporting <code>&gt;</code>.</p>
 <p>The generic form is type-first, with type parameters in angle brackets after the name. The return type may use them: here it is T. The promise is "max of T and T returns T." Type parameters are placeholders: calling with u64 substitutes u64 everywhere and produces a specialized function. This is specialization (5.29), the key to fast generics.</p>
 <p>For C programmers: this is not <code>_Generic</code> dispatch among enumerated branches, and not C++ template text manipulation. It is a language feature with real syntax and checking against your actual type.</p>
 <p>Generics are central to the library: filter, map, and reduce; Option and Result; smart pointers; and every container (Vec&lt;T&gt;, Deque&lt;T&gt;, Map&lt;K,V&gt;). They avoid both code duplication and runtime boxing.</p>
 <section><h2 id="s5-4">Invocation</h2></section>
 <p>A call writes the function's name followed by a parenthesized argument list. Arguments are evaluated, matched to parameters in order, and the function runs.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 n = countLines(doc);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 n = countLines(doc);</code></pre></div>
 <p>A call is how you use a function: name it, supply the values, and the return value flows back. Return values are usually stored or used immediately.</p>
 <p>The call must match the declaration: the right number of arguments and each of the declared type. A mismatch is a compile error, checked before the program runs.</p>
 <p>A call is an expression, so it can be assigned, passed, composed, or returned. This makes small functions composable: <code>process(build())</code> threads a value without a temporary.</p>
 <p>A pipeline on one line when each step is short:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 averageBytes = mean(fetchAllocations());   // build, then summarize, in one line</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 averageBytes = mean(fetchAllocations());   // build, then summarize, in one line</code></pre></div>
 <p>The call reads inside out: fetchAllocations produces a vector, mean consumes it, and a u64 lands in the variable. No intermediate needs a name because the signatures are visible. When a line stops reading clearly, name the temporary.</p>
 <p>A call pushes arguments, jumps, and returns, roughly three things. The compiler knows the cost and may inline small hot functions, but the language never hides the call. For a guarantee that it costs nothing, use inline.</p>
 <section><h2 id="s5-5">Inline Functions</h2></section>
 <p>An inline function is expanded at each call site: the body is copied where the call is, with arguments substituted. The #[[inline]] attribute marks it.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[inline]] void criticalEnter()
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[inline]] void criticalEnter()
 {
     flag (arch) {
     x86_64 =&gt; {
@@ -87,39 +87,39 @@
         ...
     }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The bare-metal critical-section functions are the canonical example. criticalEnter disables interrupts and criticalExit re-enables them, and the body is a few machine instructions. A real call would add push, jump, and return around them.</p>
 <p>The attribute states intent where expansion matters. The critical-section functions must be inline because they bracket an operation at the instruction level: between disable and enable there should be only the instructions the author wrote. A call would add call machinery inside the critical section.</p>
 <p>Inlining is a trade. Without the attribute, the compiler decides from its cost model. The attribute is the explicit statement that a function must be inlined, reserved for cases where expansion is essential, like interrupt bracketing. Application code rarely needs it.</p>
 <section><h2 id="s5-6">Parameter Passing</h2></section>
 <p>Coral passes parameters by value. Each parameter is a copy of the argument: the function gets its own variable, and modifying it does not modify the caller's.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void increment(u64 x)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void increment(u64 x)
 {
     x += 1;   // modifies the copy, not the caller&#x27;s variable
 }
 
 u64 counter = 40;
 increment(counter);          // counter is still 40
-println(&quot;{}&quot;, counter);      // prints 40</code></pre>
+println(&quot;{}&quot;, counter);      // prints 40</code></pre></div>
 <p>The function cannot see counter. It has a local x initialized to 40, increments it to 41, and discards it; counter is untouched. This is C's behavior, simple, predictable, and fast: a function cannot corrupt caller data through parameters because it only has copies.</p>
 <p>Passing by value is like photocopying a page: the function can scribble on its copy and your original is untouched.</p>
 <p>The copy cost is real for large values. A 100-byte struct parameter copies 100 bytes. There is no hidden "pass a pointer because this is big" optimization, so Coral has one model: value means copy.</p>
 <p>The cost is visible when a struct grows. Passing a value and passing a pointer differ by kilobytes of copying versus one address:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct BigBuf { u8 data[2048]; }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct BigBuf { u8 data[2048]; }
 
 void touch(BigBuf b)         { b.data[0] = 1; }   // copies 2048 bytes on the call
-void touchPtr(BigBuf* b)     { b-&gt;data[0] = 1; }  // copies one address</code></pre>
+void touchPtr(BigBuf* b)     { b-&gt;data[0] = 1; }  // copies one address</code></pre></div>
 <p>The first version copies two kilobytes and modifies only its copy, a silent no-op to the caller. The second pays an address and changes the caller's buffer. The star is the memo that the caller's memory is involved. For large read-only structs, a pointer avoids the copy.</p>
 <p>When a function must modify the caller's data or copying is expensive, the caller passes a pointer. The pointer parameter gives access to the caller's memory, and the star makes the aliasing visible in both signature and call.</p>
 <p>Passing a value is like handing over a photocopy; passing a pointer is like giving the address of the original. The star warns: "I may change your data." Ask whether the function should change the caller's value: if yes, pass a pointer; if no, pass the value.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void readLine(str* out, Buffer* buf)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void readLine(str* out, Buffer* buf)
 {
     str line = extractLine(buf);
     *out = line;
-}</code></pre>
+}</code></pre></div>
 <p>This is by-reference behavior expressed through the type system, not a hidden mechanism. There is no pass-by-reference keyword because the pointer is the mechanism. The stars show what the function can touch: out is where an answer goes, buf is where it is read from.</p>
 <p>A swap needs pointers because exchanging requires reaching the caller's variables:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void swap(u64* a, u64* b)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void swap(u64* a, u64* b)
 {
     u64 tmp = *a;
     *a = *b;
@@ -129,7 +129,7 @@ void touchPtr(BigBuf* b)     { b-&gt;data[0] = 1; }  // copies one address</code
 Vec&lt;u64&gt; x = Vec&lt;u64&gt;::withCap(2);
 x.push(20);
 x.push(40);
-swap(&amp;x.data[0], &amp;x.data[1]);   // x is now [40, 20]</code></pre>
+swap(&amp;x.data[0], &amp;x.data[1]);   // x is now [40, 20]</code></pre></div>
 <p>The call passes addresses, and the function modifies the vector's elements. Had swap taken values, it would have exchanged copies and left the caller's elements untouched, a failure invisible at the call site.</p>
 <p>Coral avoids exotic parameter modes: no copy-restore with its hidden write-back, no call-by-name with re-evaluation. It passes values or pointers, both visible. Ask whether the function should change the value; that resolves most confusion.</p>
 <section><h2 id="s5-7">Parameter Lists and Arguments</h2></section>
@@ -139,15 +139,15 @@ swap(&amp;x.data[0], &amp;x.data[1]);   // x is now [40, 20]</code></pre>
 <p>There are no spread or splat operators. Variadic calls are checked per call and written out. To pass a collection, pass it as a vector or array and iterate; unpacking is an explicit loop or slice.</p>
 <section><h2 id="s5-8">Variadic Functions</h2></section>
 <p>A variadic function accepts any number of trailing arguments. Coral ends the parameter list with a value pack, <code>... args</code>, which collects them into a typed, indexable pack.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void vaprint(... args)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void vaprint(... args)
 {
     for (var arg : args) _fprintOne(&amp;out, arg);
-}</code></pre>
+}</code></pre></div>
 <p>This is the standard library's vaprint from std/io/ios.crl. The pack keeps each argument's type. The body iterates it with the ranged for and hands each to _fprintOne. (println and print use format strings; vaprint takes values with no format string.)</p>
 <p>The call sites show the flexibility:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">vaprint(a, b, c, d);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">vaprint(a, b, c, d);
 vaprint(&quot;value&quot;, x);
-vaprint(&quot;done&quot;);</code></pre>
+vaprint(&quot;done&quot;);</code></pre></div>
 <p>Each call has a different argument count, and the compiler instantiates the function per call. Each argument must be printable, and the function fails to compile otherwise. Generality is checked per call, at the call site, not at runtime.</p>
 <p>C's printf-style variadic is an untyped blob reinterpreted by the callee, so a format mismatch is a runtime error. Coral's value pack carries each argument's type into the body and the compiler checks them.</p>
 <p>Coral's variadics are not dynamic. The pack is a typed collection of distinct typed values, and there is no runtime way to splat a vector into a call; the pack is a compile-time concept.</p>
@@ -156,14 +156,14 @@ vaprint(&quot;done&quot;);</code></pre>
 <p><code>return</code> hands back a value and stops the function. A function that declares a return type but misses a path is a compile error, not a runtime surprise.</p>
 <p>A void function exits with a bare return or by reaching the end. A typed function must return a value on every path, checked by the compiler. There are no implicit returns: the value that comes out is the one a return named.</p>
 <p>A function returns a single value. When work produces several related values, return a type that carries them. The library defines Pair for two named values:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Pair&lt;T, U&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Pair&lt;T, U&gt;
 {
     T first;
     U second;
-}</code></pre>
+}</code></pre></div>
 <p>A function producing a minimum and maximum, or a value and a flag, returns a Pair. Named fields carry meaning an unnamed tuple would not. Coral has no tuple types: unnamed aggregates carry values without saying what they mean. A struct names all of it.</p>
 <p>A Pair-carrying function finding both the smallest and largest value in one pass:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Pair&lt;u64, u64&gt; minMax(const Vec&lt;u64&gt;* v)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub Pair&lt;u64, u64&gt; minMax(const Vec&lt;u64&gt;* v)
 {
     Pair&lt;u64, u64&gt; out;
     out.first = 0xffffffffffffffff;
@@ -175,17 +175,17 @@ vaprint(&quot;done&quot;);</code></pre>
         if (val &gt; out.second) out.second = val;
     }
     return out;
-}</code></pre>
+}</code></pre></div>
 <p>The function walks the vector once, tracking the smallest in out.first and the largest in out.second. The caller reads them by name, with no ambiguity.</p>
 <p>The single-return rule composes with error types. A fallible function returns a Result; a function whose answer may be absent returns an Option. Both are single values carrying the outcome, making every return complete.</p>
 <p>The library's rule: Result for "this is an error and here is what kind," Option for "this value may simply not exist."</p>
 <section><h2 id="s5-10">The Noreturn Function</h2></section>
 <p>A small class of functions never returns. The #[[noreturn]] attribute declares it in the signature.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[noreturn]] extern void exit(i32 code);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[noreturn]] extern void exit(i32 code);</code></pre></div>
 <p>exit terminates the program and does not come back. The compiler can rely on the attribute: after a noreturn call, code is unreachable, so following code that cannot be reached is an error.</p>
 <p>This is type-first philosophy: the signature says not only what is produced but that the call never returns. It is used for process termination, startup handoff, and abort paths.</p>
 <p>A common use is early-error paths. If a program cannot start without its config, the loader has no sensible value to return:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[noreturn]] void die(str why)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[noreturn]] void die(str why)
 {
     eprintln(&quot;fatal: {}&quot;, why);
     flag (platform) {
@@ -196,11 +196,11 @@ vaprint(&quot;done&quot;);</code></pre>
         exit(1);
     }
     }
-}</code></pre>
+}</code></pre></div>
 <p>Callers write if (!loadConfig()) die("no config"), and the compiler knows normal flow ends there. This removes a class of bugs where a program continues after deciding to die and crashes confusingly later.</p>
 <section><h2 id="s5-11">Scope</h2></section>
 <p>The scope of a name is where it is visible. Coral uses lexical scope: a name is visible from declaration to the end of its block, and inner blocks see outer names.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void process(Buffer* b)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void process(Buffer* b)
 {
     u64 total = 0;
     for (u64 i = 0; i &lt; b-&gt;len; i++)
@@ -209,14 +209,14 @@ vaprint(&quot;done&quot;);</code></pre>
         total += value;
     }
     // total is visible here; i and value are not
-}</code></pre>
+}</code></pre></div>
 <p>total is visible throughout the function body. i and value are declared in the loop and visible only there. Each name's scope is exactly its declaring block.</p>
 <p>This is C's scoping, inherited directly. The consequence for function design is that scope is pure text: you can determine what a name refers to by where it appears, not by who called the function.</p>
 <p>The alternative, dynamic scope, resolves names against the calling context, so a name's meaning changes with the caller. That makes a name unknowable without the call stack and lets a correct function break with a new caller. Lexical scope makes every name mean what the text says.</p>
 <p>A function is a sealed unit: its parameters and locals are its own, and name resolution is fixed by the text. It can be moved, renamed, or called anywhere with unchanged behavior. That is what makes functions building blocks.</p>
 <section><h2 id="s5-12">Local Variables</h2></section>
 <p>A function's locals are the variables it declares, and their lifetime is tied to its execution. Each comes into being at its declaration, is initialized there, and dies when the function exits.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 scan(str text, u8 target)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 scan(str text, u8 target)
 {
     u64 count = 0;
     for (u64 i = 0; i &lt; text.len; i++)
@@ -225,16 +225,16 @@ vaprint(&quot;done&quot;);</code></pre>
         if (c == target) count++;
     }
     return count;
-}</code></pre>
+}</code></pre></div>
 <p>count exists for the whole body, initialized to zero. c exists for one iteration, initialized to the current character. Initialization is part of the declaration; a local is never uninitialized, because a declaration without a value is an explicit placeholder to fill before use, and the compiler checks it.</p>
 <p>A local's lifetime is its scope. Storage is reclaimed at scope exit, and a pointer to a local is meaningful only inside it. Returning a pointer to a local names storage that is gone, and the failure appears at first use. The library documents that returned pointers are valid only while the container lives. A local with @drop is released at scope end, once, on every exit path.</p>
 <section><h2 id="s5-13">Higher-Order Functions</h2></section>
 <p>A higher-order function takes a function as an argument or returns one. Coral supports them through function pointers, and the library is full of them.</p>
 <p>Passing a function is like passing data: the caller supplies behavior instead of the function knowing what to do with each element.</p>
 <p>A function type is a declaration without the name: return type and parameter types. Collection operations take predicates and transformations as function-type parameters.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Vec&lt;T&gt; filter&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub Vec&lt;T&gt; filter&lt;T&gt;(const Vec&lt;T&gt;* v, bool(T) pred)</code></pre></div>
 <p>pred has type bool(T): a function taking a T and returning a bool. filter calls it on each element and keeps those that return true. The caller says what filtering means for the collection:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;u32&gt; nums = Vec&lt;u32&gt;::new();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Vec&lt;u32&gt; nums = Vec&lt;u32&gt;::new();
 nums.push(1); nums.push(2); nums.push(3); nums.push(4);
 
 bool isEven(u32 n) { return (n &amp; 1) == 0; }
@@ -248,13 +248,13 @@ words.push(&quot;program&quot;);
 words.push(&quot;side&quot;);
 
 bool isShort(str w) { return w.len &lt;= 2; }
-Vec&lt;str&gt; short = iter::filter(&amp;words, isShort);    // [a, the, of]</code></pre>
+Vec&lt;str&gt; short = iter::filter(&amp;words, isShort);    // [a, the, of]</code></pre></div>
 <p>Each caller passes a different predicate, and filter behaves accordingly. The iter module follows the same pattern: map, filter, reduce, forEach, any, all, find, and countIf all separate the walk from the operation's meaning.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Vec&lt;U&gt; map&lt;T, U&gt;(const Vec&lt;T&gt;* v, U(T) fn)
-pub T reduce&lt;T&gt;(const Vec&lt;T&gt;* v, T init, T(T, T) fn)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub Vec&lt;U&gt; map&lt;T, U&gt;(const Vec&lt;T&gt;* v, U(T) fn)
+pub T reduce&lt;T&gt;(const Vec&lt;T&gt;* v, T init, T(T, T) fn)</code></pre></div>
 <p>map takes a transformation and returns a new collection; reduce takes a combining function and folds to one value. These are the functional operations other languages advertise, implemented with the same explicit loops as everything else.</p>
 <p>The whole trio on one example: convert Celsius temperatures to Fahrenheit, then total them.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;f64&gt; celsius = Vec&lt;f64&gt;::new();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Vec&lt;f64&gt; celsius = Vec&lt;f64&gt;::new();
 celsius.push(0.0); celsius.push(20.0); celsius.push(37.0); celsius.push(100.0);
 
 f64 toF(f64 c) { return c * 9.0 / 5.0 + 32.0; }
@@ -263,74 +263,74 @@ f64 addF(f64 a, f64 b) { return a + b; }
 Vec&lt;f64&gt; fahr = iter::map(&amp;celsius, toF);        // [32, 68, 98.6, 212]
 f64 total = iter::reduce(&amp;fahr, 0.0, addF);      // 410.6
 f64 avg = total / fahr.count();                  // 102.65
-println(&quot;average: {}&quot;, avg);</code></pre>
+println(&quot;average: {}&quot;, avg);</code></pre></div>
 <p>Three operations, three calls, the same shape: pass a collection and a function, get a result. No looping appears in the calling code; the looping lives inside the operations, once, shared by callers.</p>
 <p>Sorting uses the same gesture. sortBy takes a comparison rule for "which comes first":</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool byAge(Record a, Record b) { return a.age &lt; b.age; }
-people.sortBy(byAge);   // sorts people by the byAge rule</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool byAge(Record a, Record b) { return a.age &lt; b.age; }
+people.sortBy(byAge);   // sorts people by the byAge rule</code></pre></div>
 <p>A passed function is not called at the line where it appears; it is handed over. sortBy has a parameter typed bool(Record, Record) and calls it on every comparison. byAge is an ordinary function, and passing it is naming it: that is all a function pointer means so far.</p>
 <section><h2 id="s5-14">Closures and Their Absence</h2></section>
 <p>A closure is a function that carries captured state from its surrounding scope. Coral has no closures, a design decision that shapes how higher-order functions are used.</p>
 <p>A Coral function pointer carries only the function's address: no captured environment, no hidden state. Functions cannot remember the caller's scope; they receive everything through parameters.</p>
 <p>In a language with closures you could write a counter that remembers its own n:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// (not Coral) -- closure-style counter
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// (not Coral) -- closure-style counter
 makeCounter() {
     u64 n = 0;
     return () =&gt; ++n;      // captures n
-}</code></pre>
+}</code></pre></div>
 <p>Coral cannot do that: a returned function pointer is just an address with nowhere to store "my n." The Coral way is to make the state a parameter:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void bumpCounter(u64* n)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void bumpCounter(u64* n)
 {
     *n = *n + 1;
 }
 
 u64 n = 0;
 bumpCounter(&amp;n);   // n is 1
-bumpCounter(&amp;n);   // n is 2</code></pre>
+bumpCounter(&amp;n);   // n is 2</code></pre></div>
 <p>The state a closure would capture becomes an argument, and the signature states it honestly. The reader sees what the function uses.</p>
 <p>Closures require machinery: a hidden allocation for the environment, a way to keep it alive, and a calling convention that passes it. Coral's philosophy is that a function is what its signature says. The pattern is more verbose and more honest: you never wonder what a passed function remembers.</p>
 <section><h2 id="s5-15">Recursion</h2></section>
 <p>A function that calls itself is recursive. Recursion expresses naturally nested problems: tree traversals, parsers, and divide-and-conquer algorithms.</p>
 <p>The classic factorial:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 fact(u64 n)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 fact(u64 n)
 {
     if (n &lt;= 1) return 1;
     return n * fact(n - 1);
-}</code></pre>
+}</code></pre></div>
 <p>For fact(4), each call waits on the next until fact(1) hits the base case and returns 1, then the multiplications unwind: 2, 6, 24. Two things make it work: a base case that stops the chain, and each call having its own locals. Recursive calls do not overwrite each other; they stack.</p>
 <p>The library's pre-order tree traversal is the canonical example:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void _preOrder(TreeNode&lt;T&gt;* node, void(T) fn)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void _preOrder(TreeNode&lt;T&gt;* node, void(T) fn)
 {
     fn(node-&gt;value);
     for (u64 i = 0; i &lt; node-&gt;children.count(); i++)
         self._preOrder(node-&gt;children.at(i), fn);
-}</code></pre>
+}</code></pre></div>
 <p>The function recurses for each child. The recursion mirrors the data: a tree is a node with child trees. The leading underscore marks a private helper; the public entry handles empty trees.</p>
 <p>Each call pushes a frame with its own node and loop counter, and the previous frame is intact on return. Depth is limited by the stack, so deep recursion overflows it. The library balances recursion with iteration: depth recurses, length iterates.</p>
 <p>Euclid's algorithm shows a recursion whose depth is tiny and whose base case is the natural end:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 gcd(u64 a, u64 b)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 gcd(u64 a, u64 b)
 {
     if (b == 0) return a;
     return gcd(b, a % b);
-}</code></pre>
+}</code></pre></div>
 <p>For gcd(48, 18): 48 % 18 is 12, then gcd(18, 12), then gcd(12, 6), then 12 % 6 is 0 and the base case returns 6. The operands shrink every step, so depth is bounded by the numbers. The recursive call is the entire return value, tail position.</p>
 <p>Structure-counting recursion: a tree's node count is one for the node plus the counts of its subtrees.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 countNodes(TreeNode* node)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 countNodes(TreeNode* node)
 {
     if (node == null) return 0;
     return 1 + countNodes(node-&gt;left) + countNodes(node-&gt;right);
-}</code></pre>
+}</code></pre></div>
 <p>The null check is the base case at every level: an empty subtree contributes zero, a leaf contributes one. Depth is the tree's depth, so a balanced tree is shallow regardless of node count. The recursive code is the data's shape.</p>
 <section><h2 id="s5-16">Tail Calls and Accumulators</h2></section>
 <p>A tail call is a call made as the last thing a function does before returning. A tail-recursive function can run in constant stack space when the language optimizes tail calls.</p>
 <p>Every unfinished call holds a stack frame, so deep recursion can exhaust memory. A tail call is the special case where nothing remains to remember, so the compiler can reuse the frame.</p>
 <p>Coral supports tail-call optimization. A call in tail position can be turned into a loop reusing the frame, so the recursion runs with a flat stack. The optimizer is simple and applies where safe; write the recursion in transformable form.</p>
 <p>The accumulator pattern makes a recursion tail-recursive: pass the accumulated value forward as an extra parameter, so the call returns it directly.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 sumRange(u64 n, u64 acc)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u64 sumRange(u64 n, u64 acc)
 {
     if (n == 0) return acc;
     return sumRange(n - 1, acc + n);
-}</code></pre>
+}</code></pre></div>
 <p>In factorial, <code>n * fact(n - 1)</code> cannot return immediately; it must multiply after the call. In sumRange, the recursive call is the entire return value, <code>return sumRange(...)</code>, so the frame can be recycled and the compiler can turn it into a loop reassigning n and acc.</p>
 <p>Each call passes the running total, and the final call returns it. The recursion is a loop in recursive clothing.</p>
 <p>Coral does not require tail-recursive style. The tree traversal recurses non-tail and runs fine because its depth is the tree's depth. Use the accumulator when a recursion must go deep.</p>
@@ -339,12 +339,12 @@ bumpCounter(&amp;n);   // n is 2</code></pre>
 <p>The reason is the same as for closures: a generator has hidden state, a frame that survives calls and a suspended stack, invisible in the signature.</p>
 <p>The nearest tool is the @iter protocol of <a href="../04-control-flow/index.html">Chapter 4</a>, but it is not a generator: @iter is index based and eager, walking a container that already holds its elements by calling count() once and at(i) per index. It computes nothing on demand and has no hidden suspension point; the state of an iteration is a plain index.</p>
 <p>There is therefore no lazy sequence and no lines() iterator that materializes a file one line at a time. When a source produces values as you go, drive it with a loop and keep the state yourself:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">while (true)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">while (true)
 {
     str line = readLine();
     if (line.len == 0) break;   // end of input
     process(line);
-}</code></pre>
+}</code></pre></div>
 <p>The loop reads one line per turn and stops when the source ends, buffering nothing up front. Because @iter is structural and eager, there is no protocol for sending a value back into a running sequence; operations that feed a stream take explicit parameters.</p>
 <section><h2 id="s5-18">Async, Await, and Threads</h2></section>
 <p>Some languages have async and await, with an event loop, futures, cancellation, and backpressure. Coral has neither, and no event loop in the language.</p>
@@ -353,7 +353,7 @@ bumpCounter(&amp;n);   // n is 2</code></pre>
 <section><h2 id="s5-19">Mutual Recursion</h2></section>
 <p>Two functions that call each other are mutually recursive. The pattern appears in parsers alternating between constructs and in state machines whose states call each other.</p>
 <p>The classic example decides whether a number is even or odd:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool isEven(u64 n)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">bool isEven(u64 n)
 {
     if (n == 0) return true;
     return isOdd(n - 1);
@@ -363,7 +363,7 @@ bool isOdd(u64 n)
 {
     if (n == 0) return false;
     return isEven(n - 1);
-}</code></pre>
+}</code></pre></div>
 <p>isEven(3) calls isOdd(2), then isEven(1), then isOdd(0), returning false. Only the base case n == 0 stops the alternation.</p>
 <p>Mutual recursion requires each function to know the other's declaration. Coral collects a module's declarations before typechecking, so functions can call each other in any order, removing C's declaration-order annoyance.</p>
 <p>It works like ordinary recursion, pushing a frame per call. Stack depth is the call chain's depth, and the same guidance applies: deep alternations are better expressed as explicit state or loops.</p>
@@ -371,7 +371,7 @@ bool isOdd(u64 n)
 <p>A method is a function attached to a type: a named operation on a value of that type. The library is built from methods such as push, pop, find, append, isOk, and unwrap.</p>
 <p>The difference is only in the call. <code>lengthOf(text)</code> is a plain function taking a value; <code>text.length()</code> is a method called on the value itself. Inside the method, that value is named <code>self</code>.</p>
 <p>Methods are declared inside the type's definition, after the fields, in the same type-first form: return type, name, parameters.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec&lt;T&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Vec&lt;T&gt;
 {
     T* data;
     usize len;
@@ -383,7 +383,7 @@ bool isOdd(u64 n)
         self.data[self.len] = val;
         self.len++;
     }
-}</code></pre>
+}</code></pre></div>
 <p>This is the vector's real shape: data pointer, length, capacity, with push growing if needed, storing the value, and bumping the length.</p>
 <p>The body reaches the receiver through self: self.len, self.data, self.cap. Each push operates on the vector it was called on.</p>
 <p>self is a keyword resolved to the current method's receiver. Without it a method could not name its own fields; with it, the receiver is always explicit.</p>
@@ -391,50 +391,50 @@ bool isOdd(u64 n)
 <section><h2 id="s5-21">The Receiver and self</h2></section>
 <p>Every method has a receiver, named self inside the body. It does not appear in the parameter list, and a method reaches its fields with the dot. It is the one thing a method gets that an ordinary function does not.</p>
 <p>Because self is always the receiver, a method never writes it as a parameter. push takes only its value:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void push(T val)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void push(T val)
 {
     self.data[self.len] = val;   // self is the receiver
     self.len++;
-}</code></pre>
+}</code></pre></div>
 <p>A method that modifies the receiver assigns through self. A read-only method can say so with the const form, which the compiler enforces:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[const]]
-usize count() { return self.len; }</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[const]]
+usize count() { return self.len; }</code></pre></div>
 <p>or, equivalently, the trailing form:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize count() const { return self.len; }</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize count() const { return self.len; }</code></pre></div>
 <p>Both spellings mark the method const: the body may read self but not write through it, and a caller knows the call cannot change the receiver.</p>
 <p>The receiver is visible at the call site, consistent with the language's explicitness.</p>
 <section><h2 id="s5-22">Static Methods and Constructors</h2></section>
 <p>A static method belongs to the type rather than a value. It is declared with the static keyword and called through the type name.</p>
 <p>A static method is something the type can do before a value exists. "Make me a new vector with this capacity" happens before any vector exists. Call it with <code>::</code>, as in <code>Vec&lt;u32&gt;::withCap(16)</code>, the sign that no particular value is involved.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">static Vec&lt;T&gt; withCap(usize capacity)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">static Vec&lt;T&gt; withCap(usize capacity)
 {
     return Vec&lt;T&gt; {
         .data = alloc&lt;T&gt;(capacity),
         .len = 0,
         .cap = capacity
     };
-}</code></pre>
+}</code></pre></div>
 <p>withCap is the pattern behind a constructor, the code that builds a value. There is no automatic constructor. withCap allocates capacity elements, sets length zero, records capacity, and returns a struct literal. The type name in <code>static Vec&lt;T&gt; withCap</code> says it returns a Vec. alloc&lt;T&gt;(capacity) is generic and imported from std::mman; this is real std code.</p>
 <p>A static method has no receiver. It creates a value or provides an operation that needs no instance. Its most important use is construction.</p>
 <p>Construction is explicit: no special syntax, no constructor operator. Constructors are static methods with ordinary names. Vec has new and withCap; variants such as Result and Option are built with variant literals naming the case and fields. Each constructor is called through the type name.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;u32&gt; v = Vec&lt;u32&gt;::withCap(16);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Vec&lt;u32&gt; v = Vec&lt;u32&gt;::withCap(16);
 String greeting = String::from(&quot;hello&quot;);
 Result&lt;u64, i32&gt; ok = Result&lt;u64, i32&gt;::Ok { .value = 7 };
-Option&lt;u64&gt; none = Option&lt;u64&gt;::None;</code></pre>
+Option&lt;u64&gt; none = Option&lt;u64&gt;::None;</code></pre></div>
 <p>The double-colon call names the type and constructor, so withCap is unambiguously the vector's. This is how constructors and type-level methods are invoked throughout the library.</p>
 <section><h2 id="s5-23">Method Blocks</h2></section>
 <p>Methods can also be declared outside a type's definition in an extend block, which names the type the methods belong to.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend User
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend User
 {
     void print()
     {
         // ...
     }
-}</code></pre>
+}</code></pre></div>
 <p>The block names the type and declares its methods. The receiver is the same implicit self, and the methods behave exactly like those declared inside the type.</p>
 <p>Extend blocks keep a type's definition focused on fields and group related methods by concern. A type in one module can have methods in another, and the library uses this to keep core types small. The syntax matches trait implementation blocks.</p>
 <p>A point type with a distance method defined outside its definition:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Point
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend Point
 {
     f64 distanceTo(const Point* other)
     {
@@ -442,19 +442,19 @@ Option&lt;u64&gt; none = Option&lt;u64&gt;::None;</code></pre>
         f64 dy = self.y - other-&gt;y;
         return sqrt(dx * dx + dy * dy);
     }
-}</code></pre>
+}</code></pre></div>
 <p>Point.crl shows the fields; the behavior is grouped in the block. Definition and behavior are separated into the places easiest to navigate.</p>
 <section><h2 id="s5-24">Traits</h2></section>
 <p>A trait is a promise a type makes: a named set of method signatures it agrees to implement. Traits give Coral interfaces and type classes in type-first style.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Serializable
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait Serializable
 {
     u64 serialize(u8* buffer);
     u64 deserialize(const u8* buffer);
-}</code></pre>
+}</code></pre></div>
 <p>A trait is a checklist of abilities, and a type signs up by providing every method. Code can then work with any type that signed up, without knowing which type it is.</p>
 <p>The trait states the promise without an implementation. serialize takes a buffer and returns bytes written; deserialize reads from one. The signatures are the whole promise, and the compiler checks the match.</p>
 <p>A type implements a trait in an extend block naming the trait after a colon. The block names the type, the trait, and provides the bodies.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend User : Serializable
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend User : Serializable
 {
     u64 serialize(u8* buffer)
     {
@@ -464,10 +464,10 @@ Option&lt;u64&gt; none = Option&lt;u64&gt;::None;</code></pre>
     {
         // read the user&#x27;s fields from buffer
     }
-}</code></pre>
+}</code></pre></div>
 <p>The colon names the pair: User extends Serializable. The methods use the implicit self, and the compiler verifies that every trait method is implemented.</p>
 <p>Traits are the language's ad-hoc polymorphism. A function written against a trait works for every type supplying its methods. Coral does not spell the requirement as a bound; there is no <code>T : Shape</code>. The requirement is the operations the body names, checked where the function is used. The direct way to take "any shape" is a trait object, the <code>any Trait</code> type from <a href="../06-traits-extend-and-polymorphism/index.html">Chapter 6</a>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Shape
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait Shape
 {
     f64 area();
     f64 perimeter();
@@ -482,7 +482,7 @@ pub f64 largestArea(const Vec&lt;any Shape&gt;* shapes)
         if (a &gt; best) best = a;
     }
     return best;
-}</code></pre>
+}</code></pre></div>
 <p>The parameter is <code>const Vec&lt;any Shape&gt;*</code>: a vector of trait objects. The body may call exactly the methods <code>Shape</code> declares, because <code>any Shape</code> is a window framing those methods. A generic <code>largestArea&lt;T&gt;(const Vec&lt;T&gt;* shapes)</code> would also compile, checked at instantiation; every <code>T</code> that has <code>area</code> works, and a <code>T</code> without it is rejected.</p>
 <p>The difference is where the requirement lives and its cost. The trait-object form states it in the signature and dispatches through the trait's table at run time. The generic form discovers it in the body and monomorphizes to direct calls with no table.</p>
 <p>Trait declaration, implementation block, and use form a pair of promises, each a named declaration with a visible signature, and the compiler checks the connections.</p>
@@ -503,7 +503,7 @@ pub f64 largestArea(const Vec&lt;any Shape&gt;* shapes)
 <section><h2 id="s5-28">The Extern Boundary</h2></section>
 <p>Functions outside Coral, in C libraries or the operating system, are declared with extern. An extern declaration states the name and signature, and the compiler trusts it, generating a call to the external symbol.</p>
 <p><code>extern</code> calls a function someone else wrote, usually in C or the OS. You promise that it exists with the signature you wrote; the compiler cannot check outside code.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">extern i32 pthread_mutex_init(void* mutex, const void* attr);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">extern i32 pthread_mutex_init(void* mutex, const void* attr);</code></pre></div>
 <p>The declaration is a promise the Coral code depends on. The compiler cannot check the external body, so responsibility rests on the declaration and its author. The signature is the interface, and that is all either side knows.</p>
 <p>Extern declarations bridge to C, and the library uses them heavily: POSIX for processes, pthreads for threading, libc for files and memory. Each names the C symbol and its Coral signature, and each call checks against it.</p>
 <p>Inline extern declarations let a function declare an external function in its body, keeping the declaration next to its use and scoped to the function.</p>

@@ -34,27 +34,27 @@
 <p>But "parameterise by a type" is only the first of three tools this chapter covers, and the other two are where the language gets interesting. Value generics parameterise code by a compile-time constant, a size or a count that becomes part of the type's identity. And <code>comptime</code> lets ordinary Coral code run during the build, deducing types, selecting which code to emit, and refusing instantiations that cannot work. Together they are Coral's metaprogramming layer, and they are deliberately built on the language's ordinary syntax rather than on a separate macro language. A comptime block is not a dialect; it is Coral, evaluated early. This chapter teaches all three, and then shows how they combine.</p>
 <section><h2 id="s7-1">Generic Functions</h2></section>
 <p>Start with the blank in a recipe. A generic function declares its type parameters in angle brackets between its name and its parameter list:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">T max&lt;T&gt;(T a, T b) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">T max&lt;T&gt;(T a, T b) {
     return a &gt; b ? a : b;
-}</code></pre>
+}</code></pre></div>
 <p>Read the angle brackets as "for any type T." The function says: give me two values of some type T that supports <code>&gt;</code>, and I will return the larger. Call it with any such type, and the compiler produces a version for that type:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 n = max(3, 7);          // compiler makes max&lt;i32&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 n = max(3, 7);          // compiler makes max&lt;i32&gt;
 f64 f = max(1.5, 0.5);      // compiler makes max&lt;f64&gt;
-char c = max(&#x27;a&#x27;, &#x27;z&#x27;);     // compiler makes max&lt;char&gt;</code></pre>
+char c = max(&#x27;a&#x27;, &#x27;z&#x27;);     // compiler makes max&lt;char&gt;</code></pre></div>
 <p>In plain words, the <code>&lt;T&gt;</code> is a blank labelled T. When you call <code>max</code> with two integers, the compiler writes "i32" in every blank and makes an integer version; call it with two floats and it makes a float version. You wrote the body once, and you got one tailored function per type you used.</p>
 <p>Nothing here is dynamic. There is no table of types consulted at runtime; when the compiler sees <code>max(3, 7)</code>, it knows the arguments are <code>i32</code> and it emits <code>max&lt;i32&gt;</code>. When it sees <code>max(1.5, 0.5)</code>, it emits <code>max&lt;f64&gt;</code>. Two functions, two blocks of machine code, chosen before the program exists. This is what "monomorphised" means, "single shape," one generated copy per shape of the type.</p>
 <p>The call site deduces the type arguments from the arguments, so you rarely write <code>max&lt;i32&gt;(3, 7)</code>. But you may spell them out, and sometimes must: when deduction is ambiguous, when a parameter does not appear in the argument list, or when you simply want the code to be explicit about what it is asking for.</p>
 <p>Type deduction is a matching problem. The compiler lines up the declared parameter types against the argument types and solves for the parameters. It can handle several at once:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct(A, B) makePair&lt;A, B&gt;(A first, B second) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct(A, B) makePair&lt;A, B&gt;(A first, B second) {
     return (first, second);
 }
 
-struct(str, i32) named = makePair(&quot;answer&quot;, 42);</code></pre>
+struct(str, i32) named = makePair(&quot;answer&quot;, 42);</code></pre></div>
 <p>Here the compiler unifies <code>A</code> with <code>str</code> from the first argument and <code>B</code> with <code>i32</code> from the second, and produces <code>makePair&lt;str, i32&gt;</code>. When two arguments constrain the same parameter to different types, the call is ambiguous, and the compiler reports it rather than guessing a common supertype. This is worth pausing on, because some languages quietly promote arguments to make the call work, and Coral does not: if you intended a conversion, you write it, with the target type in parentheses, <code>max&lt;i32&gt;((i32)a, b)</code>, so that the coercion is visible at the call site rather than buried in a deduction rule.</p>
 <p>Now the honest question: what does <code>T</code> actually know how to do? In <code>max</code>, the body uses <code>a &gt; b</code>, so this function only compiles for types that support <code>&gt;</code>. Coral does not let you spell that requirement as a bound on the type parameter, there is no <code>T : Comparable</code> syntax. Instead the requirement lives in the body and is checked where the generic is instantiated: call <code>max</code> with a concrete type and the compiler generates that instantiation, and if the type has no <code>&gt;</code>, it reports the error naming the type, at the line with the comparison. That is usually a good enough answer, and it keeps the surface of the language small. When you want to branch on, or assert, what a type parameter can do up front, you do it explicitly in a <code>comptime</code> block, where <code>@typeof(T)</code> is available and <code>@compileError</code> can state the requirement in your own words; the rest of this chapter develops that. The point to carry forward: a generic's requirements are checked at each instantiation, not declared on the signature.</p>
 <section><h2 id="s7-2">Generic Types</h2></section>
 <p>A function can be generic; so can a whole type. This is where the standard library lives. <code>Vec&lt;T&gt;</code>, <code>Map&lt;K, V&gt;</code>, <code>Option&lt;T&gt;</code>, <code>Result&lt;T, E&gt;</code> are all generic types, and their methods are generic extends. The simplest useful one is a box that holds exactly one value:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Box&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Box&lt;T&gt; {
     T value;
 }
 
@@ -73,17 +73,17 @@ pub extend&lt;T&gt; Box&lt;T&gt; {
 }
 
 Box&lt;i32&gt; b = Box&lt;i32&gt;::of(42);
-i32 v = b.get();</code></pre>
+i32 v = b.get();</code></pre></div>
 <p>Every use of Box with a concrete type parameter produces a concrete Box type. <code>Box&lt;i32&gt;</code> is a different generated type from <code>Box&lt;str&gt;</code>, with a field of the appropriate type and methods specialised to match. The type parameter is in scope throughout the extend block, so methods can mention <code>T</code> in their signatures and their bodies. And generic types nest: <code>Box&lt;Box&lt;i32&gt;&gt;</code> is a box of a box of an integer, and the compiler generates both layers. A second type parameter is as easy as the first.</p>
 <p>In plain words, a generic type is a container whose contents are not decided until you use it. <code>Box&lt;T&gt;</code> says "a box of something"; <code>Box&lt;i32&gt;</code> says "a box of integers." The type of what is inside is written in angle brackets, and the compiler makes a matching box for whatever you put there.</p>
 <p>The standard library's <code>Vec</code> is the canonical generic type, and reading its declaration teaches the pattern in one glance: generic over the element type, with an extend block generic in the same parameter, methods that mention <code>T</code> throughout. When you implement a container, you write one generic definition and every element type it is used with becomes a monomorphisation. That is the whole discipline, and it is why a <code>Vec&lt;f64&gt;</code> is not a boxed array of <code>void*</code>, it is a real array of <code>f64</code>, with no per-element indirection.</p>
 <section><h2 id="s7-3">Value Generics: When the Size Is Part of the Type</h2></section>
 <p>Sometimes the thing that varies is not a type but a number, and that number matters enough to belong in the type. A matrix is not just "a matrix of floats"; it is a 3×3 matrix or a 4×4 matrix, and mixing the two silently is a bug. Coral lets a type be parameterised by a value:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Matrix&lt;T, usize Rows, usize Cols&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Matrix&lt;T, usize Rows, usize Cols&gt; {
     T data[Rows * Cols];
-}</code></pre>
+}</code></pre></div>
 <p>The parameters <code>Rows</code> and <code>Cols</code> are compile-time constants. Because they are constants, the array size <code>Rows * Cols</code> is itself a compile-time expression, the compiler can compute the size of a <code>Matrix</code> without running anything, and indexing with a literal can be bounds-checked before the program runs:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Matrix&lt;f64, 3, 3&gt; identity = ...;</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Matrix&lt;f64, 3, 3&gt; identity = ...;</code></pre></div>
 <p>In plain words, a value generic puts a number into the type's name. <code>Matrix&lt;f64, 3, 3&gt;</code> is not just "a matrix"; it is specifically a three-by-three matrix of floats, and the compiler treats a three-by-three and a four-by-four as different types. That means you can never accidentally swap one for the other, because the mistake is caught before the program runs.</p>
 <p>Two useful things follow. First, the size is exact and known: <code>Matrix&lt;f64, 3, 3&gt;</code> and <code>Matrix&lt;f64, 4, 4&gt;</code> are different types, so you cannot accidentally pass one where the other is expected. Second, the size is available to every method as a constant, so a loop over the elements has a bound the compiler can see, and it can unroll it.</p>
 <p>The same idea appears throughout the standard library. <code>Arr&lt;T, N&gt;</code> is a fixed-size array with <code>N</code> in the type. <code>Bitset&lt;N&gt;</code> is a bit set with a declared width. A fixed-size matrix carries its dimensions. In each case the size is part of the type rather than a runtime field, which means it cannot disagree with the storage and cannot be discovered as wrong only when the program runs.</p>
@@ -91,14 +91,14 @@ i32 v = b.get();</code></pre>
 <p>A value generic is checked when the type is instantiated, so an impossible instantiation, zero rows, or an operation the comptime code cannot support, can be rejected at compile time, which is the subject of 7.7.</p>
 <section><h2 id="s7-4">comptime: Running Ordinary Code Early</h2></section>
 <p><code>comptime</code> is the general mechanism for computing at compile time, and its design principle is disarmingly simple: it is the same language you already write, evaluated during the build instead of at runtime. A comptime block contains ordinary Coral, assignments, <code>if</code>s, <code>switch</code>es, loops, calls, and it runs while the program is being compiled:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">comptime {
     const TABLE_SIZE = 256;
     const STEP = 0x9E3779B9;
-}</code></pre>
+}</code></pre></div>
 <p>There is no macro syntax to learn and no expansion output to decode. The block is Coral. The difference is when it runs.</p>
 <p>In plain words, <code>comptime</code> means "do this while building the program, not while running it." You write the same code you always write, loops, ifs, arithmetic, but the results are ready before the program ever starts, so they cost the running program nothing. If you have used a spreadsheet, it is like a cell that is computed once when you open the file rather than recomputed every moment.</p>
 <p>More powerfully, a comptime block may choose which code is emitted. Because the values and types inside it are known at compile time, a <code>switch</code> inside comptime resolves to a single arm, and only that arm survives into the generated program:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void makeParser&lt;comptime Token&gt;() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void makeParser&lt;comptime Token&gt;() {
     comptime {
         switch (Token) {
             Token::Ident  =&gt; { /* emit identifier parsing */ }
@@ -106,18 +106,18 @@ i32 v = b.get();</code></pre>
             Token::String =&gt; { /* emit string parsing */ }
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The type <code>Token</code> is a compile-time value; the switch on it is decided during compilation; the arm whose case matches is the only code generated. The others are not merely dropped as dead code after being generated, they are never generated at all. This is how a comptime mechanism can produce specialised code from a type without a runtime branch and without a separate macro system. If you have ever written a code generator in a scripting language and then debugged its output, the appeal is obvious: the generator is the language, and its mistakes are reported with the language's own diagnostics.</p>
 <section><h2 id="s7-5">comptime Type Parameters and Deduction: How print Works</h2></section>
 <p>A generic parameter may be marked <code>comptime</code>, and that marker changes something fundamental about who supplies it. An ordinary type parameter is supplied by the caller, deduced from an argument's type. A <code>comptime</code> type parameter is deduced by the function itself, from a comptime block in its body:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void print&lt;comptime T&gt;(T fmt, ...) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void print&lt;comptime T&gt;(T fmt, ...) {
     comptime {
         // derive T from the arguments, then decide how to render each
     }
-}</code></pre>
+}</code></pre></div>
 <p>Read that again, because it looks strange until you see why it exists. <code>print</code> must accept a format string and any number of arguments of any types, and it must know each argument's type in order to convert it to text. The format string is an ordinary parameter, the caller passes it, but the argument types are not written by the caller anywhere. So the function inspects what it was handed and works out the types itself, inside the comptime block. A <code>comptime</code> parameter is not supplied at the call site; it is inferred by the function's own logic.</p>
 <p>This is the mechanism behind the standard library's real <code>print</code>. Its signature is</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void print&lt;comptime T&gt;(T fmt, ...) { ... }</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void print&lt;comptime T&gt;(T fmt, ...) { ... }</code></pre></div>
 <p>and the <code>...</code> is a variadic tail of arguments. When you call <code>println("x = {}, y = {}", x, y)</code>, the compiler has the literal format string and the arguments' types, and the comptime logic walks the format, matching each <code>{}</code> to the next argument and choosing a renderer based on that argument's type. If <code>x</code> is an <code>i32</code>, it uses the integer renderer; if it is a <code>str</code>, the string renderer; if it is a user type that implements <code>@toStr</code> (<a href="../06-traits-extend-and-polymorphism/index.html">Chapter 6</a>), the compiler inserts that type's <code>toStr</code> call. None of this is a runtime scan; it all happens while the program is being built.</p>
 <p>There is a semantic rule that comes with the feature, and it is enforced: a function whose generic list uses a <code>comptime</code> parameter must contain a <code>comptime</code> block. Without one there is nowhere for the type to be derived, so the function has no way to know what it was handed, and the compiler rejects it. The rule is not arbitrary; it is the feature's precondition.</p>
 <p>It is worth being precise about what <code>println</code> is not. It is not a C-style variadic function, where the argument types are erased and the format string is trusted at runtime. It is not a C-preprocessor macro, textually substituted. It is an ordinary generic function whose type argument is computed at compile time, which is why a mismatch between a format string and its arguments can be a build failure rather than a crash. That is the payoff, and it is the subject of the next section.</p>
@@ -125,40 +125,40 @@ i32 v = b.get();</code></pre>
 <p>In C, <code>printf("%d", "hello")</code> compiles, runs, and prints garbage, because the format string is a runtime string and the arguments have been erased to untyped slots. The compiler cannot know that <code>%d</code> was handed a pointer. Coral closes that hole with a compile-time test: <code>@isFormatLiteral(fmt)</code> is true when the argument is a literal format string known at compile time, and false otherwise. When it is true, the entire format can be checked against the arguments before the program exists.</p>
 <p>In plain words, if you write the format as a literal, Coral can read the <code>{}</code> placeholders and compare them to the values you passed right there at build time. That turns a whole class of "printed the wrong thing at runtime" bugs into messages while you are still typing.</p>
 <p>The shape of the check is the comptime walk described above, and it produces real diagnostics in the E09xx family. A placeholder with no matching argument, an argument with no matching placeholder, an unknown specifier, or a specifier that demands the wrong kind of argument, each is a compile error with a code and a location:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">println(&quot;{} {}&quot;, a);        // error E0901: too few arguments for 2 placeholders
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">println(&quot;{} {}&quot;, a);        // error E0901: too few arguments for 2 placeholders
 println(&quot;{q}&quot;, value);      // error E0903: unknown specifier `q`; did you mean `{}`?
-println(&quot;{:d}&quot;, someString);// error E0902: `:d` requires an integer argument</code></pre>
+println(&quot;{:d}&quot;, someString);// error E0902: `:d` requires an integer argument</code></pre></div>
 <p>And the normal cases simply work:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">println(&quot;name = {}\n&quot;, name);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">println(&quot;name = {}\n&quot;, name);
 println(&quot;x = {:x}, bits = {:b}&quot;, flags, flags);
 println(&quot;pi is about {:.3}&quot;, 3.14159);
-println(&quot;items = {..}&quot;, values);      // spread an iterable, separated by &quot;, &quot;</code></pre>
+println(&quot;items = {..}&quot;, values);      // spread an iterable, separated by &quot;, &quot;</code></pre></div>
 <p>When <code>@isFormatLiteral</code> is false, the format string was built at runtime, so the compiler cannot see it, the same call is routed differently: the first argument is treated as an ordinary value and every argument is rendered through its own built-in or <code>@toStr</code> path, with no placeholder checking. That is the honest trade. The overwhelming majority of format strings are literals, and for those the check is free; a format string assembled at runtime gives up the check, and the language does not pretend otherwise.</p>
 <p>This is the clearest example in the book of comptime changing what the language can promise. Because the format and the arguments are both visible during the build, a class of error that is a runtime crash in C is a build failure in Coral, and the failure arrives in a minute, at the line, long before the code ships.</p>
 <section><h2 id="s7-7">Asking the Compiler Questions: @sizeof, @typeof, and alignof</h2></section>
 <p>To specialise or reject based on a type, a comptime block needs to ask the compiler questions about it. Three queries cover most of the ground, and all three are evaluated during compilation, so they may appear in comptime blocks, in value-generic arguments, and anywhere else a compile-time constant is expected.</p>
 <p>In plain words, these are questions you ask the compiler about a type, and the answers are known before the program runs. <code>@sizeof</code> asks "how many bytes does this take?", <code>@typeof</code> asks "what type is this expression?", and <code>alignof</code> asks "what memory boundary does this type prefer?" They let code adapt to the exact machine and the exact types it is given.</p>
 <p><code>@sizeof(T)</code> is the size of a type in bytes. It is how you branch on layout, a small type may be passed by value, a large one by pointer, and how you assert a layout assumption:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">comptime {
     if (@sizeof(Header) != 16) {
         @compileError(&quot;Header must be exactly 16 bytes on the wire&quot;);
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>@typeof(expr)</code> is the type of an expression. It is how a comptime block discovers what it was handed, and it is the workhorse of the printing machinery: the dispatch in <code>print</code> is a switch over <code>@typeof(T)</code>. It only makes sense inside a comptime context, where the type is known.</p>
 <p><code>alignof(T)</code> is the alignment the type requires. It matters when you are placing things in memory by hand, a buffer, a memory pool, an allocator, and need to know the boundary the hardware wants:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize stride = alignUp(count * @sizeof(Item), alignof(Item));</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize stride = alignUp(count * @sizeof(Item), alignof(Item));</code></pre></div>
 <p>With these three, a generic can specialise or reject based on the concrete layout of its type parameter. That is exactly what low-level code needs and exactly what a runtime-generic system, where types are erased, cannot do.</p>
 <section><h2 id="s7-8">Rejecting Bad Instantiations: @compileError</h2></section>
 <p>A generic that cannot support a particular instantiation should fail at compile time, not at runtime. <code>@compileError</code> is how it says so. It takes a message and, when reached during compilation, stops the build with that message at the offending instantiation:</p>
 <p>In plain words, <code>@compileError</code> is a way to plant a tripwire in your own code: if someone uses this function in a way it cannot handle, the build stops with the sentence you wrote, right at the line that caused it. It turns a confusing mistake into a clear explanation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">T firstElement&lt;T&gt;(Vec&lt;T&gt; v) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">T firstElement&lt;T&gt;(Vec&lt;T&gt; v) {
     comptime {
         if (@sizeof(T) == 0) {
             @compileError(&quot;firstElement cannot be called for a zero-sized type&quot;);
         }
     }
     return v.at(0);
-}</code></pre>
+}</code></pre></div>
 <p>The compiler evaluates the comptime block during instantiation; if the condition holds, the build fails with the given sentence at the call site. The effect is that "this generic was never meant for that type" becomes a clear message at the line that caused it, instead of a mysterious fault at runtime. Used well, <code>@compileError</code> is an assertion about the shape of the program, and it is the compile-time member of the assertion family introduced in <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>. The E11xx diagnostics stand behind it: a comptime loop that never terminates is cut off with the macro call stack shown (E1103), and a comptime block that tries to read runtime-only memory is reported (E1101), so an error inside a comptime computation is a diagnostic rather than a compiler hang.</p>
 <section><h2 id="s7-9">When to Use Which</h2></section>
 <p>Four mechanisms can look interchangeable and are not. The rule is always to choose the one that expresses the constraint you actually have.</p>
@@ -170,7 +170,7 @@ println(&quot;items = {..}&quot;, values);      // spread an iterable, separated
 <p>One question settles almost every case: is this known at compile time or at runtime? If it is known at compile time, prefer a generic, you get specialisation and no indirection. If it is not, it must be <code>any</code>, because there is nothing else it could be. The four mechanisms cover the design space, and the choice is usually obvious once that question has been answered.</p>
 <section><h2 id="s7-10">A Worked Example: A Compile-Time Lookup Table</h2></section>
 <p>Here is the combination of value generics and comptime at work on a real problem: a fast lookup table whose contents are fixed before the program runs. Instead of filling an array at startup, compute it during compilation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const TABLE_SIZE = 256;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">const TABLE_SIZE = 256;
 const KEY = 0x9E3779B97F4A7C15;
 
 struct HashTable&lt;usize N&gt; {
@@ -194,11 +194,11 @@ pub extend&lt;usize N&gt; HashTable&lt;N&gt; {
     }
 }
 
-const HashTable&lt;256&gt; GLOBAL = HashTable&lt;256&gt;::build();</code></pre>
+const HashTable&lt;256&gt; GLOBAL = HashTable&lt;256&gt;::build();</code></pre></div>
 <p>The size <code>N</code> is a value generic, so the type carries its own capacity. The table is built in a comptime block, so the loop runs during compilation and the generated program contains a fully populated constant array, no startup cost and no initialisation function. Indexing with a constant is bounds-checked against <code>N</code> at compile time. The result is a data structure whose entire contents are known to the compiler, which is the strongest form of "this cannot fail at runtime" the language offers. Notice the <code>var</code> in the build function: <code>var</code> exists precisely to drive type inference on a local, letting the compiler fill in <code>HashTable&lt;N&gt;</code> from the initialiser.</p>
 <section><h2 id="s7-11">A Worked Example: A Generic Ring Buffer</h2></section>
 <p>The second example is an ordinary generic container, to show the end-to-end pattern. A ring buffer stores a fixed number of elements and overwrites the oldest when it is full, the shape of a fixed-size event log, an audio delay line, or a bounded work queue.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Ring&lt;T, usize N&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Ring&lt;T, usize N&gt; {
     T buffer[N];
     usize head;
     usize count;
@@ -229,13 +229,13 @@ pub extend&lt;T, usize N&gt; Ring&lt;T, N&gt; {
 
     bool isFull() const { return self.count == N; }
     bool isEmpty() const { return self.count == 0; }
-}</code></pre>
+}</code></pre></div>
 <p>Both the element type <code>T</code> and the capacity <code>N</code> are parameters, so <code>Ring&lt;i32, 64&gt;</code> and <code>Ring&lt;str, 8&gt;</code> are distinct generated types, each with a buffer of the right element type and the right size. The modulo arithmetic uses the constant <code>N</code>, which the compiler knows, so the bounds are checkable and the storage is exact. This is the standard library's <code>RingBuf</code> written out, and it exercises the whole toolkit in a few lines: type parameters, value parameters, a static constructor, const methods, and an assertion guarding a precondition.</p>
 <p>Notice how the value generic and the type generic cooperate. <code>N</code> is used in the array declaration, in the modulo, and in the fullness test; because it is a constant, all three agree by construction. There is no field storing the capacity, and therefore no way for the capacity field to drift out of step with the buffer.</p>
 <section><h2 id="s7-12">A Larger Worked Example: Units That Check Themselves</h2></section>
 <p>The final example combines all three mechanisms, type generics, value generics, and comptime rejection, into something you have probably wanted and never had the tool for: a physical quantity whose arithmetic is checked at compile time. Picture a physics simulation. You have distances in metres, times in seconds, and speeds in metres per second. Multiply a speed by a time and you get a distance; add a distance to a time and you have made a mistake. Hand-rolled code lets that mistake through until a result looks wrong.</p>
 <p>The idea is to encode the unit as a compile-time structure and let the arithmetic track it. A full treatment uses exponent tuples; here is a compact version that carries one exponent as a value generic and leans on comptime for the operations:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Quantity&lt;usize M, usize S&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Quantity&lt;usize M, usize S&gt; {
     f64 value;
 }
 
@@ -257,24 +257,24 @@ pub extend&lt;usize M, usize S&gt; Quantity&lt;M, S&gt; {
     Quantity&lt;M, S&gt; add(Quantity&lt;M, S&gt; other) const {
         return Quantity&lt;M, S&gt; { .value = self.value + other.value };
     }
-}</code></pre>
+}</code></pre></div>
 <p>The types do the work. The expression <code>Length::of(3.0).mul(Time::of(2.0))</code> has type <code>Quantity&lt;1, 1&gt;</code>: multiplying a <code>Quantity&lt;1, 0&gt;</code> by a <code>Quantity&lt;0, 1&gt;</code> adds the exponents, so the result is a <code>Quantity&lt;1, 1&gt;</code>. You would define <code>typedef Speed = Quantity&lt;1, 1&gt;;</code> if you wanted a name for it, and a <code>Speed</code> multiplied by a <code>Time</code> would come back as a <code>Quantity&lt;1, 2&gt;</code>, an acceleration, all without a line of arithmetic written by hand. The exponents are value generics, and the addition on them happens during monomorphisation, so no runtime storage is spent on units at all. The <code>value</code> field is the only thing in memory.</p>
 <p>Now the payoff: an illegal operation is a type error, and the compiler says so at the line, before the program runs.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void broken() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void broken() {
     Length d = Length::of(3.0);
     Time t = Time::of(2.0);
     Length wrong = d.add(t);      // error: add expects Quantity&lt;1, 0&gt;, got Quantity&lt;0, 1&gt;
-}</code></pre>
+}</code></pre></div>
 <p><code>d.add(t)</code> cannot compile, because <code>add</code> requires the same <code>M</code> and <code>S</code> on both sides, and <code>Length</code> and <code>Time</code> differ in both. That is the whole point: the mistake is not caught by a test, or by a reviewer, or by a wrong number at runtime. It is caught by the type system, because the units are part of the types. And the fix is to write the operation that is actually meaningful, a multiplication, whose exponents are summed, which is the operation you meant.</p>
 <p>Where does comptime come in? In a full implementation, the exponent arithmetic itself is a comptime computation, and the type can reject instantiations that make no physical sense, a negative size, an exponent combination you have declared unsupported. A comptime guard at the point of use states the invariant:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void derive&lt;usize M, usize S&gt;(Quantity&lt;M, S&gt; q) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void derive&lt;usize M, usize S&gt;(Quantity&lt;M, S&gt; q) {
     comptime {
         if (M == 0 &amp;&amp; S == 0) {
             @compileError(&quot;a dimensionless quantity is not a physical result; check your units&quot;);
         }
     }
     use(q.value);
-}</code></pre>
+}</code></pre></div>
 <p>This is the pattern to carry away from the chapter. Value generics make the shape of the data part of the type; comptime computes over that shape during the build; and <code>@compileError</code> turns an impossible instantiation into a sentence at the line that caused it. The result is code whose arithmetic is checked by the compiler, in ordinary Coral, with no separate macro language and no runtime cost, which is about as much as a language can promise.</p>
 <section><h2 id="s7-13">Exercises</h2></section>
 <section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>Why is a monomorphised generic free at runtime while a trait object is not? Name the exact place where the trait object's extra work happens.</li><li><span class="ex-label">Comprehension</span>What is the difference between a type parameter <code>T</code> and a value parameter <code>N</code>? Give a declaration that needs each, and explain what would go wrong if you swapped them.</li><li><span class="ex-label">Implementation</span>Write a generic <code>map&lt;T, U&gt;(const Vec&lt;T&gt;* v, U(T) fn) Vec&lt;U&gt;</code> that applies a function to each element and returns a new vector. Use it to turn a <code>Vec&lt;i32&gt;</code> into a <code>Vec&lt;str&gt;</code>.</li><li><span class="ex-label">Implementation</span>Write a generic <code>minMax&lt;T&gt;(Vec&lt;T&gt; v) struct(T, T)</code> returning the smallest and largest elements as a tuple. What operation does the body require of <code>T</code>, and where is that requirement checked when the function is instantiated?</li><li>Value generics. Declare a fixed-size square matrix <code>Matrix&lt;T, N&gt;</code> with an identity constructor. How do you ensure the diagonal loop has a compile-time bound? What goes wrong if the size is an ordinary field instead of a parameter?</li><li>comptime. Write a comptime block that computes the first twenty Fibonacci numbers into a const array. Confirm that the generated program does no work to produce them, and explain where the numbers live.</li><li><span class="ex-label">Deduction</span>Explain why <code>print</code> has a <code>comptime</code> type parameter rather than an ordinary one. What would break at the call site if <code>T</code> had to be supplied by the caller?</li><li>Format checking. Write three calls that trigger E0901, E0902, and E0903, then write the corrected call for each. Explain why a format string built at runtime gives up the check.</li><li><span class="ex-label">Rejection</span>Write a generic that computes the number of bits in its type parameter and rejects any non-integer type with <code>@compileError</code>. Use any of <code>@sizeof</code>, <code>@typeof</code>, or <code>alignof</code> as needed.</li><li><span class="ex-label">Layout</span>Use <code>@sizeof</code> and <code>alignof</code> to write a comptime assertion that a struct intended for the wire is exactly twelve bytes and aligned to four. What happens at build time if a field is added and the assertion is wrong?</li><li><span class="ex-label">Design</span>You are writing a serialiser. Should it take a generic <code>T</code> (whose body calls the serialise method), or an <code>any Serializable</code>? Answer for the case of serialising a list of mixed types, then for the case of serialising one known type.</li><li><span class="ex-label">Units</span>Extend the units example with a <code>divide</code> that subtracts exponents, and add a <code>Speed</code> type. What is the type of <code>Length / Time</code>, and how would the compiler react if you tried to add a <code>Speed</code> to a <code>Time</code>?</li><li><span class="ex-label">Meta</span>comptime blocks are ordinary code evaluated early. Name one advantage this has over a separate macro language and one disadvantage. Where would you personally draw the line between comptime and ordinary runtime code?</li></ol></section>

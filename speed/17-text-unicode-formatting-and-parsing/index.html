@@ -33,19 +33,19 @@
 <p>Coral's text layer centres on two types. <code>str</code> is the borrowed view: a pointer and a length, never owning its bytes. <code>String</code> is the owned, growable buffer, like a <code>Vec&lt;u8&gt;</code> with text-aware methods. Around them sit modules for ASCII, UTF-8, searching, regex, URIs, formatting, and parsing.</p>
 <section><h2 id="s17-1">str: The Borrowed View</h2></section>
 <p><code>str</code> is built into the language, not a library. Conceptually it is two words:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// conceptually
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// conceptually
 struct str {
     const u8* ptr;
     usize len;
-}</code></pre>
+}</code></pre></div>
 <p>A string literal is a <code>str</code>; <code>slice</code> returns a <code>str</code> pointing into the original buffer; passing a string passes the pointer and length, not a copy. Measuring is therefore O(1):</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str greeting = &quot;hello&quot;;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">str greeting = &quot;hello&quot;;
 usize n = greeting.len;               // 5, known, never a strlen walk
-u8 first = greeting.ptr[0];           // &#x27;h&#x27;</code></pre>
+u8 first = greeting.ptr[0];           // &#x27;h&#x27;</code></pre></div>
 <p>A <code>str</code> is the default parameter type for read-only text: it accepts a literal, a slice of a <code>String</code>, or a window into a larger buffer without copying. It never owns its bytes, so its lifetime is bounded by the owner; a stored <code>str</code> can dangle. Use it for parameters and short-lived locals, not for struct fields that outlive their source.</p>
 <p>A <code>str</code> is a window into a book someone else holds; a <code>String</code> is a notebook you own. <code>str</code> is for reading, <code>String</code> for building.</p>
 <p>Read methods live in <code>core::str</code>; <code>std::text::strutil</code> adds free-function forms. The <code>str</code> methods are:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str s = &quot;  Coral Text  &quot;;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">str s = &quot;  Coral Text  &quot;;
 
 str t     = s.trim();                 // &quot;Coral Text&quot;
 str start = s.trimStart();
@@ -70,61 +70,61 @@ bool none = s.isEmpty();              // true when len == 0
 u8   b    = s.at(0);                  // bounds-checked byte (asserts idx &lt; len)
 const u8* bytes = s.asU8();           // the raw pointer behind the view
 
-String alias = s.asString();          // ALIASES these bytes, see the warning below</code></pre>
+String alias = s.asString();          // ALIASES these bytes, see the warning below</code></pre></div>
 <p>Two methods handle Unicode: <code>codepointCount</code> counts codepoints, and <code>nextCodepoint</code> decodes one at a time with a threaded byte cursor:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize count = s.codepointCount();     // characters, not bytes
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize count = s.codepointCount();     // characters, not bytes
 
 usize idx = 0;
 char c;
 while (s.nextCodepoint(&amp;idx, &amp;c)) {
     println(&quot;{}&quot;, c);
-}</code></pre>
+}</code></pre></div>
 <p><code>idx</code> continues where the last call stopped, so UTF-8 decodes forward without a cursor object and <code>str</code> stays a zero-cost view.</p>
 <p>The view has no mutating or reallocating methods: no <code>toUpper</code>, <code>replace</code>, or <code>push</code>, because it owns nothing and cannot grow. Transforms live on <code>String</code> or in <code>strutil</code> and return a fresh value. <code>equals</code> and <code>compare</code> compare content (<code>compare</code> returns negative, zero, or positive); <code>findView</code>, <code>findByte</code>, and <code>rfindByte</code> return a byte index, or <code>len</code> when absent, so <code>containsView</code> and <code>containsByte</code> test that result against <code>len</code>.</p>
 <p>Two constructors interface with C:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str a = str::fromCstr(cstr);                  // borrow a NUL-terminated C string
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">str a = str::fromCstr(cstr);                  // borrow a NUL-terminated C string
 str b = str::fromParts(ptr, len);             // wrap a pointer and a length
-str empty = str::empty();                     // the zero-length view</code></pre>
+str empty = str::empty();                     // the zero-length view</code></pre></div>
 <p><code>fromCstr</code> pays the <code>strlen</code> scan once and returns a length-carrying view thereafter.</p>
 <p><code>str::asString</code> does not allocate or copy: it builds a <code>String</code> whose pointer and length alias the <code>str</code>'s bytes, with capacity zero. It is only safe as a zero-copy bridge in argument position; never <code>free</code> it or let <code>@drop</code> run, or you deallocate someone else's memory. Use <code>String::from(s)</code> for an owned copy, and <code>asView</code> to borrow a <code>String</code> as a <code>str</code>.</p>
 <section><h2 id="s17-2">String: The Owned Buffer</h2></section>
 <p>Use <code>String</code> to build, accumulate, edit, or grow text. Its declaration matches a Vec's three-field shape:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct String {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct String {
     u8*   ptr;
     usize len;
     usize cap;
-}</code></pre>
+}</code></pre></div>
 <p>Construct one empty, with reserved capacity, from a view, or from a C string:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::string { String };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::string { String };
 
 String a = String::new();            // 17 bytes allocated, cap 16, len 0
 String b = String::withCap(1024);    // room for 1024 bytes up front (clamped to &gt;= 7)
 String c = String::from(&quot;hello&quot;);    // copy a view, sized exactly
 String d = String::fromCstr(cstr);   // copy a C string
-String e = c.clone();                // an independent copy</code></pre>
+String e = c.clone();                // an independent copy</code></pre></div>
 <p><code>String::new</code> allocates a seventeen-byte buffer (capacity sixteen plus a trailing NUL) so early appends do not reallocate. <code>withCap</code> reserves at least seven bytes. <code>from</code> sizes exactly to the view's length. Every <code>String</code> keeps a NUL one past <code>len</code> for <code>asCstr</code>, but <code>len</code> is always authoritative.</p>
 <p><code>String::new</code> starts with <code>len</code> zero but room already reserved, so the first appends are cheap. The trailing NUL is a courtesy for C; Coral trusts <code>len</code>.</p>
 <p>Appending has a method for each source:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">String sb = String::new();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">String sb = String::new();
 sb.pushView(&quot;Hello, &quot;);        // append a str, no copy of the middle
 sb.pushStr(&amp;name);             // append another String
 sb.pushCstr(cstr);             // append a C string
 sb.pushChar(&#x27;!&#x27;);              // append one raw byte
 sb.pushCodepoint(&#x27;é&#x27;);         // append one Unicode scalar as UTF-8
 sb.pushByte(0x0A);             // append one byte
-sb.appendView(&quot; more&quot;);        // an alias for pushView</code></pre>
+sb.appendView(&quot; more&quot;);        // an alias for pushView</code></pre></div>
 <p><code>pushChar</code> appends one raw byte; <code>pushCodepoint</code> appends a <code>char</code> as one-to-four UTF-8 bytes, substituting the replacement character for an invalid codepoint. The distinct names make the Unicode intent visible.</p>
 <p>Repeating and editing:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">sb.pushRepeat(&#x27;-&#x27;, 20);            // &quot;--------------------&quot;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">sb.pushRepeat(&#x27;-&#x27;, 20);            // &quot;--------------------&quot;
 sb.insertView(0, &quot;&gt;&gt; &quot;);           // insert at a byte offset
 sb.removeRange(0, 3);              // delete [start, end)
 sb.replaceAll(&quot;old&quot;, &quot;new&quot;);       // replace every occurrence
 sb.truncate(10);                   // keep the first 10 bytes
 sb.clear();                        // len = 0, buffer kept
 sb.shrinkToFit();                  // release unused capacity
-sb.free();                         // free now, by hand</code></pre>
+sb.free();                         // free now, by hand</code></pre></div>
 <p>Search and inspect while editing:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize n    = sb.countChar(&#x27;a&#x27;);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize n    = sb.countChar(&#x27;a&#x27;);
 usize i    = sb.findView(&quot;needle&quot;);
 usize j    = sb.findChar(&#x27;n&#x27;);
 usize k    = sb.rfindChar(&#x27;n&#x27;);
@@ -133,9 +133,9 @@ bool  suf  = sb.endsWith(&quot;!&quot;);
 bool  has  = sb.containsView(&quot;ell&quot;);
 i32   ord  = sb.compare(&amp;other);
 bool  same = sb.equals(&amp;other);
-bool  eqv  = sb.equalsView(&quot;hello&quot;);</code></pre>
+bool  eqv  = sb.equalsView(&quot;hello&quot;);</code></pre></div>
 <p>Transform in place or produce a new <code>String</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">sb.toUpper();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">sb.toUpper();
 sb.toLower();
 sb.reverse();
 
@@ -144,30 +144,30 @@ String pad   = sb.padLeft(20, &#x27; &#x27;);
 String padR  = sb.padRight(20, &#x27;.&#x27;);
 String rep   = sb.repeat(3);
 String trimmed = sb.trim();
-Vec&lt;str&gt; parts = sb.splitByte(&#x27;,&#x27;);</code></pre>
+Vec&lt;str&gt; parts = sb.splitByte(&#x27;,&#x27;);</code></pre></div>
 <p><code>substr</code> takes <code>(start, end)</code>, an exclusive end, unlike <code>strutil::substr</code>, which takes a length. <code>splitByte</code> returns views into <code>sb</code>, valid only until a reallocating mutation; consume or copy them. <code>toUpper</code>, <code>toLower</code>, and <code>reverse</code> are byte-wise and assume ASCII. <code>replaceAll</code> mutates in place and handles self-referential arguments with a defensive copy. <code>clear</code> keeps the buffer; <code>shrinkToFit</code> releases unused capacity.</p>
 <p>Two conversions are easy to confuse: <code>asView</code> borrows, <code>clone</code> allocates an independent copy.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str borrowed = sb.asView();        // no allocation, tied to sb&#x27;s lifetime
-String owned  = sb.clone();        // allocates</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">str borrowed = sb.asView();        // no allocation, tied to sb&#x27;s lifetime
+String owned  = sb.clone();        // allocates</code></pre></div>
 <p>Use <code>asView</code> to pass a <code>String</code> where a <code>str</code> is wanted; use <code>clone</code> when the copy must outlive the original. A <code>String</code> is freed by <code>free</code> or <code>@drop</code>; a <code>str</code> is never freed. This is <a href="../11-memory-management/index.html">Chapter 11</a> ownership applied to text.</p>
 <section><h2 id="s17-3">The strutil Free Functions</h2></section>
 <p><code>std::text::strutil</code> exposes the same logic as free functions for functional style and pipelines:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::strutil {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::strutil {
     split, splitVec, trim, trimLeft, trimRight,
     startsWith, endsWith, contains,
     indexOf, indexOfChar, lastIndexOf,
     replace, join, joinVec, substr, equalsIgnoreCase
-};</code></pre>
+};</code></pre></div>
 <p>Signatures and short uses:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize split(str sv, u8 delim, str* out, usize maxParts);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize split(str sv, u8 delim, str* out, usize maxParts);
 Vec&lt;str&gt; splitVec(str sv, u8 delim);
 
 str* pieces = alloc&lt;str&gt;(16);
 usize n = split(line, &#x27;,&#x27;, pieces, 16);        // at most 16 fields
 Vec&lt;str&gt; all = splitVec(line, &#x27;,&#x27;);            // as many as there are
-dealloc&lt;str&gt;(pieces);</code></pre>
+dealloc&lt;str&gt;(pieces);</code></pre></div>
 <p><code>split</code> writes into a caller array and stops after <code>maxParts</code>, putting the unsplit remainder in the final element; <code>splitVec</code> allocates and returns every field.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str trimmed  = trim(sv);              // both ends, whitespace bytes
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">str trimmed  = trim(sv);              // both ends, whitespace bytes
 str left     = trimLeft(sv);
 str right    = trimRight(sv);
 
@@ -184,14 +184,14 @@ String joined = join(parts, count, &quot;, &quot;);  // const str* array
 String jv     = joinVec(&amp;vecOfStr, &quot;, &quot;);  // a Vec&lt;str&gt;
 str sub       = substr(sv, start, len);    // a view, no copy
 
-bool ci      = equalsIgnoreCase(&quot;Hello&quot;, &quot;hELLo&quot;);</code></pre>
+bool ci      = equalsIgnoreCase(&quot;Hello&quot;, &quot;hELLo&quot;);</code></pre></div>
 <p><code>indexOf</code> returns <code>isize</code> so <code>-1</code> can mean not found without colliding with a real index. <code>substr</code> takes <code>start</code> and <code>length</code> and returns a view, safe only while the source outlives it. Note the mismatch: <code>strutil::substr(sv, start, len)</code> takes a length, while <code>String::substr(start, end)</code> takes an exclusive end.</p>
 <p>At every <code>substr</code>, check whether the second number is an end index or a length; off-by-one bugs live here.</p>
 <section><h2 id="s17-4">ASCII, UTF-8, and the Layers of Text</h2></section>
 <p>Text has layers: a byte is a <code>u8</code>; an ASCII character is a byte with ASCII meaning; a codepoint is a Unicode scalar value stored as <code>char</code>; an encoded character is one to four UTF-8 bytes. Use the layer that matches your intent.</p>
 <p>A byte is an envelope, a codepoint is a letter, and a UTF-8 character is the one-to-four envelopes needed to mail it. Counting envelopes and counting letters differ.</p>
 <p><code>std::text::ascii</code> classifies and converts bytes in O(1):</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::ascii {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::ascii {
     isAscii, isAsciiDigit, isAsciiAlpha, isAsciiAlnum,
     isAsciiHex, isAsciiSpace, isAsciiUpper, isAsciiLower,
     toAsciiLower, toAsciiUpper, asciiDigitVal, asciiHexVal
@@ -201,16 +201,16 @@ if (isAsciiDigit(c)) { ... }
 u8 lower = toAsciiLower(&#x27;Q&#x27;);          // &#x27;q&#x27;
 u8 upper = toAsciiUpper(&#x27;q&#x27;);          // &#x27;Q&#x27;
 u8 value = asciiDigitVal(&#x27;7&#x27;);         // 7
-u8 hexv  = asciiHexVal(&#x27;f&#x27;);           // 15</code></pre>
+u8 hexv  = asciiHexVal(&#x27;f&#x27;);           // 15</code></pre></div>
 <p>For text known to be ASCII, these are all you need and faster than Unicode-aware routines. The module also carries UTF-8 helpers:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u32 bytes = utf8ByteCount(b0);                  // length of the sequence b0 starts
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u32 bytes = utf8ByteCount(b0);                  // length of the sequence b0 starts
 u32 cp    = utf8Decode(buf, &amp;bytesOut);         // decode one codepoint
 u32 wrote = utf8Encode(cp, out);                // encode one codepoint
 usize cc  = utf8CountChars(s);                  // codepoints in a str
 bool ok   = utf8IsValid(s);                     // well-formed UTF-8?
-u32 w16   = utf16ToUtf8(0x00E9, out);           // one UTF-16 unit -&gt; UTF-8</code></pre>
+u32 w16   = utf16ToUtf8(0x00E9, out);           // one UTF-16 unit -&gt; UTF-8</code></pre></div>
 <p><code>std::text::utf8</code> works on <code>(pointer, length)</code> buffers and returns <code>String</code> when it allocates:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::utf8;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::utf8;
 
 u8 written = utf8::encodeCodepoint(cp, out);            // -&gt; bytes written
 u32 code   = utf8::decodeCodepoint(s, len, &amp;consumed);  // -&gt; codepoint
@@ -220,46 +220,46 @@ bool valid = utf8::isValid(s, len);
 String low = utf8::toLower(s, len);                     // -&gt; String
 String up  = utf8::toUpper(s, len);                     // -&gt; String
 Option&lt;char&gt; next = utf8::nextChar(s, len, &amp;consumed);  // -&gt; Some/None
-String one = utf8::encodeChar(c);                       // -&gt; String</code></pre>
+String one = utf8::encodeChar(c);                       // -&gt; String</code></pre></div>
 <p>Naming the layer makes the classic byte-versus-character bug visible. Beneath both is <code>core::char_util</code>, with per-<code>char</code> operations <code>charIsDigit</code>, <code>charIsAlpha</code>, <code>charIsValid</code>, <code>charIsAscii</code>, <code>charToUpper</code>, <code>charToLower</code>, <code>charEncodeUtf8(char, u8*)</code>, and <code>charDecodeUtf8(const u8*, usize, usize*)</code>, plus byte-level classics (<code>isDigit</code>, <code>isAlpha</code>, <code>toUpper</code>, <code>digitValue</code>, <code>encodeUtf8</code>, <code>decodeUtf8</code>) that <code>ascii</code> delegates to. <code>ascii::utf8Decode</code> and <code>utf8ByteCount</code> assume well-formed bytes; <code>utf8::isValid</code> and <code>ascii::utf8IsValid</code> validate. Validate once at the boundary, then trust the fast routines.</p>
 <section><h2 id="s17-5">Formatting: print, println, and the Format Language</h2></section>
 <p>Coral's formatting is checked at compile time. The entry points are the print family in <code>std::io::ios</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void print&lt;comptime T&gt;(T fmt, ...)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void print&lt;comptime T&gt;(T fmt, ...)
 pub void println&lt;comptime T&gt;(T fmt, ...)
 pub void eprint&lt;comptime T&gt;(T fmt, ...)
 pub void eprintln&lt;comptime T&gt;(T fmt, ...)
 pub void vaprint(... args)
 
-import(lib) std::io::ios { print, println, eprint, eprintln };</code></pre>
+import(lib) std::io::ios { print, println, eprint, eprintln };</code></pre></div>
 <p>Each takes a format string and a variadic tail. The <code>comptime</code> parameter lets the compiler check format and argument types together, so mismatches are build errors. <code>{}</code> takes the next argument, <code>{{</code> and <code>}}</code> are literal braces, and placeholder and argument counts must match exactly.</p>
 <p><code>{}</code> dispatches on the argument's type. It handles built-in scalars, <code>bool</code>, <code>cchar</code>, <code>char</code>, both C strings, <code>str</code>, <code>String</code>, <code>rawptr</code>, manipulators, and any type implementing <code>@toStr</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">println(&quot;x = {}, y = {}&quot;, x, y);
-println(&quot;name = {}, age = {}&quot;, name, age);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">println(&quot;x = {}, y = {}&quot;, x, y);
+println(&quot;name = {}, age = {}&quot;, name, age);</code></pre></div>
 <p>A type with neither a built-in printer nor <code>@toStr</code> is a compile error, so a struct cannot be printed as raw bytes. Add a <code>@toStr</code> conformance to fix it.</p>
 <p>Explicit placeholders select a rendering: <code>{:d}</code> decimal, <code>{:x}</code> hexadecimal, <code>{:b}</code> binary, <code>{:p}</code> pointer, and <code>{..}</code> spreads an iterable with comma-and-space separators:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">println(&quot;value = {:d} hex = {:x} bin = {:b}&quot;, n, n, n);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">println(&quot;value = {:d} hex = {:x} bin = {:b}&quot;, n, n, n);
 println(&quot;at {:p}&quot;, ptr);
-println(&quot;items: {..}&quot;, vec);</code></pre>
+println(&quot;items: {..}&quot;, vec);</code></pre></div>
 <p>The integer formats accept only integers (<code>char</code> counts and renders its codepoint), so formatting a float with <code>{:x}</code> is a compile error. <code>{..}</code> requires a range-for-able argument and is likewise checked.</p>
 <p>Format specifiers are few; manipulators handle the rest. They render specially and work through <code>{}</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { _spaces, _repeat, _hex, _bin, _fixed };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { _spaces, _repeat, _hex, _bin, _fixed };
 
 println(&quot;{}right-aligned&quot;, _spaces(10));      // ten spaces, then the text
 println(&quot;{}&quot;, _repeat(&#x27;-&#x27;, 30));              // a rule of thirty dashes
 println(&quot;{}&quot;, _hex(0xDEADBEEF));              // 0xdeadbeef
 println(&quot;{}&quot;, _bin(0b1010));                  // 0b1010
-println(&quot;{}&quot;, _fixed(3.14159, 2));            // 3.14</code></pre>
+println(&quot;{}&quot;, _fixed(3.14159, 2));            // 3.14</code></pre></div>
 <p>Signatures are <code>_spaces(u64 count)</code>, <code>_repeat(u8 ch, u64 count)</code>, <code>_hex(u64 value)</code>, <code>_bin(u64 value)</code>, and <code>_fixed(f64 value, u64 precision)</code>. The manipulator structs are module-internal; the underscore-prefixed constructors are the public API. <code>ios::_repeat</code> takes a <code>u8</code> and a count, while <code>fmt::repeat</code> takes a <code>str</code> and a count; import carefully.</p>
 <p>A three-line program using the format language:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 
 void main() {
     i64 n = 255;
     println(&quot;dec {:d} hex {:x} bin {:b}&quot;, n, n, n);
-}</code></pre>
+}</code></pre></div>
 <p>Printing a number in several bases is common, and knowing <code>{}</code> consumes an argument while <code>{{</code> prints a literal brace saves confusion.</p>
 <p>For building a <code>String</code>, <code>std::fmt</code>'s <code>formatX</code> family converts one value and returns an owned <code>String</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::fmt::fmt {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::fmt::fmt {
     formatInt, formatUint, formatFloat, formatHex,
     formatHexUpper, formatBin, formatChar,
     padLeft, padRight, repeat as repeatStr, join, joinVec
@@ -273,13 +273,13 @@ String px  = formatHex(0xBEEF, true);        // &quot;0xbeef&quot;
 String bny = formatBin(0b1010, true);        // &quot;0b1010&quot;
 String ch  = formatChar(&#x27;é&#x27;);                // its UTF-8 bytes
 String pad = padLeft(&quot;hi&quot;, 5, &#x27; &#x27;);          // &quot;   hi&quot;
-String pad2= padRight(&quot;hi&quot;, 5, &#x27;.&#x27;);         // &quot;hi...&quot;</code></pre>
+String pad2= padRight(&quot;hi&quot;, 5, &#x27;.&#x27;);         // &quot;hi...&quot;</code></pre></div>
 <p>Signatures are <code>formatInt(i64 val, u64 radix, bool upper)</code>, <code>formatUint(u64 val, u64 radix, bool upper)</code>, <code>formatFloat(f64 val, u64 precision)</code>, <code>formatHex(u64 val, bool prefix)</code>, <code>formatBin(u64 val, bool prefix)</code>, and <code>formatChar(char c)</code>. Also <code>padLeft(str sv, usize width, u8 pad)</code>, <code>padRight(str sv, usize width, u8 pad)</code>, <code>repeat(str sv, usize count)</code>, <code>join(const str* parts, usize count, str sep)</code>, and <code>joinVec(const Vec&lt;String&gt;* parts, str sep)</code>. <code>String</code> has <code>padLeft</code>, <code>padRight</code>, <code>repeat</code>, and a static <code>join</code>.</p>
 <p>One caveat: <code>std::fmt</code> also exposes <code>String format(str f, ...)</code>, and it is a stub. It deletes exact <code>{}</code> pairs and substitutes nothing, copying every other byte unchanged; <code>{:x}</code> is left literally. It does not interpolate. <code>format("x = {}", 3)</code> yields <code>"x = "</code> with no error. Interpolation lives in <code>print</code>, <code>println</code>, <code>eprint</code>, and <code>eprintln</code>; use the <code>formatX</code> family to build strings.</p>
 <section><h2 id="s17-6">The Parsing Layer</h2></section>
 <p>Coral ships parsers for most common formats. They share a design: a type models the document, a parse function returns a <code>Result</code>, and a serialise function writes one back. Failure is a value, not an exception.</p>
 <p>The JSON parser is the model. Its value type uses a tag rather than a recursive variant:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub enum JsonType {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub enum JsonType {
     Null, Bool, I64, F64, String, Array, Object
 }
 
@@ -296,9 +296,9 @@ pub struct JsonValue {
 pub struct JsonPair {
     String key;
     JsonValue value;
-}</code></pre>
+}</code></pre></div>
 <p>Construction uses named constructors, and parsing returns a <code>Result</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::parser::json { parseJson, serialize, JsonValue, JsonType, JsonPair };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::parser::json { parseJson, serialize, JsonValue, JsonType, JsonPair };
 
 Result&lt;JsonValue, ParseError&gt; result = parseJson(text);
 if (result.isOk()) {
@@ -308,9 +308,9 @@ if (result.isOk()) {
     println(&quot;{}&quot;, back);
 } else {
     eprintln(&quot;bad json&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>Read a value by switching on its <code>type</code> tag; the compiler checks exhaustiveness:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">f64 numberField(JsonValue* doc, str key) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">f64 numberField(JsonValue* doc, str key) {
     switch (doc-&gt;type) {
         JsonType::Object =&gt; {
             for (JsonPair p : doc-&gt;objVal) {
@@ -326,9 +326,9 @@ if (result.isOk()) {
         },
         else  =&gt; { return 0.0; },
     }
-}</code></pre>
+}</code></pre></div>
 <p>CSV has its own streaming reader because of quoting rules. <code>CsvReader</code> reads one row at a time:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::parser::csv { CsvReader };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::parser::csv { CsvReader };
 
 CsvReader reader = CsvReader::new(text);
 Vec&lt;String&gt; fields = Vec&lt;String&gt;::new();
@@ -338,9 +338,9 @@ while (true) {
     bool got = row.unwrap();
     if (!got) { break; }                 // end of input
     // fields[0], fields[1], ...
-}</code></pre>
+}</code></pre></div>
 <p>Other formats follow the same pattern: TOML returns a <code>TomlDoc</code>, INI an <code>IniFile</code>, XML an <code>XmlNode</code> tree, and UUID provides identifiers. Regex and URI round out the lower-level tools:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// TOML
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// TOML
 import(lib) std::parser::toml { parseToml, TomlDoc, TomlValue, TomlValueType };
 Result&lt;TomlDoc, ParseError&gt; t = parseToml(text);
 Option&lt;TomlValue*&gt; v = t.unwrap().get(&quot;title&quot;);
@@ -363,12 +363,12 @@ Option&lt;XmlNode*&gt; child = node.firstChild(&quot;name&quot;);
 // UUID
 import(lib) std::parser::uuid { Uuid, uuidV4, parseUuid };
 String fresh = uuidV4();                 // a new random v4 id as text
-Result&lt;Uuid, ParseError&gt; id = parseUuid(&quot;...&quot;);</code></pre>
+Result&lt;Uuid, ParseError&gt; id = parseUuid(&quot;...&quot;);</code></pre></div>
 <p>Each parser models a typed document and returns a <code>Result</code>, so exhaustiveness checking and the failure path apply as in Chapters13 and 15.</p>
 <section><h2 id="s17-7">Regular Expressions and URIs</h2></section>
 <p>Two more text tools come up constantly.</p>
 <p><code>std::text::regex</code> wraps a regular-expression engine with a small API. Compile a <code>Regex</code> once and reuse it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::regex { Regex, regexFlags };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::regex { Regex, regexFlags };
 
 Regex re;
 if (!re.compile(&quot;([0-9]+)-([0-9]+)&quot;, false)) {       // false = case-sensitive
@@ -383,10 +383,10 @@ if (re.find(&quot;range 12-34 here&quot;, &amp;groups)) {
     // here groups[0] == &quot;12-34&quot;, groups[1] == &quot;12&quot;, groups[2] == &quot;34&quot;
     println(&quot;first = {}, second = {}&quot;, groups.at(1), groups.at(2));
 }
-re.free();</code></pre>
+re.free();</code></pre></div>
 <p><code>compile</code> takes a pattern and a <code>caseInsensitive</code> flag and reports validity. <code>matches</code> is anchored and whole-string, so it validates strict patterns; use <code>find</code> for substring search. <code>find</code> fills a <code>Vec&lt;str&gt;</code> with the whole match in slot zero and each capture after it; a non-participating group is the empty string, so the vector length matches the group count. The captured <code>str</code>s are views into the <code>Regex</code>'s scratch buffer and stay valid only until the next <code>find</code> or <code>free</code>, so copy anything you keep. <code>free</code> also releases the scratch buffer.</p>
 <p><code>std::text::uri</code> parses a URL into its parts, saving the manual split-on-scheme, authority, and query dance:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::uri { Uri };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::uri { Uri };
 
 Uri u = Uri::new();
 if (u.parse(&quot;https://user@example.com:8443/a/b?x=1#frag&quot;)) {
@@ -397,11 +397,11 @@ if (u.parse(&quot;https://user@example.com:8443/a/b?x=1#frag&quot;)) {
     println(&quot;path     = {}&quot;, u.path.asView());
     println(&quot;query    = {}&quot;, u.query.asView());
     println(&quot;fragment = {}&quot;, u.fragment.asView());
-}</code></pre>
+}</code></pre></div>
 <p><code>parse</code> reports whether the input looked like a URI; its fields are <code>String</code>s readable through <code>asView</code>. A <code>Uri</code> frees its fields when it drops.</p>
 <section><h2 id="s17-8">A Worked Example: A CSV Reader</h2></section>
 <p>A CSV reader must split lines into fields, handle quoted fields containing commas, and convert numbers. The library's <code>CsvReader</code> handles the hard part:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::parser::csv { CsvReader, ParseError };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::parser::csv { CsvReader, ParseError };
 import(lib) std::text::string { String };
 import(lib) std::text::strutil { trim };
 import(lib) std::io::ios { parseF64, eprintln };
@@ -440,12 +440,12 @@ void readRows(str text) {
         fields.atPtr(i)-&gt;free();
     }
     fields.dispose();
-}</code></pre>
+}</code></pre></div>
 <p>The reader handles quoting, including embedded commas and doubled quotes inside a quoted field. <code>parseF64</code> converts a <code>str</code> and reports success through an out-parameter, a lightweight alternative to <code>Result</code> for yes-or-no. This is the usual text-processing shape: scan for structure, slice views, trim, convert, and allocate a <code>String</code> only when the text must be owned.</p>
 <p>Two ownership details make the example correct. <code>CsvReader::new(text)</code> stores the text's pointer and length without copying, so the input <code>str</code> must outlive the reader. <code>readRow</code> frees the previous row's <code>String</code>s and reuses the same <code>Vec</code>, so <code>fields</code> describes only the current row; the explicit cleanup before returning releases the last row. <code>Result</code> handles malformed input, while <code>Ok(false)</code> means clean end of stream.</p>
 <section><h2 id="s17-9">A Worked Example: Human-Readable Sizes</h2></section>
 <p>Formatting is part of the text layer. A small size formatter shows the <code>formatX</code> family and <code>String</code> assembly together:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::fmt::fmt { formatFloat, padLeft };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::fmt::fmt { formatFloat, padLeft };
 import(lib) std::text::string { String };
 import(lib) std::io::ios { println };
 
@@ -477,7 +477,7 @@ String humanSize(f64 bytes) {
     return out;                       // caller owns the result
 }
 
-println(&quot;cache: {}&quot;, humanSize(1536.0));     // cache:     1.5 KiB</code></pre>
+println(&quot;cache: {}&quot;, humanSize(1536.0));     // cache:     1.5 KiB</code></pre></div>
 <p><code>formatFloat</code> renders one decimal place, <code>padLeft</code> aligns to seven characters, and <code>pushView</code>/<code>pushChar</code> assemble the result. Convert with the right format function, assemble with append methods, and print only at the end. It is more verbose than <code>println</code>, and correct when the string must outlive the call.</p>
 <section><h2 id="s17-10">Exercises</h2></section>
 <section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>What is the difference between <code>str</code> and <code>String</code>? Give a function signature for which each is the correct parameter type, and explain what would go wrong if you used the other.</li><li><span class="ex-label">Comprehension</span>Why does <code>countCodepoints</code> exist alongside a byte length? Give a string whose byte length and codepoint count differ, and say which one a text editor should display and which an allocation should use.</li><li><span class="ex-label">Implementation</span>Write a function that reverses a UTF-8 string by codepoint, not by byte. Use <code>nextCodepoint</code> and a <code>String</code> buffer, and make sure a multi-byte character comes out intact.</li><li><span class="ex-label">Implementation</span>Write <code>isPalindrome(str) bool</code> that ignores case and non-alphanumeric characters. Which functions from <code>ascii</code> and <code>char_util</code> help, and why is a byte-by-byte comparison wrong for non-ASCII input?</li><li><span class="ex-label">Formatting</span>Print a price table where each column is aligned: a name left-aligned to twenty characters and a price right-aligned to ten. Which manipulators and which <code>padLeft</code>/<code>padRight</code> do you need? Then produce the same table as a <code>String</code> instead of printing it.</li><li><span class="ex-label">Parsing</span>Extend the CSV example to sum a numeric column and print the average. Then write the test case, a quoted field containing a comma, that a naive <code>splitByte(',')</code> would get wrong but <code>CsvReader</code> gets right.</li><li><span class="ex-label">Conversion</span>Write <code>parseI64(str, bool*)</code> by hand without using the library, then compare its behaviour to <code>ios::parseI64</code> on the inputs <code>""</code>, <code>"-"</code>, <code>"12x"</code>, <code>" 12"</code>, and <code>"-9223372036854775808"</code>. Which inputs should fail, and which does the library reject that a naive loop would accept?</li><li><span class="ex-label">Stub</span>Call <code>format("x = {}", 3)</code> from <code>std::fmt</code> and print the result. Explain in one paragraph why it does not interpolate and what you should use instead. This is a trap worth stepping in once, deliberately, in a test.</li><li><span class="ex-label">Unicode</span>A user types an emoji (four UTF-8 bytes) into a name field limited to ten characters. Counted in bytes, how many can they type? Counted in codepoints, how many? Which should the limit use, and why?</li><li><span class="ex-label">Regex</span>Write a <code>Regex</code> that matches a simple <code>key=value</code> line, use <code>find</code> to pull out both captures, and explain what <code>groups[0]</code> holds that <code>groups[1]</code> does not.</li><li><span class="ex-label">URI</span>Parse <code>https://example.com:8443/path?q=1#top</code> and print each component. What does the port default to when the input omits it, and how can the caller tell the difference between "no port" and the default?</li><li><span class="ex-label">Meta</span>The formatting system rejects an unprintable type at compile time, whereas a C <code>printf</code> prints garbage and a Python f-string calls <code>str</code> at runtime. Argue for and against compile-time checking of format strings, and name a case where it is inconvenient.</li></ol></section>

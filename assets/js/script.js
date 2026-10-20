@@ -66,7 +66,7 @@ function highlightCodeBlocks() {
 function bindCopyButtons() {
   document.querySelectorAll(".copy-btn").forEach((button) => {
     button.addEventListener("click", async () => {
-      const codeBlock = button.parentElement.querySelector("code");
+      const codeBlock = button.closest(".code-block")?.querySelector("code");
       if (!codeBlock) return;
 
       const text = codeBlock.textContent || "";

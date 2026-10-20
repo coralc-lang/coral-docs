@@ -37,7 +37,7 @@
 <p class="step-label">The problem</p>
 <p>You have a table of records in memory and want them as comma-separated values, one record per line, in a file you can read back.</p>
 <p>CSV is line-oriented: each line is a record, each field separated by commas. A field containing a comma, newline, or double quote must be wrapped in quotes with inner quotes doubled. A writer that ignores this produces a file a strict reader splits wrongly. The example writes the rule once, in <code>csvField</code>, and uses it for every field.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { fileOpen, fileClose, fileWrite, writeFileFromString,
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { fileOpen, fileClose, fileWrite, writeFileFromString,
                            readFileToString, File, IoError };
 import(lib) std::io::ios { println };
 import(lib) std::text::string { String };
@@ -117,7 +117,7 @@ void main() {
         if (line.len == 0) continue;
         println(&quot;line {}: {}&quot;, i, line);
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>csvField</code> is the whole contract: a field is bare unless it contains a comma, quote, or newline, in which case it is wrapped and its quotes doubled. <code>csvFromRows</code> writes the header then each row, using <code>formatInt</code> and <code>formatFloat</code>. <code>writeFileFromString</code> writes the finished buffer in one call; <code>readFileToString</code> reads it back.</p>
 <p class="step-label">Cost and notes</p>
 <p>Encoding is O(total bytes) with one append per byte run. Text wastes space (an <code>i32</code> can cost eleven bytes instead of four) and every read pays to parse, but it buys inspectability across programs and decades.</p>
@@ -127,7 +127,7 @@ void main() {
 <p class="step-label">The problem</p>
 <p>You have a CSV file, possibly from the previous section or a spreadsheet, and need its fields as slices without copying. A naive <code>splitVec(..., ',')</code> cannot tell a separator from a comma inside quotes.</p>
 <p>A CSV parser is a tiny state machine: inside a bare field or a quoted one; inside quotes, a quote either closes the field or, if doubled, is literal. Quoted content is a view into the input, so the buffer must stay alive and unmodified; output built by appending must reserve up front, because growing a <code>String</code> can move its bytes and invalidate earlier views.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { readFileToString, IoError };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { readFileToString, IoError };
 import(lib) std::io::ios { println };
 import(lib) std::text::string { String };
 import(lib) std::text::strutil { splitVec };
@@ -221,7 +221,7 @@ void main() {
     describe(&quot;\&quot;Grace \&quot;\&quot;Amazing\&quot;\&quot; Hopper\&quot;,45,99.25&quot;);
     describe(&quot;\&quot;a,b\&quot;,c&quot;);
     describe(&quot;&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>The outer loop alternates: a quote starts a quoted field, scanned to its closing quote with doubled quotes collapsed; otherwise a bare field is scanned to the next comma. A quoted field without doubled quotes is a <code>slice</code> of the line, no copy. Only when quotes must be collapsed is a scratch <code>String</code> built, pre-sized with <code>withCap(cap + 1)</code> so storage is allocated once and never reallocated while its view is stretched. That line separates a working parser from one producing a dangling view when the buffer grows.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each line is one pass, O(bytes), usually allocating only the <code>Vec&lt;Field&gt;</code>. Unquoted and unescaped cases cost nothing beyond the slice; the escaped case costs one allocation per field. The parser copies nothing else, so <code>line</code> must outlive the fields. String literals in <code>main</code> live for the whole program; a caller reading a real buffer must keep it alive while any returned <code>str</code> is used.</p>
@@ -233,7 +233,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Read the whole file into one buffer, split into lines, and for each non-blank line find the first <code>=</code>; trimmed text left is the key, right is the value. Store pairs in a hash map keyed by key text. Split on the <em>first</em> <code>=</code>, so values may contain <code>=</code>; the map holds <code>str</code> views into the buffer, so the buffer must outlive it. A duplicate key takes the later assignment.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { readFileToString, writeFileFromString, IoError };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { readFileToString, writeFileFromString, IoError };
 import(lib) std::io::ios { println, parseU64 };
 import(lib) std::text::string { String };
 import(lib) std::text::strutil { splitVec };
@@ -305,7 +305,7 @@ void main() {
     println(&quot;port = {}&quot;, getConfigU64(&amp;cfg, &quot;port&quot;, 80u));
     println(&quot;retries = {}&quot;, getConfigU64(&amp;cfg, &quot;retries&quot;, 3u));
     println(&quot;missing = {}&quot;, getConfigU64(&amp;cfg, &quot;missing&quot;, 7u));
-}</code></pre>
+}</code></pre></div>
 <p>The parser allocates per entry only through the map's table, because every key and value is a slice of <code>text</code>. <code>line.trim()</code> removes spaces around <code>=</code>, <code>findByte</code> locates the separator, and two <code>slice</code> calls carve the halves. The <code>&gt;= line.len</code> test is the parse guard: <code>findByte</code> returns the length when the byte is absent. <code>getConfigU64</code> looks up the raw string, parses it, and falls back to a default on absence or malformed text.</p>
 <p class="step-label">Cost and notes</p>
 <p>Reading and splitting is O(total bytes); the map is O(1) average per lookup. Values are views, so the steady cost is one hash map. <code>getConfigU64</code> parses on demand, fine for startup; a hot path should parse once into a struct. <code>parseU64</code> takes a <code>bool*</code> out-parameter, the prelude convention for fast numeric parsers.</p>
@@ -317,7 +317,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Serialization walks the fields: write <code>"name":</code>, the escaped string, <code>,"port":</code>, the integer, and so on. Deserialization reads a quoted key, the colon, a value, and dispatches on the key. String escaping is the CSV quoting contract: the writer protects <code>"</code> and <code>\</code>, and the reader undoes exactly that. This is a subset: objects only, one level deep, string/integer/boolean values, no arrays, floats, <code>null</code>, or <code>\u</code> escapes.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println, parseI64 };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println, parseI64 };
 import(lib) std::text::string { String };
 import(lib) std::fmt::fmt { formatInt };
 
@@ -448,7 +448,7 @@ void main() {
             ok, back.name.asView(), back.port, back.tls);
 
     s.name.free(); back.name.free(); json.free();  // replenish the heap
-}</code></pre>
+}</code></pre></div>
 <p>The serializer is low-tech: <code>String</code> appends, <code>formatInt</code>, and a ternary. <code>jsonReadString</code> mirrors <code>jsonEscape</code>; after a backslash, the next byte stands for itself except <code>\n</code>. Keys dispatch by field <em>name</em>, not position, so unknown keys are skipped and reordering tolerated. <code>String::withCap(16)</code> allocates the scratch key once; <code>key.free()</code> avoids a leak. <code>Server::name</code> is owned, so the result outlives the input.</p>
 <p class="step-label">Cost and notes</p>
 <p>Both directions are one pass, O(total bytes), with one output allocation and one scratch <code>String</code> per key. The name is copied twice, the price of ownership when the input may be freed. A real serializer would use reflection or a trait, and a real parser a value tree, more machinery for the same bytes.</p>
@@ -460,7 +460,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Define fixed-layout structs and write fields one at a time in a chosen byte order rather than dumping raw memory. Compute offsets from <code>@sizeof</code> and freeze them in a helper, then check the layout with a <code>comptime</code> assertion so adding a field fails the build instead of silently shifting records. The header is sixteen bytes (<code>u32</code>, two <code>u16</code>s, <code>u64</code>), each record sixteen (<code>u64</code> id, <code>f64</code> score), so record <code>i</code> starts at <code>16 + i * 16</code>.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { fileOpen, fileClose, fileSeek, File, IoError, SEEK_SET };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { fileOpen, fileClose, fileSeek, File, IoError, SEEK_SET };
 import(lib) std::io::bio { FileReader, FileWriter };
 import(lib) std::io::ios { println };
 import(lib) std::text::string { String };
@@ -566,7 +566,7 @@ void main() {
         Entry e = back.at(i);
         println(&quot;id {} score {}&quot;, e.id, e.score);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The <code>comptime</code> block keeps the contract: it refuses to compile if <code>Header</code> stops being sixteen bytes, so the hard-coded <code>16</code> in <code>entryOffset</code> cannot go stale. <code>FileWriter</code> writes each field little-endian regardless of host order; <code>FileReader</code> reads it the same way. Seeking to <code>entryOffset(i)</code> before each read is redundant for contiguous records, but it makes the offset part of the format, exactly what the index in 41.8 exploits.</p>
 <p class="step-label">Cost and notes</p>
 <p>Writing is O(records) system-buffered writes; reading is O(records), each two fixed-width reads. The file is <code>16 + 16n</code> bytes with no delimiters and no per-field parsing: a <code>u64</code> read is a load, not a <code>parseU64</code>. The header's <code>count</code> lets a reader allocate the right size up front. <code>FileReader</code>'s typed readers discard their <code>Result</code> and yield zero on a short read, so this code trusts <code>count</code>; a defensive reader would use <code>readBytes</code> and check it.</p>
@@ -578,7 +578,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>CRC32 treats the bytes as one enormous polynomial over GF(2) and takes the remainder modulo a fixed polynomial. Practically: keep a thirty-two-bit register, XOR in each byte, shift right eight times, conditionally XOR-ing the reflected polynomial <code>0xEDB88320</code> whenever the shifted-out bit was one. Start at all ones and complement the final value. CRC32 detects every single-bit error and every burst up to thirty-two bits; it is not cryptographic and cannot resist forgery.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { readFileToString, writeFileFromString, IoError };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { readFileToString, writeFileFromString, IoError };
 import(lib) std::io::ios { println };
 import(lib) std::text::string { String };
 import(lib) std::fmt::fmt { formatHex };
@@ -636,7 +636,7 @@ void main() {
                  ((u32)back.at(back.len - 1) &lt;&lt; 24);
     // Verification: the recomputed CRC must match the stored one.
     println(&quot;verified {}&quot;, stored == crc32(body));
-}</code></pre>
+}</code></pre></div>
 <p><code>crc32Update</code> is separate from <code>crc32</code> so a record can be checksummed in pieces without concatenating buffers; the log store in 41.7 uses that split to hash key and value without joining them. <code>crc32</code> is the one-shot form. The checksum is written little-endian after the payload, and <code>main</code>'s reconstruction is that agreement written down. The <code>back.len &lt; 4</code> guard rejects a file too short to hold a trailer.</p>
 <p class="step-label">Cost and notes</p>
 <p>The bitwise form does eight shift-and-branch steps per byte, roughly an order of magnitude more work than reading. The standard optimization is a 256-entry table indexed by <code>(c ^ byte) &amp; 0xFF</code>, replacing the inner loop with one load and one shift; build it once at startup. For occasional files the bitwise version is adequate and keeps the polynomial visible. The library's <code>std::crypto::crc::crc32(str)</code> is the table version.</p>
@@ -648,7 +648,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Every write appends a record: <code>[u32 keyLen][u32 valLen][key bytes][val bytes][u32 crc]</code>. Reading scans sequentially; the <em>last</em> record for a key wins, so an update is an append and a delete is an empty-value tombstone. The CRC catches a torn or corrupted record, which the scanner skips. Mode <code>"a"</code> creates the file if needed and writes at the end, so writers cannot clobber earlier records, though they can interleave.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { fileOpen, fileClose, deleteFile, File, IoError };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { fileOpen, fileClose, deleteFile, File, IoError };
 import(lib) std::io::bio { FileReader, FileWriter };
 import(lib) std::io::ios { println };
 import(lib) std::text::string { String };
@@ -754,7 +754,7 @@ void main() {
     if (kvGet(path.asView(), &quot;beta&quot;, &amp;v)) println(&quot;beta = {}&quot;, v.asView());
     if (kvGet(path.asView(), &quot;gamma&quot;, &amp;v)) println(&quot;gamma = {}&quot;, v.asView());
     else println(&quot;gamma absent&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>The record's shape is fixed enough to scan and self-describing enough to skip: lengths come first, so the scanner knows how many bytes to read; the CRC trailer comes last, computed over exactly those bytes. <code>readU32Le</code> exists because <code>FileReader</code>'s typed readers swallow a short read and return zero, indistinguishable from a real zero length; the explicit <code>readBytes</code> reports a clean end of log. A torn tail stops the scan under the same guard, so a half-written last record is ignored.</p>
 <p class="step-label">Cost and notes</p>
 <p><code>kvPut</code> is O(key + value) plus the append and never reads the existing file, so writes stay cheap as the store grows. <code>kvGet</code> is O(file size), scanning every record, the price of having no index and the reason the next section exists. Space grows without bound as keys are overwritten; the cure is compaction, rewriting only live records into a fresh file and renaming it into place, which is 41.9 applied to the whole store.</p>
@@ -766,7 +766,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Scan the file once and build a hash map from key text to the byte offset of its latest record. Later records override earlier ones, so a plain <code>insert</code> leaves the newest offset. A lookup hashes the query, gets the offset, seeks, and reads one record. The map's keys are <code>str</code> views into the in-memory file copy, so that copy must stay alive, which is why <code>main</code> reads the whole file into a <code>String</code> first.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { readFileToString, fileOpen, fileClose, fileSeek,
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { readFileToString, fileOpen, fileClose, fileSeek,
                            File, IoError, SEEK_SET };
 import(lib) std::io::bio { FileReader };
 import(lib) std::io::ios { println };
@@ -854,7 +854,7 @@ void main() {
         println(&quot;alpha = {}&quot;, v.asView());
     else
         println(&quot;alpha absent&quot;);
-}</code></pre>
+}</code></pre></div>
 <p><code>buildIndex</code> reads the two lengths, computes the record length, and advances <code>off</code> by exactly that much; a self-describing layout means the scanner never parses a key to find the next record. Storing each record's offset, not a copy of its value, keeps the index small: a key view plus one integer. <code>indexedGet</code> is the payoff: one hash lookup, one <code>fileSeek</code>, and one record read, independent of file size.</p>
 <p class="step-label">Cost and notes</p>
 <p>Building the index is one O(file size) pass at startup; each lookup is O(1) average plus a seek and a record read. The index holds one entry per distinct key, so memory is proportional to keys, not records, the trade a database makes between a table and its indexes. A seek is bounded; scanning is not. This is the smallest in-memory index atop an append-only log in log-structured stores from LevelDB to Bitcask.</p>
@@ -866,7 +866,7 @@ void main() {
 <p class="step-label">The idea</p>
 <p>Write the new contents to a temporary file, then after it is fully written and closed, rename it over the target. On POSIX, <code>rename</code> within one filesystem is atomic: the name refers to the new file, and any reader sees either old or new. The temporary must live in the same directory as the target, because a cross-filesystem rename fails. If anything fails before the rename, unlink the temporary, leaving the target untouched.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { writeFileFromString, renameFile, deleteFile, IoError };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { writeFileFromString, renameFile, deleteFile, IoError };
 import(lib) std::io::ios { println };
 import(lib) std::text::string { String };
 
@@ -907,7 +907,7 @@ void main() {
     // Publish the first contents, then replace them with the second.
     if (atomicWrite(path.asView(), &amp;first)) println(&quot;published 1&quot;);
     if (atomicWrite(path.asView(), &amp;second)) println(&quot;published 2&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>Appending <code>".tmp"</code> to the target's own path is the trick: <code>"/tmp/coral-state.txt"</code> becomes <code>"/tmp/coral-state.txt.tmp"</code>, in the same directory and filesystem. <code>writeFileFromString</code> opens the temp with mode <code>"w"</code>, truncating and writing the full buffer, and closes it before returning, so the bytes are in the file when <code>renameFile</code> runs. Both failure paths unlink the temp and leave the target alone, making the operation all-or-nothing from the reader's view.</p>
 <p class="step-label">Cost and notes</p>
 <p>The write costs one file's worth of bytes plus a rename, roughly double the data movement of an in-place overwrite. That is the price of the guarantee, a good trade for small state files. It also needs free space for two copies at once.</p>

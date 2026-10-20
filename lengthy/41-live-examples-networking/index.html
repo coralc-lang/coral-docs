@@ -40,7 +40,7 @@
 <p class="step-label">The idea</p>
 <p><code>tcpListen(port)</code> creates a listening socket bound to every IPv4 interface and puts it in accept mode; the port is a <code>u16</code>, and ports below 1024 need privileges. <code>tcpAccept(listener)</code> blocks until a client connects and hands back a brand-new socket that belongs to that one conversation, leaving the listener free to accept the next. <code>tcpRecv</code> reads, <code>tcpSend</code> writes, <code>tcpClose</code> closes the descriptor. The one rule that shapes the code: <code>tcpRecv</code> is a read-exactly primitive. Ask it for a hundred bytes and it will wait for a hundred bytes or the end of the connection. So a server that wants to reply promptly reads in the smallest useful unit, one byte, and echoes it straight back.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// Socket calls, the handle type, and the shared error variant.
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// Socket calls, the handle type, and the shared error variant.
 import(lib) std::io::net {
     tcpListen, tcpAccept, tcpRecv, tcpSend, tcpClose, TcpSocket
 };
@@ -87,7 +87,7 @@ i32 main()
 
     tcpClose(listener);
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p><code>echoLoop</code> reads a byte, sends it back, and repeats until either a receive fails or <code>tcpRecv</code> returns zero, which is how a stream says "the other side is done." Each accepted connection gets its own socket, so closing it does not disturb the listener, which goes straight back to waiting in <code>tcpAccept</code>.</p>
 <p class="step-label">Cost and notes</p>
 <p>Every call to <code>tcpRecv</code> and <code>tcpSend</code> is a system call, so a byte-at-a-time echo costs two system calls per byte. That is the price of promptness with an API that has no "read what is available" call: the only way to return before the buffer is full is to ask for one byte. <code>tcpListen</code> quietly sets <code>SO_REUSEADDR</code>, so restarting the server does not fail on a port still in the operating system's <code>TIME_WAIT</code> state. <code>tcpSend</code> loops internally until every byte is handed to the kernel, so the code here is not responsible for partial writes.</p>
@@ -99,7 +99,7 @@ i32 main()
 <p class="step-label">The idea</p>
 <p><code>tcpConnect(ip, port)</code> takes a dotted-quad string and a port, opens a socket, and performs the TCP handshake. It returns a <code>Result</code>, and the failure case is the ordinary one in a network program: nothing is listening, or the address is wrong, or the route is gone. Once connected, the socket behaves exactly like an accepted one: send bytes, receive bytes, close. The client below sends one line to the echo server of 40.1 and reads the echoed line back a byte at a time, for the same read-exactly reason.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::net {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::net {
     tcpConnect, tcpRecv, tcpSend, tcpClose, TcpSocket
 };
 import(lib) std::io::fs { IoError };
@@ -139,7 +139,7 @@ i32 main()
     println(&quot;client received: {}&quot;, reply.asView());
     tcpClose(sock);
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>The request is a <code>str</code>, so <code>line.ptr</code> and <code>line.len</code> give <code>tcpSend</code> the bytes and the count without any conversion; there is no NUL terminator involved and none is wanted. The reply is accumulated into an owned <code>String</code> because its length is not known in advance and <code>String</code> grows as bytes arrive. Printing <code>reply.asView()</code> hands the byte range to <code>println</code> as a length-carrying view, not a C string, so it is safe even if the server echoed a NUL.</p>
 <p class="step-label">Cost and notes</p>
 <p><code>tcpConnect</code> is the one call that can take real wall-clock time, because the handshake involves both machines and every router between them. A successful connect is the moment the connection exists; there is no separate "open" step. The send is one loop inside the library; the receive loop is one system call per byte, again because the API will not return a partial buffer.</p>
@@ -151,7 +151,7 @@ i32 main()
 <p class="step-label">The idea</p>
 <p>Because <code>tcpRecv(sock, buf, n)</code> blocks until it has <code>n</code> bytes or the stream ends, "read a line into a 256-byte buffer" is not <code>tcpRecv(sock, buf, 256)</code>, that call waits for 256 bytes even when the line is five bytes long and the sender is waiting for a reply. The correct primitive is to read one byte at a time and stop at the delimiter. That is slow, and the slowness is a real cost, but it is correct, and it is the only framing tool the API offers without a timeout or a non-blocking mode. The helper below returns the number of bytes read, treating both a newline and a clean close as the end of the unit.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::net {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::net {
     tcpListen, tcpAccept, tcpConnect, tcpSend, tcpRecv, tcpClose, TcpSocket
 };
 import(lib) std::io::fs { IoError };
@@ -214,7 +214,7 @@ i32 main()
     tcpClose(client);
     tcpClose(listener);
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>The program is its own client and server, which is possible because <code>listen</code> puts the listener into accept mode immediately: a <code>tcpConnect</code> to that port completes the handshake and the connection waits in the backlog until <code>tcpAccept</code> collects it, so no second thread is needed. Two sends land in the kernel's buffer as a single stream; <code>readLine</code> slices it back into units by stopping at each <code>\n</code>, which is the entire content of "framing."</p>
 <p class="step-label">Cost and notes</p>
 <p><code>readLine</code> makes one receive system call per byte and copies each byte twice, once into the small local and once into the <code>String</code>. For a protocol with a small maximum unit this is acceptable; for a bulk transfer it is not, and you would read fixed-size chunks and split them yourself. The <code>max</code> bound is what stops a peer from making you allocate without limit; a line that never ends is a denial-of-service attempt, and a real server caps the unit and rejects the connection when the cap is hit.</p>
@@ -226,7 +226,7 @@ i32 main()
 <p class="step-label">The idea</p>
 <p>An HTTP/1.0 request is a request line, a set of headers, and a blank line, all separated by CRLF pairs. Ask for <code>Connection: close</code> and the server will send the whole response and then close the socket; because <code>tcpRecv</code> reports the close as <code>Ok(0)</code>, "read until close" is a simple loop that needs no <code>Content-Length</code> parsing. The response is printed exactly as it arrives, headers and all. The one compromise forced by the API is the address: with no DNS resolver, the target must be an IPv4 literal, which is why the example points at the local server of 40.5.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::net {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::net {
     tcpConnect, tcpSend, tcpRecv, tcpClose, TcpSocket
 };
 import(lib) std::io::fs { IoError };
@@ -270,7 +270,7 @@ i32 main()
     dealloc&lt;u8&gt;(buf);
     tcpClose(sock);
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>The request is assembled in a <code>String</code> so the exact CRLF bytes are under the program's control; <code>\r\n</code>, not <code>\n</code>, is the HTTP line ending. <code>str::fromParts(buf, n)</code> wraps the received bytes in a length-carrying view so <code>print</code> writes exactly <code>n</code> of them, including any byte that is not valid text. The loop ends when <code>tcpRecv</code> returns zero, which is the server's close after the body.</p>
 <p class="step-label">Cost and notes</p>
 <p>The receive loop asks for 4096 bytes each time and gets all 4096 until the final partial buffer, because that is what <code>tcpRecv</code> promises; a response smaller than 4096 therefore arrives in one partial call followed by a zero. The whole response is not accumulated; it is printed as it streams, so memory stays at one buffer regardless of page size. Building the request allocates once and copies a handful of short views into it.</p>
@@ -282,7 +282,7 @@ i32 main()
 <p class="step-label">The idea</p>
 <p>Read the request headers until the blank line that ends them; the request's method and path do not matter here, because every request gets the same page. Build a response with a status line, a <code>Content-Length</code>, and the body, send it, and close the connection. HTTP/1.0 closes after each response by default, so one connection carries exactly one request, which is what makes a single-threaded accept loop sufficient for correctness at low traffic.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::net {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::net {
     tcpListen, tcpAccept, tcpSend, tcpRecv, tcpClose, TcpSocket
 };
 import(lib) std::io::fs { IoError };
@@ -354,7 +354,7 @@ i32 main()
     }
     tcpClose(listener);
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>The header reader is a rolling four-byte test for the <code>\r\n\r\n</code> that ends the request head. <code>Content-Length</code> is computed from the body at runtime with <code>formatInt</code>, so the number always matches the bytes that follow it, the single most common way a hand-written server breaks. The response is one <code>tcpSend</code>, which the library turns into as many underlying writes as the kernel needs.</p>
 <p class="step-label">Cost and notes</p>
 <p>This server handles one client at a time and blocks in <code>readHeaders</code> for each; a slow or silent client stalls everyone behind it. The request body, if any, is not read, which is fine for GET and wrong for POST. <code>formatInt</code> allocates a small <code>String</code> for the length; it is a local and is released automatically at the end of <code>serveOnce</code>.</p>
@@ -366,7 +366,7 @@ i32 main()
 <p class="step-label">The idea</p>
 <p><code>udpSocket()</code> creates an unbound datagram socket. <code>udpBind(&amp;sock, port)</code> gives it a local port so that datagrams addressed to that port arrive. <code>udpSendTo(&amp;sock, buf, len, ip, port)</code> sends one datagram to an address, and <code>udpRecvFrom(&amp;sock, buf, len)</code> receives one datagram. Unlike TCP, a datagram is a unit: the receiver gets exactly the bytes the sender wrote, in one call, and a short read is normal rather than a sign of end-of-stream. The order is not guaranteed, delivery is not guaranteed, and none of that is a bug in the library, it is what UDP is.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::net {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::net {
     udpSocket, udpBind, udpSendTo, udpRecvFrom, udpClose, UdpSocket
 };
 import(lib) std::io::fs { IoError };
@@ -428,7 +428,7 @@ i32 main()
     udpClose(&amp;sender);
     udpClose(&amp;receiver);
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>The sender socket is never bound; the operating system assigns it an ephemeral source port the first time it sends. The datagram travels over loopback into the receiver's queue, where <code>udpRecvFrom</code> collects exactly one message. Because the two sockets are in the same process, the send and receive proceed in order without a second thread: the kernel holds the datagram until the receiver asks for it.</p>
 <p class="step-label">Cost and notes</p>
 <p><code>udpSendTo</code> is one system call for one datagram, and <code>udpRecvFrom</code> is one for one; there is no library-level retry or buffering, because there is nothing to retry, if the network drops the datagram, no error is reported and nothing happens. That is the entire performance advantage and the entire reliability disadvantage of UDP in the same sentence.</p>
@@ -440,7 +440,7 @@ i32 main()
 <p class="step-label">The idea</p>
 <p>Accept a connection, hand its socket to a new thread, and go straight back to accept the next. The connection socket is the only thing the worker needs, so it travels in a small allocated struct whose lifetime the worker owns; the worker frees it when the conversation ends. This is thread per connection, the oldest scalable-server pattern. The API has no way to detach a thread, so this example accepts a bounded number of clients and joins the workers at the end; a server that ran forever would instead feed a thread pool (<a href="../35-live-examples-systems-and-concurrency/index.html">Chapter 35</a>), which is what production code uses.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::net {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::net {
     tcpListen, tcpAccept, tcpRecv, tcpSend, tcpClose, TcpSocket
 };
 import(lib) std::io::fs { IoError };
@@ -511,7 +511,7 @@ i32 main()
     dealloc&lt;Thread&gt;(workers);
     tcpClose(listener);
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>The worker copies the socket out of the job and frees the job before doing any work, so there is no question about what owns the allocation while the thread runs. On the failure path where <code>threadCreate</code> returns an error, the socket is closed and the job is freed by the accept loop itself, so no resource is stranded. Joining each worker makes their completion observable and their stacks reclaimable.</p>
 <p class="step-label">Cost and notes</p>
 <p>One thread per connection means one stack and one kernel object per client, which is memory and scheduler pressure that grows with the number of connections; the pool in <a href="../35-live-examples-systems-and-concurrency/index.html">Chapter 35</a> replaces the per-connection thread with a queue push. The threads genuinely run in parallel, so this server uses every core when the clients are active. The join loop means the server drains every accepted conversation before it exits, which is why the example is bounded.</p>
@@ -523,7 +523,7 @@ i32 main()
 <p class="step-label">The idea</p>
 <p>A <code>Room</code> holds the list of connected sockets behind a mutex. When a client connects it joins the room; when it disconnects it leaves; when it sends a line, the room broadcasts that line to every socket except the sender. The mutex protects the list itself, not the sockets, so a send can never race a join or a leave. The chat server keeps the same thread-per-connection shape as 40.7, with the room as the one shared object.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::net {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::net {
     tcpListen, tcpAccept, tcpRecv, tcpSend, tcpClose, TcpSocket
 };
 import(lib) std::io::fs { IoError };
@@ -664,7 +664,7 @@ i32 main()
     }
     tcpClose(listener);
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p><code>Room</code> protects its list with a single mutex, and every method takes and releases it around a handful of instructions. <code>leave</code> swaps the departing socket with the last element before shrinking the count, so removal is O(1) and the array stays compact; order among clients does not matter, which is what makes the swap legal. <code>broadcast</code> holds the lock while sending, so a line cannot slip past a client that has just joined or target one that has just left.</p>
 <p class="step-label">Cost and notes</p>
 <p>Every broadcast is O(clients) sends under one lock. Holding the lock during <code>tcpSend</code> is the sharp edge: a slow or stalled client whose socket buffer is full blocks the send, and because the lock is held, every other client waits behind it. The honest fix is a per-client outgoing queue and a dedicated writer, which is more machinery than this example carries; the cost of the simple version should be stated, not discovered.</p>
@@ -676,7 +676,7 @@ i32 main()
 <p class="step-label">The idea</p>
 <p><code>tcpConnect</code> returns <code>Result&lt;TcpSocket, IoError&gt;</code>, and the error is an <code>IoError</code>, whose <code>Os</code> case carries the operating system's error number and the name of the operation that failed. A refused connection is immediate: the host is reachable and answers with a reset, and the code is <code>ECONNREFUSED</code> (111 on Linux). A dropped or filtered address produces no answer at all, so <code>connect</code> blocks for the kernel's default timeout and then fails with <code>ETIMEDOUT</code> (110). Because the socket module exposes no timeout knob, the only thing an application can control is how many times it tries; the delay of a single attempt belongs to the operating system.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::net { tcpConnect, tcpClose, TcpSocket };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::net { tcpConnect, tcpClose, TcpSocket };
 import(lib) std::io::fs { IoError };
 import(lib) std::time { sleepMs };
 
@@ -715,7 +715,7 @@ i32 main()
 
     println(&quot;gave up after three attempts&quot;);
     return 1;
-}</code></pre>
+}</code></pre></div>
 <p>The switch names all three cases of <code>IoError</code>, so it is exhaustive and needs no <code>else</code>. <code>Os { code, op }</code> binds the error number and the operation string, which is enough to distinguish "refused, try again somewhere else" from "timed out, the host is unreachable." The back-off here is a fixed sleep; a real client would widen it and give up on the errors that retrying cannot fix.</p>
 <p class="step-label">Cost and notes</p>
 <p>The failed <code>tcpConnect</code> costs one round trip when the host answers with a reset, and the whole kernel timeout when it does not; that asymmetry is the reason a network program feels fast on a healthy network and hangs on a broken one. <code>sleepMs</code> sleeps for at least the requested time, so the retry loop's spacing is approximate. Reading <code>errno</code> means the code is platform-specific: the same failure has a different number on Windows, which is why the field is reported rather than hard-coded into the logic.</p>

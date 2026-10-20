@@ -40,7 +40,7 @@
 <p class="step-label">The approach</p>
 <p>The <code>println</code> family accepts format specifiers: <code>{:d}</code> for decimal, <code>{:x}</code> for hexadecimal, <code>{:b}</code> for binary. For a fixed-width binary view with leading zeros, which decimal and hex do not give you, write a small helper that walks the bits from high to low.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 import(lib) std::text::string { String };
 
 pub String bits8(u8 x) {
@@ -73,7 +73,7 @@ pub void show() {
     println(&quot;dec  {:d}&quot;, flags);          // 180
     println(&quot;bin  {:b}&quot;, flags);          // 10110100
     println(&quot;padded {}&quot;, bits8(flags));   // 10110100
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>The format specifiers cost nothing extra over any other print. The helper allocates a small <code>String</code> and writes one character per bit, which is O(width); at a debugger or a log line, that is irrelevant. The only subtlety is the cast on the shift amount. The helper counts with an <code>i32</code> so the loop can stop below zero, and it shifts by a <code>(u32)</code> because the shift operators take the count as an unsigned value.</p>
 <p class="step-label">Edge cases</p>
@@ -88,7 +88,7 @@ pub void show() {
 <p class="step-label">The approach</p>
 <p>Wrap each in a named function. Use <code>u64</code> for the word and <code>u32</code> for the index, and be honest about the index's valid range.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 setBit(u64 x, u32 i) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u64 setBit(u64 x, u32 i) {
     // valid bit position
     @assertOut(i &lt; 64u, &quot;setBit: index must be below 64&quot;);
     // OR turns bit i on
@@ -124,7 +124,7 @@ pub void run() {
     println(&quot;{}&quot;, testBit(lights, 0));   // false
     lights = clearBit(lights, 3);
     println(&quot;{:b}&quot;, lights);             // 0
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>Every one is a single machine instruction on the values in registers. Wrapping them costs nothing and buys a great deal of clarity, because the name states the intent and the function states the boundary. The masking identity <code>(1 &lt;&lt; i)</code> is where overflow lurks in a fixed type: in a <code>u32</code>, <code>1 &lt;&lt; 31</code> is legal but <code>1 &lt;&lt; 32</code> is not defined. The assertion turns that into a diagnostic rather than a quiet disaster.</p>
 <p class="step-label">Edge cases</p>
@@ -139,7 +139,7 @@ pub void run() {
 <p class="step-label">The approach</p>
 <p>Kernighan's popcount, then the folding parity, then a byte-table popcount for when you are counting millions of words and want constant time with a small table.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u32 popcount(u64 x) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u32 popcount(u64 x) {
     // number of set bits
     u32 count = 0;
     // one iteration per set bit
@@ -172,9 +172,9 @@ pub u32 popcountTable(const u8* table, u64 x) {
            (u32)table[(u8)(x &gt;&gt; 40)] +
            (u32)table[(u8)(x &gt;&gt; 48)] +
            (u32)table[(u8)(x &gt;&gt; 56)];
-}</code></pre>
+}</code></pre></div>
 <p>The parity fold works because XOR is associative and commutative on bits: the parity of a word is the XOR of all its bits, and you can combine halves in any order. Each line folds the high half onto the low half, and six lines for a <code>u64</code> leave the answer in bit zero. The byte table version splits the word into eight bytes, each a constant-time lookup into a 256-entry table. The table itself is built once:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Vec&lt;u8&gt; buildPopcountTable() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub Vec&lt;u8&gt; buildPopcountTable() {
     // popcount of every byte value
     Vec&lt;u8&gt; t = Vec&lt;u8&gt;::withCap(256);
     for (u32 i = 0; i &lt; 256; i += 1) {
@@ -185,7 +185,7 @@ pub u32 popcountTable(const u8* table, u64 x) {
         t.push((u8)c);
     }
     return t;
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>Kernighan's popcount is O(number of set bits), so between one and sixty-four steps. The parity fold is always six steps, regardless of the value. The table version is a constant eight lookups and eight additions, plus the one-time cost of building 256 bytes. For a handful of words, Kernighan is fine. For a hot loop over millions, the table wins. The table build is another use of <code>x &amp; (x - 1)</code>, which should convince you it is worth knowing.</p>
 <p class="step-label">Edge cases</p>
@@ -200,7 +200,7 @@ pub u32 popcountTable(const u8* table, u64 x) {
 <p class="step-label">The approach</p>
 <p>Three tiny functions plus the shift-smear trick, with a note on the overflow boundary.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub bool isPowerOfTwo(u64 x) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub bool isPowerOfTwo(u64 x) {
     // nonzero and exactly one bit set
     return x != 0 &amp;&amp; (x &amp; (x - 1)) == 0;
 }
@@ -223,7 +223,7 @@ pub u64 nextPowerOfTwo(u64 x) {
     x |= x &gt;&gt; 32;
     // carry into the next power of two
     return x + 1;
-}</code></pre>
+}</code></pre></div>
 <p>The <code>nextPowerOfTwo</code> smear is worth reading slowly. After subtracting one, the highest set bit sits somewhere. OR-ing the number with itself shifted right by one turns that bit into two adjacent ones; shifting by two turns two into four; and so on, doubling the run of ones each time, until everything below the original high bit is one. Add one and the run carries into a single bit one position higher. The seven shifts cover a sixty-four-bit word because 1 + 2 + 4 + 8 + 16 + 32 exceeds it.</p>
 <p class="step-label">Cost and notes</p>
 <p>The power-of-two test and the low-bit isolate are single arithmetic operations, constant time. The next-power smear is seven shifts and ORs, constant time, and it is the fastest portable way to do it without a hardware instruction. The low-bit identity relies on unsigned wraparound: <code>0 - x</code> in an unsigned type is the two's complement of <code>x</code>, whose AND with <code>x</code> leaves exactly the lowest set bit. In a signed type the same expression can overflow and is not portable, so use unsigned.</p>
@@ -239,7 +239,7 @@ pub u64 nextPowerOfTwo(u64 x) {
 <p class="step-label">The approach</p>
 <p>Detect the host order once; write byte-swap routines; extract and assemble bytes explicitly rather than through a union, because explicit is portable and the compiler cannot be relied on to optimise a union pun.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub bool isLittleEndian() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub bool isLittleEndian() {
     // 1 is 01 00 00 00 or 00 00 00 01
     u32 probe = 1;
     // first byte is the least significant
@@ -273,7 +273,7 @@ pub u32 fromBigEndianBytes(const u8* in) {
            ((u32)in[1] &lt;&lt; 16) |
            ((u32)in[2] &lt;&lt; 8)  |
            (u32)in[3];
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>The endianness probe is a single load and compare, done once at startup or compiled to a constant. The byte swaps are a handful of shifts and masks, constant time; on machines with a byte-swap instruction, the compiler emits it. The explicit pack and unpack are a few shifts and ORs, and unlike a union interpretation they have well-defined behaviour: the bytes you write are exactly the bytes you specified, in the order you specified, on every target. This is why serious serialisation code never punned a struct over a byte buffer. It writes fields one at a time.</p>
 <p class="step-label">Edge cases</p>
@@ -288,7 +288,7 @@ pub u32 fromBigEndianBytes(const u8* in) {
 <p class="step-label">The approach</p>
 <p>Coral's <code>std::collections::bitset</code> provides exactly this. Learn the interface by building a sieve with it, which is the canonical dense-membership problem, then use the richer operations.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::bitset { Bitset };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::bitset { Bitset };
 
 pub void bitsetTour(u64 limit) {
     // one bit per number
@@ -313,7 +313,7 @@ pub void bitsetTour(u64 limit) {
     evenComposites.or(&amp;composite);             // union with the composites
     evenComposites.and(&amp;evens);                // intersect with the evens
     println(&quot;even composites: {}&quot;, evenComposites.countOnes());
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p><code>set</code>, <code>clear</code>, <code>toggle</code>, and <code>test</code> are O(1): a divide to find the word, a shift to find the bit, one instruction. The whole-set operations <code>and</code>, <code>or</code>, <code>xor</code>, and <code>not</code> are O(n/64), one operation per word rather than per bit, which is where the representation pays off. <code>countOnes</code> and <code>countZeros</code> walk the words and use the same <code>x &amp; (x - 1)</code> from 32.3, so they are O(number of set bits) per word. The memory is <code>n/8</code> bytes plus a small header, an eight-fold saving over a byte array and far more over a set.</p>
 <p class="step-label">Edge cases</p>
@@ -328,7 +328,7 @@ pub void bitsetTour(u64 limit) {
 <p class="step-label">The approach</p>
 <p>Show the trick, show the guard, and then show why you would almost never use it. The temporary swap is as fast on any modern machine and has no aliasing hazard at all.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 
 pub void swapTemp(i32* a, i32* b) {
     // classic swap through a temporary
@@ -354,7 +354,7 @@ pub void demo() {
     i32 z = 7;
     xorSwap(&amp;z, &amp;z);             // same location
     println(&quot;{}&quot;, z);            // 7, because of the guard
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>On the register-level machines of the 1970s, the XOR swap avoided a load and a store, and it mattered. On every machine you are likely to write for, the temporary version optimises to the same instructions or better, the CPU handles the dependency chain more efficiently, and the XOR version's three dependent reads and writes are not a win. Write the temporary version. Teach the XOR version because it is a beautiful demonstration of what XOR is, and because the aliasing bug is a lesson about pointers that generalises far beyond swapping.</p>
 <p class="step-label">Edge cases</p>
@@ -369,7 +369,7 @@ pub void demo() {
 <p class="step-label">The approach</p>
 <p>The two conversions, plus a demonstration that consecutive Gray values differ by one bit, verified with the tools from 32.3.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 grayEncode(u64 n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u64 grayEncode(u64 n) {
     // Gray = binary XOR half-shifted binary
     return n ^ (n &gt;&gt; 1);
 }
@@ -403,7 +403,7 @@ pub void tour() {
                 previous, g, adjacentDifferByOneBit(previous, g));
         previous = g;
     }
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p><code>grayEncode</code> is one shift and one XOR, constant time. <code>grayDecode</code> is one XOR per bit, so O(log n). The adjacent-difference test is the power-of-two check from 32.4 applied to the XOR of the two values: two values differ in exactly one bit if and only if their XOR is a power of two. That reuse is the theme of the chapter in miniature. A handful of primitives, combined, answer a question that at first looked like a new problem.</p>
 <p class="step-label">Edge cases</p>
@@ -418,7 +418,7 @@ pub void tour() {
 <p class="step-label">The approach</p>
 <p>Fold the array with XOR. One accumulator, one pass, constant memory.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub u64 singleNumber(const Vec&lt;u64&gt;* xs) {
     // identity for XOR
@@ -441,7 +441,7 @@ pub u64 singleNumberTriple(const Vec&lt;u64&gt;* xs) {
         twos = (twos ^ x) &amp; ~ones;      // add x to the twice-seen bits
     }
     return ones;
-}</code></pre>
+}</code></pre></div>
 <p>In the three-times version the pair of accumulators counts each bit modulo three: <code>ones</code> holds the bits seen one more time than a multiple of three, <code>twos</code> the bits seen twice, and the masks move a bit between them on each sighting. The lesson of the first function is that XOR is a parity machine, and parity is exactly what "everything cancels except one" means.</p>
 <p class="step-label">Cost and notes</p>
 <p><code>singleNumber</code> is O(n) time and O(1) space: a single pass with no allocation, and each step is one register XOR. Compare that to the obvious approach of a hash set, which is also O(n) time but O(n) space and a hash per element. This is the clearest example in the chapter of choosing the operation that already does the work.</p>
@@ -457,7 +457,7 @@ pub u64 singleNumberTriple(const Vec&lt;u64&gt;* xs) {
 <p class="step-label">The approach</p>
 <p>Loop the mask from zero to <code>2^n - 1</code>, and for each mask walk its <code>n</code> bits. Wrap it in a small brute-force maximum for concreteness.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub u64 subsetSum(const Vec&lt;u64&gt;* items, u32 n, u64 mask) {
     // sum of the items selected by mask
@@ -481,7 +481,7 @@ pub u64 bestSubsetSum(const Vec&lt;u64&gt;* items, u32 n) {
         if (s &gt; best) best = s;
     }
     return best;
-}</code></pre>
+}</code></pre></div>
 <p>Mask zero is the empty subset, and it sums to zero, so <code>best</code> starts there rather than at a negative sentinel (there is no negative for <code>u64</code>). The mask counts in ordinary binary, and the bit pattern is the subset; the loop is the enumeration. There is nothing hidden.</p>
 <p class="step-label">Cost and notes</p>
 <p><code>bestSubsetSum</code> is O(2^n * n): the outer loop doubles with <code>n</code>, and each mask costs a walk over <code>n</code> bits. For <code>n</code> up to about twenty that is a million times twenty, which is fine; at thirty it is a billion, which is not. The <code>n &lt;= 32</code> assertion keeps <code>1 &lt;&lt; n</code> inside the <code>u64</code>, but the practical limit is far lower and is set by time, not by the type.</p>
@@ -497,7 +497,7 @@ pub u64 bestSubsetSum(const Vec&lt;u64&gt;* items, u32 n) {
 <p class="step-label">The approach</p>
 <p>The five-stage masked version for <code>u32</code>, the obvious bit-by-bit loop for comparison, and a <code>u64</code> built from two <code>u32</code> reversals.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u32 reverseBits32(u32 x) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u32 reverseBits32(u32 x) {
     x = ((x &amp; 0x55555555u) &lt;&lt; 1) | ((x &gt;&gt; 1) &amp; 0x55555555u);   // swap adjacent bits
     x = ((x &amp; 0x33333333u) &lt;&lt; 2) | ((x &gt;&gt; 2) &amp; 0x33333333u);   // swap pairs
     x = ((x &amp; 0x0F0F0F0Fu) &lt;&lt; 4) | ((x &gt;&gt; 4) &amp; 0x0F0F0F0Fu);   // swap nibbles
@@ -524,7 +524,7 @@ pub u64 reverseBits64(u64 x) {
     u64 high = (u64)reverseBits32((u32)(x &gt;&gt; 32));
     // ...then swap the halves
     return (low &lt;&lt; 32) | high;
-}</code></pre>
+}</code></pre></div>
 <p>Read the masks as pairs. <code>0x55555555</code> is alternating ones and zeros, so it selects the low bit of every pair; shifting that left and the high bits right, then ORing, swaps each pair. <code>0x33333333</code> selects the low two bits of every four, doubling the distance. <code>0x0F0F0F0F</code> handles nibbles, <code>0x00FF00FF</code> handles bytes, and the last line swaps the two sixteen-bit halves outright. The <code>u64</code> version reverses each half and then swaps the halves, which is why the two <code>reverseBits32</code> results are placed low-then-high.</p>
 <p class="step-label">Cost and notes</p>
 <p><code>reverseBits32</code> is a fixed five stages, no loop, constant time; on a machine with a bit-reverse instruction the compiler may recognise the pattern, but even without one it is roughly twenty instructions. <code>reverseBitsLoop</code> is O(width) and exists mainly to show that the masked version is the same operation unrolled. <code>reverseBits64</code> is two calls and one swap, constant time.</p>
@@ -540,7 +540,7 @@ pub u64 reverseBits64(u64 x) {
 <p class="step-label">The approach</p>
 <p>A loop that replaces <code>(a, b)</code> with <code>(a ^ b, (a &amp; b) &lt;&lt; 1)</code> until <code>b</code> is zero.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u32 addBits(u32 a, u32 b) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u32 addBits(u32 a, u32 b) {
     // loop while a carry remains
     while (b != 0) {
         // carry where both bits are one
@@ -553,7 +553,7 @@ pub u64 reverseBits64(u64 x) {
 
 pub u32 subtractBits(u32 a, u32 b) {
     return addBits(a, addBits(~b, 1u));   // a + (-b), two&#x27;s complement
-}</code></pre>
+}</code></pre></div>
 <p>The subtraction is the two's-complement negation <code>-b = ~b + 1</code> fed back into the adder. If that looks like cheating, it is not: the whole point is that a CPU has one adder and derives subtraction from it exactly this way.</p>
 <p class="step-label">Cost and notes</p>
 <p>The loop runs once per carry propagation, so its worst case is the width of the word, adding <code>0xFFFFFFFF</code> to <code>1</code> walks the carry all the way across, making it O(width) iterations, each constant time. Real hardware does the same thing in parallel with a carry-lookahead circuit, but the serial version is the honest model, and it is what you would write in a puzzle or on a machine with no add instruction.</p>
@@ -569,7 +569,7 @@ pub u32 subtractBits(u32 a, u32 b) {
 <p class="step-label">The approach</p>
 <p>Reduce the pile sizes with XOR, then search for the pile that can be reduced to restore a zero nim-sum.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub bool nimWins(const Vec&lt;u64&gt;* piles) {
     // XOR of all pile sizes
@@ -589,7 +589,7 @@ pub i32 nimWinningMove(const Vec&lt;u64&gt;* piles) {
         if (target &lt; piles-&gt;at(i)) return (i32)i;
     }
     return -1;                                // unreachable for a nonzero nim-sum
-}</code></pre>
+}</code></pre></div>
 <p>Check the move rule against the XOR identity. Leaving pile <code>i</code> at <code>target</code> means the new nim-sum is <code>nimSum ^ pile_i ^ target</code>, and with <code>target = pile_i ^ nimSum</code> that is <code>nimSum ^ pile_i ^ pile_i ^ nimSum = 0</code>. Requiring <code>target &lt; pile_i</code> guarantees it is a legal reduction, and a nonzero nim-sum always has at least one such pile.</p>
 <p class="step-label">Cost and notes</p>
 <p>Both functions are O(n) and constant extra space: <code>nimWins</code> is a single XOR fold, and <code>nimWinningMove</code> adds one more pass to find the move. A game that a naïve search would explore with exponential minimax is decided by one pass over the piles. This is the recurring theme of the chapter, seen as a game: the right bit primitive turns a search into an arithmetic fact.</p>

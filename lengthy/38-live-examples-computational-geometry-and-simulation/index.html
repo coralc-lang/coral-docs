@@ -42,7 +42,7 @@
 <p class="step-label">Brute force, then better</p>
 <p>The naive method computes the angle that the vector <code>o → a</code> makes with the x-axis and compares it to the angle of <code>o → b</code>. That fails twice over: angles require <code>atan2</code>, which is slow and, worse, produces a discontinuity at the point where the angle wraps from <code>π</code> to <code>−π</code>, so two points just across the seam compare as if they were on opposite sides of the plane. The algebraic test has neither problem. The signed area of the parallelogram spanned by the two vectors is <code>(a.x − o.x)(b.y − o.y) − (a.y − o.y)(b.x − o.x)</code>. Its sign is the orientation, it costs a couple of multiplications, and it never has a seam.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 import(lib) std::math::math { sqrt };
 
@@ -114,7 +114,7 @@ void main() {
     Pt v = Pt::new(3.0, 4.0);
     println(&quot;{}&quot;, v.length());               // 5
     println(&quot;{}&quot;, v.dot(Pt::new(1.0, 0.0))); // 3
-}</code></pre>
+}</code></pre></div>
 <p>The <code>Pt</code> struct is both a point and a vector, because in two dimensions the two are the same collection of numbers and the same arithmetic. The methods are the operations that recur everywhere: <code>sub</code> gives a direction, <code>dot</code> measures alignment, <code>cross</code> measures signed area, and <code>length</code> uses the Pythagorean theorem. <code>crossOf</code> shifts the pair of vectors to start at <code>o</code> and then crosses them, which is the signed area of the triangle <code>o a b</code>. <code>orient</code> throws away the magnitude and keeps only the sign, because for a decision that is all that matters.</p>
 <p class="step-label">Cost and notes</p>
 <p>Every operation here is a constant number of floating-point instructions. The orientation test in particular is four subtractions, two multiplications, and one subtraction, with no division, no square root, and no trigonometry. That is why it is the primitive of choice across the whole field: it is cheap enough to call inside an inner loop a million times, and it needs no special functions from the math library. The <code>length</code> method does need <code>sqrt</code>, so prefer <code>lengthSq</code> whenever you are comparing distances rather than reporting one; the square root is monotonic, so comparing squared lengths gives the same ordering at half the cost, and it avoids a rounding step.</p>
@@ -128,7 +128,7 @@ void main() {
 <p class="step-label">Brute force, then better</p>
 <p>The brute-force hull tries every pair of points, asks whether all the others lie on one side of the line through them, and keeps the pairs that pass. That is O(n³): O(n²) pairs, each checked against O(n) points. Andrew's monotone chain does it in O(n log n) by the same insight twice. Sort the points by x, then build the hull's lower half by walking left to right and popping any point that would make a clockwise turn; then build the upper half by walking right to left with the same rule. Each point is pushed once and popped at most once, so each pass is linear, and the sort is the only non-linear step. The turn test is the orientation test of 37.1, which is why it earned its own section.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 struct Pt {
@@ -200,7 +200,7 @@ void main() {
 
     Vec&lt;Pt&gt; hull = convexHull(&amp;pts);
     println(&quot;{}&quot;, hull.count());           // 4
-}</code></pre>
+}</code></pre></div>
 <p>The lower chain is built by walking the sorted points left to right. Its last two points and the incoming point form a turn; if the turn is clockwise or straight (<code>crossOf &lt;= 0</code>), the middle point is not on the hull's lower edge and is popped. The loop repeats until the last turn is a proper counter-clockwise one, then pushes the new point. The upper chain is the mirror image, walking in reverse. Both chains begin and end at the extreme left and right points, so their final points are duplicates of the first points of the other; the two <code>pop</code> calls remove that duplication before the chains are concatenated into one closed ring. The <code>&lt;= 0.0</code> is a deliberate choice: it discards collinear points, producing a hull whose vertices are the strict corners. Change it to <code>&lt; 0.0</code> and the algorithm keeps collinear boundary points, which some problems want.</p>
 <p class="step-label">Cost and notes</p>
 <p>Sorting dominates at O(n log n). Each chain is a single left-to-right pass with a stack; every point is pushed at most once and popped at most once over the whole pass, so both chains together are O(n). The total is therefore O(n log n) time and O(n) space for the two chains and the result. That is asymptotically optimal for hull-finding, since the input might need to be sorted and sorting is a lower bound for the comparison model. The <code>sortBy</code> call mutates the caller's vector in place, which is worth knowing.</p>
@@ -214,7 +214,7 @@ void main() {
 <p class="step-label">Brute force, then better</p>
 <p>The brute-force test casts a ray and computes an explicit intersection with every edge, being careful about the ray direction and the angle. It works, but it needs the intersections, not just their count, and every special case (parallel edges, rays through vertices) has to be handled separately. The parity method never forms an intersection point except as a comparison. For each edge, ask whether it straddles the horizontal line through the query point; if it does, compute the x-coordinate where it crosses, and if that crossing is to the right of the query point, flip the parity. An odd total means inside. No angles, no ray direction, one comparison per edge.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 
 struct Pt {
@@ -255,7 +255,7 @@ void main() {
 
     println(&quot;{}&quot;, pointInPolygon(&amp;square, Pt { .x = 2.0, .y = 2.0 }));  // true
     println(&quot;{}&quot;, pointInPolygon(&amp;square, Pt { .x = 5.0, .y = 2.0 }));  // false
-}</code></pre>
+}</code></pre></div>
 <p>The <code>straddles</code> test is the half-open rule that makes the vertex cases work out. Comparing <code>a.y &gt; p.y</code> to <code>b.y &gt; p.y</code> is true exactly when one endpoint is strictly above the query line and the other is at or below it, so an edge that ends exactly on the line is counted by the edge below it and ignored by the edge above it. Each vertex therefore participates in exactly one crossing test, and a ray that passes exactly through a vertex is neither double-counted nor missed. When an edge straddles, the linear interpolation gives the x where it crosses the query's y, and the <code>p.x &lt; xHit</code> asks whether that crossing is to the right. The parity flips on each crossing to the right, and the answer is the parity at the end.</p>
 <p class="step-label">Cost and notes</p>
 <p>One pass over the vertices, O(n) time and O(1) space. Each edge does two comparisons and, for at most a few of them, one interpolation. The division <code>(b.y - a.y)</code> is safe by construction: the straddle test guarantees the two y-values are on opposite sides of <code>p.y</code>, so they cannot be equal and the denominator cannot be zero. There is no allocation and no square root. For a single query this is as cheap as it gets; if you must answer many queries against the same polygon, precompute the polygon's bounding box as a quick reject, and for very large polygon counts build an edge index or use a sweep line.</p>
@@ -269,7 +269,7 @@ void main() {
 <p class="step-label">Brute force, then better</p>
 <p>The algebra-first method solves the two parametric line equations for the intersection parameters and checks that both lie in <code>[0, 1]</code>. It is exact in principle but it divides, introduces floating-point error at the division step, and needs four separate special cases for the parallel, collinear, and touching configurations. The orientation method never divides. It computes four signs, and if two of them are strictly opposite for both segments, the segments cross at an interior point. If any sign is zero, an endpoint is collinear with the other segment, and a short bounding-box test decides whether that endpoint actually lies on it.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 import(lib) std::math::math { minF64, maxF64 };
 
 struct Pt {
@@ -320,7 +320,7 @@ void main() {
     Pt e = Pt { .x = 5.0, .y = 5.0 };
     Pt f = Pt { .x = 6.0, .y = 6.0 };
     println(&quot;{}&quot;, segmentsIntersect(a, b, e, f));    // false: disjoint
-}</code></pre>
+}</code></pre></div>
 <p>The four orientations ask, in order, where <code>p1</code> and <code>p2</code> lie relative to segment 3–4, and where <code>p3</code> and <code>p4</code> lie relative to segment 1–2. A proper crossing needs both segments to separate the other's endpoints: <code>d1 != d2</code> says 3–4 straddles the line of 1–2 in side terms, and <code>d3 != d4</code> says 1–2 straddles the line of 3–4. Because each <code>d</code> is a sign, <code>d1 != d2</code> is true both when the signs are <code>1</code> and <code>-1</code> and when one is <code>0</code>; the strict proper-crossing test should really require opposite nonzero signs, but the code lets the collinear branch catch the zero cases, which is why the four <code>if</code> lines follow. Each of those lines checks a zero orientation together with the bounding-box containment of <code>onSegment</code>, which is the standard way to test "the point lies on the segment" without any division.</p>
 <p class="step-label">Cost and notes</p>
 <p>Constant time and constant space: four orientation tests, each a few multiplications, plus up to four bounding-box tests that are two comparisons each. There is no division and no square root, which keeps the error analysis simple. The comparisons <code>minF64</code> and <code>maxF64</code> come straight from <code>std::math::math</code>. This function is the inner loop of polygon clipping, sweep-line algorithms, and collision detection, so its constant factor matters, and the orientation formulation beats the parametric one mostly because it moves all the error-producing division out of the hot path.</p>
@@ -334,7 +334,7 @@ void main() {
 <p class="step-label">Brute force, then better</p>
 <p>Every pair is O(n²) distance computations. The divide-and-conquer algorithm sorts the points by x once, halves the problem, and spends O(n) on the strip merge, giving the recurrence <code>T(n) = 2T(n/2) + O(n)</code>, which is O(n log n). The version below sorts the strip at every level rather than merging by y, which costs O(n log n) per level and makes the whole algorithm O(n log² n). That is a factor of log n slower than the optimal merge, and it is the version worth writing first because it is far easier to get right; the merge optimisation is a clean refinement, and it is named in the variations.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 import(lib) std::math::math { sqrt };
 
@@ -421,7 +421,7 @@ void main() {
     pts.push(Pt { .x = 1.0, .y = 0.0 });
     pts.push(Pt { .x = 9.0, .y = 9.0 });
     println(&quot;{}&quot;, closestPair(&amp;pts));           // 1
-}</code></pre>
+}</code></pre></div>
 <p><code>closestRec</code> works on the index range <code>[lo, hi)</code> of a vector already sorted by x. Ranges with three or fewer points are solved directly, which is the base case that makes the recursion terminate. Otherwise it splits at the midpoint index and recurses on both halves; because the vector is sorted by x, the split index really does separate the left points from the right. The smaller of the two half-answers is the provisional best. The strip holds every point whose x lies within that provisional distance of the dividing line, ignoring the y-coordinate for now, and it is sorted by y so that close neighbours in y are adjacent. The inner loop compares each strip point with the next seven, and the <code>limit</code> clamp keeps the last points from reading past the end. The result is a squared distance throughout, and the square root is taken once at the end in <code>closestPair</code>.</p>
 <p class="step-label">Cost and notes</p>
 <p>The recurrence without the y-merge is <code>T(n) = 2T(n/2) + O(n log n)</code> for the strip sort at each level, which solves to O(n log² n) time. The space is O(n) for the recursion's strip vectors, plus the O(log n) stack. The comparison bound of seven is the geometric heart of the algorithm and is worth believing: if the strip is sorted by y, consider a point and the eight-by-eight grid of cells of side <code>best</code> around it. Each cell can contain at most one point of the strip on each side of the line, or two points within a cell would be closer than <code>best</code>, contradicting the recursive answers. So at most a constant number of points can be within <code>best</code> of any given point, and checking seven above it is enough. That constant is why the merge is linear, and why the whole algorithm can be nearly <code>n log n</code>.</p>
@@ -435,7 +435,7 @@ void main() {
 <p class="step-label">Brute force, then better</p>
 <p>The obvious update is explicit Euler: <code>v += a·dt; x += v·dt</code>. It is the first thing anyone writes, and it is wrong for simulations meant to run long. Each step adds a small error proportional to <code>dt²</code>, and over many steps the ball gains or loses energy until it flies off the screen or sinks through the floor. Verlet's update is both more symmetric and more stable. Because the update is time-reversible and symplectic, the energy oscillates slightly around the true value instead of marching in one direction, which is exactly what you want from a physics engine.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 
 struct Particle {
     f64 x;
@@ -481,7 +481,7 @@ void main() {
         // print only every hundredth step to keep the output short
         if (i % 100 == 0) println(&quot;{} {}&quot;, ball.x, ball.y);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The step function first reads the implied velocity as the difference of the current and previous positions, then overwrites the previous position with the current one, then writes the new position. The next position is the current plus that same difference plus the acceleration term. Gravity is a constant <code>ay = -9.81</code>; there is no drag in this example, so the horizontal motion is a straight line and only the vertical motion curves. The floor is handled after the move: if the ball has dropped below <code>y = 0</code>, it is placed exactly on the floor and its previous y is set so that the next implied velocity is the old downward one reversed and scaled by <code>0.8</code>, which models a bouncy but lossy surface. Getting the previous position (not the velocity) right is the only subtle part of a Verlet collision, and it is done by writing <code>py</code> from <code>y</code> and the captured drop.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each step is a constant number of additions, subtractions, and multiplications, with no divisions, square roots, or trigonometry, so a step is a handful of nanoseconds and a million-particle simulation runs in real time. The stability is the payoff. The scheme conserves energy up to an oscillation of order <code>dt²</code>, and it is time-reversible, meaning running it backward with the same <code>dt</code> retraces the path, which is a strong correctness check. The price is that the implied velocity is one step out of date, so the position is, in a sense, reported half a step ahead of the velocity; the leapfrog and velocity-Verlet schemes rearrange the same quantities to fix that, at the cost of a little more bookkeeping.</p>
@@ -495,7 +495,7 @@ void main() {
 <p class="step-label">Brute force, then better</p>
 <p>There is no clever trick at the level of this chapter: the honest method computes all pairwise forces each step. What there is to get right is not the asymptotic cost but the shape of the update and the treatment of close encounters. The force is proportional to <code>1/r²</code>, so two bodies that come very close produce an enormous acceleration and then a numerical explosion. The standard fix is a softening length <code>ε</code>: replace <code>r²</code> with <code>r² + ε²</code>, which limits the maximum force and keeps the integration finite. The update order also matters. Computing all accelerations from the positions at the start of the step, then applying them, is the leapfrog arrangement, and it is far more stable than updating each body's velocity the instant its force is known.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 import(lib) std::math::math { sqrt };
 
@@ -564,7 +564,7 @@ void main() {
         Body b = bodies.at(i);
         println(&quot;{} {}&quot;, b.x, b.y);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The double loop accumulates each body's acceleration into the <code>ax</code> and <code>ay</code> arrays. For body <code>i</code>, every other body <code>j</code> contributes a force along the vector from <code>i</code> to <code>j</code>, scaled by <code>mass_j</code> and by <code>1/r³</code> (the <code>1/r²</code> from the force, times another <code>1/r</code> because the displacement vector is not yet a unit vector). All accelerations are computed from the positions at the beginning of the step, and only after the full pass are the velocities and then the positions updated. That separation is what makes the update symplectic: no body sees another body's half-updated position. The gravitational constant is folded into the chosen units and left as <code>1</code>, and the softening <code>0.01</code> is a hard floor on <code>r²</code> that trades a little physical accuracy near close encounters for numerical survival.</p>
 <p class="step-label">Cost and notes</p>
 <p>The double loop is O(n²) per step, dominated entirely by the <code>sqrt</code>. There is no way around that with this formulation, which is why the gravitational n-body problem is one of the great consumers of supercomputers: a million bodies is a trillion force terms per step. The space is O(n) for the acceleration arrays, which are reallocated each call; moving them out of the function and clearing them in place would save the allocation churn in a long run. The update is a semi-implicit Euler step, the simplest energy-stable version; the velocity-Verlet and leapfrog variants keep the error smaller for the same <code>dt</code>.</p>
@@ -578,7 +578,7 @@ void main() {
 <p class="step-label">Brute force, then better</p>
 <p>The brute-force version reconstructs the whole grid from scratch by, for each cell, scanning all cells to find its neighbours, which is O(n²) per generation. That is needless. The neighbour count only ever involves the eight adjacent cells, so a single pass that consults the offsets is O(n) per generation. The two details that make the code pleasant are a flat one-dimensional buffer indexed by <code>r * cols + c</code>, which is cache-friendly and avoids a vector of vectors, and a wrapping neighbourhood, which makes the grid a torus so that a glider flying off one edge reappears on the other.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::io::ios { println };
 import(lib) std::text::string { String };
 
@@ -669,7 +669,7 @@ void main() {
     println(&quot;{}&quot;, &quot;---&quot;);
     for (usize i = 0; i &lt; 4; i += 1) g.step();
     g.printSelf();
-}</code></pre>
+}</code></pre></div>
 <p>The grid is a flat <code>Vec&lt;u8&gt;</code> of length <code>rows * cols</code>, and cell <code>(r, c)</code> lives at index <code>r * cols + c</code>. <code>neighbors</code> walks the eight offsets <code>dr, dc</code> in <code>{−1, 0, 1}²</code>, skipping the centre, and wraps each coordinate with <code>(value + dim) % dim</code> so that the neighbourhood is toroidal. The <code>+ dim</code> before the modulo is essential: without it, a <code>−1</code> would be a negative <code>isize</code> and <code>%</code> would produce a negative remainder, indexing before the start of the buffer. <code>step</code> builds a fresh <code>next</code> buffer rather than writing in place, because every cell must see the old generation; only after the whole grid is computed is <code>next</code> copied back into <code>cells</code>, one element at a time. The four rules are written as two nested <code>if</code>s, and the whole automaton is those four lines.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each generation visits every cell once and does a constant nine-observation neighbourhood count, so the time is O(rows × cols) per step and O(generations × rows × cols) overall. The space is two grids, O(rows × cols), which is the minimum for a simultaneous update: you need the old state somewhere while you build the new one. The flat buffer is a real speed advantage over <code>Vec&lt;Vec&lt;u8&gt;&gt;</code>, because the eight neighbours of a cell are then at neighbouring addresses rather than in eight different allocations, and the cache does its job. The wrapping is free, just a modulo per coordinate.</p>
@@ -683,7 +683,7 @@ void main() {
 <p class="step-label">Brute force, then better</p>
 <p>There is no better method in this chapter, and that is the point. Monte Carlo earns its place when the region is irregular or the dimension is high, where quadrature grids become intractable; in one dimension a Riemann sum is faster and more accurate, but the same code, with a different test, estimates the volume of a shape no formula describes. The quality of the estimate is governed entirely by the quality of the random source and the number of samples. This version uses the library's <code>nextF64</code>, which draws from the operating system's secure random source, so the run is not reproducible; a seeded generator is the honest choice when you need to debug a run twice.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 import(lib) std::math::random { nextF64 };
 
 f64 estimatePi(u64 samples) {
@@ -705,7 +705,7 @@ void main() {
     println(&quot;{}&quot;, estimatePi(1000));        // a rough guess
     println(&quot;{}&quot;, estimatePi(100000));      // closer
     println(&quot;{}&quot;, estimatePi(10000000));    // closer still, for more darts
-}</code></pre>
+}</code></pre></div>
 <p>Each iteration draws two independent uniforms on <code>[0, 1)</code>, treats them as a dart's coordinates, and counts the dart if it lies inside the unit circle. The test <code>x*x + y*y &lt;= 1.0</code> is the defining inequality of the circle, and it avoids the square root entirely because both sides are non-negative, so squaring preserves the comparison. The final estimate multiplies the hit fraction by four, the ratio of the square's area to the quarter circle's. <code>nextF64</code> is documented to return <code>[0, 1)</code>, so the darts are uniform over the square, which is the only distributional requirement.</p>
 <p class="step-label">Cost and notes</p>
 <p>Linear in the number of samples, with a constant two random draws, two multiplications, and a comparison per sample. The error of a Monte Carlo estimate falls as <code>1/√n</code> in expectation, so a hundredfold increase in samples buys one more correct decimal digit, and a millionfold increase buys three. The <code>10,000,000</code> sample call above is still fast because a random draw and a comparison cost a few nanoseconds, but the accuracy is only about three digits. That slow convergence is not a flaw of the code; it is the mathematical law, and the variance of the estimator is what it is. The free functions in <code>std::math::random</code> draw from <code>/dev/urandom</code>, which is cryptographically strong but slower than a purpose-built PRNG; for a large simulation a seeded <code>XorShift32</code> or <code>Pcg32</code> is both faster and reproducible, and its statistical quality is more than enough for this purpose.</p>

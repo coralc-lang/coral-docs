@@ -36,13 +36,13 @@
 <section><h2 id="s6-1">Methods and Extend: Putting Behaviour Next to Data</h2></section>
 <p>Before traits come methods, and before methods comes a design decision.</p>
 <p>You have probably written a function like this:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">f64 magnitude(Point p) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">f64 magnitude(Point p) {
     return sqrt(p.x * p.x + p.y * p.y);
-}</code></pre>
+}</code></pre></div>
 <p>It works, and you call it as <code>magnitude(p)</code>. But each Point now needs the struct plus a scattered family of free functions. Rename the struct and you must hunt down every helper.</p>
 <p>A method is a function filed next to its data. <code>magnitude(p)</code> takes the point as an argument; <code>p.magnitude()</code> asks the point for its magnitude.</p>
 <p>Coral lets you write the same function as a method in an extend block:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Point {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Point {
     f64 x;
     f64 y;
 }
@@ -60,7 +60,7 @@ pub extend Point {
         self.x += dx;
         self.y += dy;
     }
-}</code></pre>
+}</code></pre></div>
 <p>Three things changed.</p>
 <p>First, the receiver moved out of the parameter list. Coral supplies it implicitly as <code>self</code>, so <code>self.x</code> is the receiver's x-coordinate. Calls read as actions: <code>p.magnitude()</code>, <code>p.scaled(2.0)</code>, <code>p.translate(1.0, 2.0)</code>.</p>
 <p>Second, mutating methods write through <code>self</code> directly. <code>translate</code> changes the point it was called on; <code>scaled</code> returns a new Point and leaves the original alone. Keeping those shapes distinct makes an API readable.</p>
@@ -70,7 +70,7 @@ pub extend Point {
 <section><h2 id="s6-2">const Methods: A Promise That You Will Not Change Anything</h2></section>
 <p>A <code>const</code> method promises not to change the receiver, so it is safe on a value the caller considers read-only.</p>
 <p>Write it with <code>#[[const]]</code> above the signature or <code>const</code> after the parameter list. Both spellings mean the same thing:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Point {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend Point {
     #[[const]]
     f64 magnitudeSquared() {
         return self.x * self.x + self.y * self.y;
@@ -82,18 +82,18 @@ pub extend Point {
     f64 magnitudeSquared() const {
         return self.x * self.x + self.y * self.y;
     }
-}</code></pre>
+}</code></pre></div>
 <p>Pick one spelling; the compiler treats them identically. The promise has teeth: a const method that assigns to <code>self</code> or its fields is an error at the assignment.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Point {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend Point {
     f64 bad() const {
         self.x = 0.0;      // error: cannot mutate self in a const method
         return self.y;
     }
-}</code></pre>
+}</code></pre></div>
 <p>This lets a caller reason locally. Given a <code>const Point*</code>, the compiler allows <code>magnitudeSquared</code> and refuses <code>translate</code>. Diagnostics are in the E10xx range, the same family as <code>const</code> on a parameter or pointer.</p>
 <section><h2 id="s6-3">Static Methods and Constructors</h2></section>
 <p>Some operations belong to a type, not a value. "Make a point at the origin" is something Point produces. Coral spells those <code>static</code>, with no <code>self</code> because there is no instance:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Point {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend Point {
     static Point new(f64 x, f64 y) {
         return Point { .x = x, .y = y };
     }
@@ -101,7 +101,7 @@ pub extend Point {
     static Point origin() {
         return Point { .x = 0.0, .y = 0.0 };
     }
-}</code></pre>
+}</code></pre></div>
 <p>A static method works before any value exists. <code>Point::origin()</code> uses <code>::</code>; <code>p.magnitude()</code> uses <code>.</code>, a visible signal that no existing value is involved.</p>
 <p>Constructors are static methods by convention, with <code>new</code> the customary name. Call statics with <code>::</code> and instance methods with <code>.</code>; the distinction is visible at every call site.</p>
 <p>The language would rather your code declare what it is doing than leave the reader to infer it.</p>
@@ -109,24 +109,24 @@ pub extend Point {
 <p>Now the socket.</p>
 <p>A job description lists what a hire must do without naming anyone. A trait is a job description for types.</p>
 <p>Declare one with the <code>trait</code> keyword and method signatures: a return type, a name, and parameters, ending in a semicolon because there is no body:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Shape {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait Shape {
     f64 area();
     f64 perimeter();
-}</code></pre>
+}</code></pre></div>
 <p>That is a complete trait. Any type that satisfies Shape has <code>area</code> returning <code>f64</code> and <code>perimeter</code> returning <code>f64</code>. A trait is not a base type or a place where data lives; it is a contract, checked like one.</p>
 <p>A trait may also carry default implementations, the one place it holds logic. A type inherits a default unless it overrides it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Named {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait Named {
     str name();
     str describe() {
         return &quot;an object named &quot; + self.name();
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>name</code> has no body, so every implementor must supply it. <code>describe</code> comes free and may be overridden. Defaults may call required methods, which is why the contract is declared first.</p>
 <p>A trait can require the minimum and hand you convenience built on top. The required method is the load-bearing wall; the default is the furniture. Supply the wall and the furniture comes with the room.</p>
 <p>Trait methods may take parameters and may be <code>const</code>, like ordinary methods. They may not carry data or be <code>static</code>: a trait method is about a value.</p>
 <section><h2 id="s6-5">Implementing a Trait: Making the Promise</h2></section>
 <p>A type satisfies a trait with an extend block that names the trait after a colon:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Circle {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Circle {
     f64 radius;
 }
 
@@ -152,26 +152,26 @@ pub extend Square : Shape {
     f64 perimeter() {
         return 4.0 * self.side;
     }
-}</code></pre>
+}</code></pre></div>
 <p>The colon reads as "satisfies": <code>Circle : Shape</code> means Circle satisfies Shape. Nothing says "a Circle is a kind of Shape." Circle remains exactly Circle; the block merely promises the two methods. There is no inheritance or hierarchy.</p>
 <p>Implementing a trait means filling in the checklist. The trait names the questions; the extend block supplies this type's answers.</p>
 <p>Coral's conformance is nominal, not structural. In a structural language, a type satisfies an interface by happening to have the right methods, so a conformance can appear or vanish when someone else's code changes. Coral requires an explicit extend block. The payoff: searching for <code>: Shape</code> returns every type that claims to be Shape, and nothing else.</p>
 <p>The compiler checks the declared conformance method by method. Each must exist with the exact signature. E1202 is a signature mismatch; E1203 is a missing required method. A type cannot half-implement a trait.</p>
 <p>A type may satisfy several traits, each in its own block, each an independent promise:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Circle : Shape {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend Circle : Shape {
     f64 area() { return 3.14159 * self.radius * self.radius; }
     f64 perimeter() { return 2.0 * 3.14159 * self.radius; }
 }
 
 pub extend Circle : Named {
     str name() { return &quot;circle&quot;; }
-}</code></pre>
+}</code></pre></div>
 <p>Circle now keeps two promises. Traits do not form a hierarchy; Circle just promised twice.</p>
 <p>A type may conform to a given trait only once: one implementation of <code>Shape::area</code> for Circle. That uniqueness lets the compiler resolve <code>area</code> in one step when the concrete type is known. E1201 reports the same method defined twice across blocks.</p>
 <section><h2 id="s6-6">Inherent Methods and Trait Methods in the Same Type</h2></section>
 <p>A useful type usually has two kinds of methods. Inherent methods are its own vocabulary. Trait methods are its obligations to an interface. Coral keeps them in separate extend blocks.</p>
 <p>Inherent methods are the type's own features; trait methods are promises made to an interface.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Stack&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Stack&lt;T&gt; {
     Vec&lt;T&gt; items;
 }
 
@@ -191,15 +191,15 @@ pub extend&lt;T&gt; Stack&lt;T&gt; {
     bool isEmpty() const {
         return self.items.isEmpty();
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>push</code>, <code>pop</code>, <code>isEmpty</code>, and the constructor are Stack's own API, so they live in the inherent block. If Stack should also be iterable, that promise goes in its own block:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend&lt;T&gt; Stack&lt;T&gt; : Iterable&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend&lt;T&gt; Stack&lt;T&gt; : Iterable&lt;T&gt; {
     // the methods the Iterable trait requires, written in terms of self
-}</code></pre>
+}</code></pre></div>
 <p>The two blocks answer different questions. A trait change shows in the trait block; an API change shows in the inherent block. A reader asking how the type meets its contracts gets a short, auditable answer.</p>
 <section><h2 id="s6-7">Generic Traits and Generic Extends</h2></section>
 <p>Traits and extends can both be generic. The standard library's <code>Result&lt;T, E&gt;</code> is either <code>Ok</code> carrying a <code>T</code> or <code>Err</code> carrying an <code>E</code>, so its methods must work for every choice of both:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant Result&lt;T, E&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub variant Result&lt;T, E&gt; {
     Ok  { T value; },
     Err { E error; }
 }
@@ -208,7 +208,7 @@ pub extend&lt;T, E&gt; Result&lt;T, E&gt; {
     bool isOk() { ... }
     T unwrap() { ... }
     T unwrapOr(T defaultVal) { ... }
-}</code></pre>
+}</code></pre></div>
 <p>The block matches the type it extends: both are parameterised by <code>T</code> and <code>E</code>. Every method is available for every instantiation, and the compiler monomorphises each separately. <code>Result&lt;i32, IoError&gt;</code> and <code>Result&lt;str, ParseError&gt;</code> get their own copies, as though you had written two types. A generic extend is not a runtime template; it is a family of methods generated per use, with no indirection or boxing.</p>
 <p>Inside <code>unwrap</code>, the <code>Ok</code> field and the return type are both <code>T</code>, so the compiler is satisfied. The parameter is in scope throughout the block, in signatures and bodies.</p>
 <p>Both directions are common. A generic type can implement a non-generic trait (a container becomes iterable regardless of contents). A non-generic type can implement a generic trait (a type joins a family parameterised by element type).</p>
@@ -218,43 +218,43 @@ pub extend&lt;T, E&gt; Result&lt;T, E&gt; {
 <p>Start with <code>@drop</code>, the destructor trait. In C, opening a file, locking a mutex, or allocating a buffer means remembering to close, unlock, and free on every exit path. RAII (resource acquisition is initialisation) ties a resource's lifetime to a variable's scope, releasing it on every exit path.</p>
 <p>RAII is a bargain the language keeps: a variable takes ownership on acquisition and releases it when its scope ends, whether by normal finish, early return, or error path.</p>
 <p>Coral expresses RAII as a trait. A type that implements <code>@drop</code> provides <code>void drop()</code>, and the compiler invokes it when a value goes out of scope:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend FileHandle : @drop {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend FileHandle : @drop {
     void drop() {
         close(self.fd);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The contract is <code>void drop()</code>, no parameters, no return. A FileHandle local is closed at scope end, including early exits via <code>return</code>, <code>break</code>, or an error path. A <code>Vec&lt;FileHandle&gt;</code> frees its handles when the vector is dropped, because its drop recursively drops elements.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void copyLogs() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void copyLogs() {
     FileHandle source = FileHandle::open(&quot;access.log&quot;);   // acquired
     FileHandle dest   = FileHandle::open(&quot;access.bak&quot;);   // acquired
     copyContents(&amp;source, &amp;dest);
     // both files close here, at scope end, even if copyContents returned early
-}</code></pre>
+}</code></pre></div>
 <p>You never wrote <code>source.drop()</code> or <code>dest.drop()</code>, and you should not. Cleanup happens at a place you can point at: the closing brace.</p>
 <p>Which types should implement <code>@drop</code>? One that owns a resource: a heap buffer, file, lock, or socket. A bundle of numbers like a Point should not; an empty <code>drop</code> is noise. Implement <code>@drop</code> exactly when the type owns something that must be given back.</p>
 <p>@toStr: teaching a type to print itself</p>
 <p><code>@toStr</code> is the formatting trait. A type that implements it can be printed or converted to a <code>str</code>, and the compiler finds the implementation at the call site:</p>
 <p><code>@toStr</code> teaches a type to describe itself as text. With it, <code>println("{}", p)</code> knows exactly what to render.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Point : @toStr {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend Point : @toStr {
     str toStr() {
         return &quot;Point(&quot; + formatFloat(self.x) + &quot;, &quot; + formatFloat(self.y) + &quot;)&quot;;
     }
-}</code></pre>
+}</code></pre></div>
 <p>With this conformance, <code>println("{}", point)</code> dispatches to <code>Point::toStr</code>. <code>std::io::ios</code> documents <code>toStr</code> as an inbuilt trait like <code>@drop</code>; the <code>any toStr</code> case in the formatter auto-wires the call.</p>
 <section><h2 id="s6-9">RAII in Practice, and How to Opt Out</h2></section>
 <p>Automatic cleanup is the right default, but it is not free. The compiler must track every local that implements <code>@drop</code> and generate cleanup on every path out of scope. Most application code should leave it on. Some code, the standard library above all, manages memory by hand and does not want generated destructors. Coral offers three opt-outs: one variable, one block, or a whole file. Choosing wrong means a double free or a leak.</p>
 <p>The opt-outs say "I will handle this cleanup myself" over increasingly broad areas. They exist for hand-managed code; beginners rarely need them.</p>
 <p><code>#[[no_drop_all]]</code>: turn RAII off for a whole file</p>
 <p><code>#[[no_drop_all]]</code> is a file-level attribute. It does not modify a declaration; it appears once, before the first declaration, and disables drop-trait auto-RAII for the whole file:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_drop_all]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[no_drop_all]]
 
 pub struct Arr&lt;T, N&gt; {
     // ...
-}</code></pre>
+}</code></pre></div>
 <p>With it present, the compiler resolves no drop methods for locals and emits no unwind calls; ownership is manual, through <code>free</code> or <code>dispose</code>. Every file in the standard library and compiler sources carries it. First, intent: library code frees bytes deliberately, without hidden destructors. Second, build speed: resolving and emitting drops is work the library has declined.</p>
 <p>A file without <code>#[[no_drop_all]]</code> gets automatic RAII for any local whose type implements <code>@drop</code>. Library code opts out, application code opts in. The attribute rides on each declaration, so a library file merged into a user's build unit keeps its setting.</p>
 <p>Inside a <code>#[[no_drop_all]]</code> file, destructors are never called for you, so a type that owns memory must free it explicitly. The std's <code>String</code> is the pattern: a <code>free()</code> method plus a separate <code>@drop</code> conformance for user code:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct String {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct String {
     u8* ptr;
     usize len;
     // ...
@@ -265,11 +265,11 @@ pub struct Arr&lt;T, N&gt; {
 
 pub extend String : @drop {
     void drop() { self.free(); }
-}</code></pre>
+}</code></pre></div>
 <p>In a <code>#[[no_drop_all]]</code> library file, calls to <code>s.free()</code> are written by hand. In application code, the String frees itself at scope end.</p>
 <p><code>#[[no_drop]]</code>: turn RAII off for one variable or one block</p>
 <p><code>#[[no_drop_all]]</code> is the sledgehammer. The scoped tool you will actually reach for is <code>#[[no_drop]]</code>. On a variable it excludes that variable from auto-RAII; on a block it excludes every local inside, nested blocks included:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void processInChunks(File* f) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void processInChunks(File* f) {
     #[[no_drop]]
     u8* buffer = alloc&lt;u8&gt;(65536);      // manual lifetime
 
@@ -282,24 +282,24 @@ pub extend String : @drop {
         if (n == 0) break;
         handle(buffer, n);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The buffer carries <code>#[[no_drop]]</code> because its lifetime is managed by the <code>defer</code> block. Opt out for exactly this value and take responsibility in one visible place. The attribute says "I will remember to free this," and the <code>defer</code> makes that literal.</p>
 <p>When is <code>#[[no_drop]]</code> the right tool, and when is it a mistake? Three honest cases:</p>
 <ul><li>A value whose lifetime is longer than its scope, handed back out of the function, stored in a long-lived structure, or moved to another owner.</li><li>A value managed by an explicit mechanism (defer, a refcount, a pool) so that RAII on the variable would be a second, competing owner.</li><li>A value obtained from a foreign interface that the caller does not own and must not release, such as a borrowed C handle.</li></ul>
 <p>The dishonest case: a value whose variable lifetime really is its resource lifetime, annotated out of laziness or fear. That annotation says "I will remember," and humans do not always remember. Use <code>#[[no_drop]]</code> only where nothing else will do.</p>
 <p>Sealing a type: #[[extend]] and #[[no_extend]]</p>
 <p>Two attributes govern whether later code may grow a type. By default a type is open: anyone who can see it may add methods with an extend block. <code>#[[extend]]</code> makes that permission explicit. <code>#[[no_extend]]</code> forbids further blocks:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_extend]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[no_extend]]
 struct SecurityToken {
     u64 secret;
     i64 expiry;
     // ...
-}</code></pre>
+}</code></pre></div>
 <p>This seals a type so its behaviour is exactly the methods it ships. No third party can add a method that changes an operation's meaning. Use it where invariants must not be circumvented: an opaque handle, a fixed state machine, a security token. Most types want to be open, so sealing should be a decision.</p>
 <p>The four drop diagnostics, E1301 to E1304</p>
 <p>The compiler guards the four ways drop goes wrong.</p>
 <p>E1301, explicit call to a drop method disallowed. Writing <code>x.drop()</code> is an error. Drop is driven by scope termination, so a manual call invites a double free. Let the scope do it, or opt out with <code>#[[no_drop]]</code> and provide a normal cleanup method:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void broken(FileHandle* f) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void broken(FileHandle* f) {
     f-&gt;drop();          // error E1301: cannot call drop() explicitly
 }
 
@@ -316,10 +316,10 @@ pub extend FileHandle {
 void manual(FileHandle* f) {
     #[[no_drop]] FileHandle h = *f;
     h.closeNow();           // explicit cleanup, and RAII was told to stand down
-}</code></pre>
+}</code></pre></div>
 <p>E1302, no drop on a type whose size varies with comptime conditions. A fixed-layout destructor cannot be sound when the size is unknown until the comptime block resolves. The fix is to give the type a fixed size, or manage it without <code>@drop</code>.</p>
 <p>E1303, field moved out before the drop runs. Removing a field and leaving the struct to be dropped would run the destructor on partially uninitialised memory:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Holder {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Holder {
     String name;
     Vec&lt;String&gt; tags;
 }
@@ -327,46 +327,46 @@ void manual(FileHandle* f) {
 void broken(Holder h) {
     String stolen = h.name;   // moves name out of h
     // h is dropped at scope end, but its name field is gone -&gt; E1303
-}</code></pre>
+}</code></pre></div>
 <p>The fix is to drop or transfer the whole value, or to replace the moved field with a valid one before the scope ends.</p>
 <p>E1304, a capability used through a type parameter. A generic body may call any operation on a <code>T</code>, but the compiler checks that the operation exists only at instantiation. Ask a generic to print its <code>T</code> (needing <code>@toStr</code>), then instantiate with a type that lacks it; the error names that type:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void printer&lt;T&gt;(T value) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void printer&lt;T&gt;(T value) {
     println(&quot;{}&quot;, value);   // fine here; each instantiation must supply @toStr
 }
 
 struct Opaque { i32 id; }   // no @toStr
 
-printer(Opaque { .id = 1 });  // error E1304: Opaque has no toStr capability</code></pre>
+printer(Opaque { .id = 1 });  // error E1304: Opaque has no toStr capability</code></pre></div>
 <p>Coral does not let you write the requirement on the signature; there is no <code>T : @toStr</code> bound. The requirement is a property of the body, enforced at each instantiation. To check it directly, inspect the type in a <code>comptime</code> block, as <a href="../07-generics-and-comptime/index.html">Chapter 7</a> shows.</p>
 <p>Together: every automatic drop happens and is not called by hand (E1301), is on a fixed-layout type (E1302), receives every field it expects (E1303), and has the capabilities a generic relies on (E1304).</p>
 <section><h2 id="s6-10">Dynamic Dispatch: any Trait</h2></section>
 <p>Every conformance so far has been static: with the concrete type known, <code>area</code> resolves to one implementation with no runtime lookup. When the concrete type is unknown, as in a mixed list of circles and squares, use <code>any Trait</code>.</p>
 <p>A universal remote controls any television that speaks the standard signal. It holds a reference to one plus enough knowledge to send commands; which television is decided when you point it.</p>
 <p><code>any Shape</code> means "some kind of shape, found out at runtime." The value carries the object and a way to reach its Shape methods, so one loop handles a Circle and a Square without being rewritten.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;any Shape&gt; shapes = Vec&lt;any Shape&gt;::new();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Vec&lt;any Shape&gt; shapes = Vec&lt;any Shape&gt;::new();
 shapes.push(Circle { .radius = 1.0 });
 shapes.push(Square { .side = 2.0 });
 
 for (any Shape s : shapes) {
     println(&quot;area = {}&quot;, s.area());
-}</code></pre>
+}</code></pre></div>
 <p>An <code>any Shape</code> value is a fat pointer: a reference to the value and a reference to its Shape implementation. <code>s.area()</code> dispatches through the second. This is a trait object, the dynamic half of polymorphism: the call site does not know the concrete type.</p>
 <p>A trait object costs an extra indirection per call and generally cannot be inlined across the boundary. It is a pointer-sized pair, twice the space of a plain reference. It carries only the trait's methods: through <code>any Shape</code> you can call <code>area</code> and <code>perimeter</code>, but not a Square-only method. The trait is the window.</p>
 <p>Keep dynamic dispatch at boundaries where the concrete type is genuinely unknown: a heterogeneous collection, a plugin registry, a callback. Keep internals static. A generic <code>T</code> constrained to Shape is just as capable with no indirection when the compiler sees the type; use <code>any Shape</code> only when it cannot. Both share the trait, so switching changes one signature.</p>
 <p>Coral has no <code>as</code> cast; write a conversion with the target type in parentheses, as in <code>(Circle)x</code>. The wildcard in a pattern is <code>else</code>, never an underscore. In a <code>switch</code> over <code>any Shape</code>, handle what you need and let <code>else</code> catch the rest.</p>
 <section><h2 id="s6-11">Static Polymorphism with Generics</h2></section>
 <p>A generic function works for every type that can do what its body asks. The body is the requirement: <code>sum += s.area()</code> works for any <code>T</code> with an <code>area</code> method. There is no bound clause:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">f64 totalArea&lt;T&gt;(Vec&lt;T&gt; shapes) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">f64 totalArea&lt;T&gt;(Vec&lt;T&gt; shapes) {
     f64 sum = 0.0;
     for (T s : shapes) {
         sum += s.area();
     }
     return sum;
-}</code></pre>
+}</code></pre></div>
 <p>The compiler fills the blank separately for each type you use, so each version is as fast as one written by hand. The blank is <code>&lt;T&gt;</code>, covered next chapter.</p>
 <p>Inside <code>totalArea</code>, <code>s.area()</code> is checked at instantiation. With <code>Vec&lt;Circle&gt;</code>, the compiler generates <code>totalArea&lt;Circle&gt;</code> with a direct call to <code>Circle::area</code>. With <code>Vec&lt;str&gt;</code>, the error names <code>str</code> as missing the operation.</p>
 <p>This is static polymorphism, and it is free. <code>totalArea</code> is monomorphised for each <code>T</code>: no vtable, no indirection, no dispatch, no runtime type checking. Prefer a generic when the types are known at compile time; use <code>any Trait</code> otherwise.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// static: monomorphised, direct calls, chosen at compile time
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// static: monomorphised, direct calls, chosen at compile time
 f64 totalArea&lt;T&gt;(Vec&lt;T&gt; shapes) { ... }
 
 // dynamic: one function, indirect calls, chosen at runtime
@@ -376,12 +376,12 @@ f64 totalAreaDyn(Vec&lt;any Shape&gt; shapes) {
         sum += s.area();
     }
     return sum;
-}</code></pre>
+}</code></pre></div>
 <p>The first cannot accept a mixed vector because <code>T</code> must be a single type. The second can, because every element is <code>any Shape</code>. Homogeneous and known at compile time means a generic; heterogeneous or runtime-known means <code>any</code>.</p>
 <p>With no bounds, a generic's requirements are exactly the operations its body names. To learn what a generic needs, read the body. The cost is that a caller does not see the requirement until an instantiation fails, so document expected capabilities in a comment. E1304 enforces it, naming the type and the missing operation.</p>
 <section><h2 id="s6-12">A Worked Example: One Printer for a Whole Tree</h2></section>
 <p>Traits earn their keep when one algorithm works across many shapes. A filesystem tree holds files and subdirectories together, and you want one printing routine for all of it. The collection is heterogeneous at runtime, so <code>any</code> is the right dispatch.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait TreeNode {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait TreeNode {
     str label();
     Vec&lt;any TreeNode&gt; children();
 }
@@ -398,9 +398,9 @@ struct DirNode { str name; Vec&lt;any TreeNode&gt; kids; }
 pub extend DirNode : TreeNode {
     str label() { return self.name; }
     Vec&lt;any TreeNode&gt; children() { return self.kids; }
-}</code></pre>
+}</code></pre></div>
 <p>The printing algorithm is written once, against the trait:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void printTree(any TreeNode root, i32 depth) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void printTree(any TreeNode root, i32 depth) {
     for (i32 i = 0; i &lt; depth; i += 1) {
         print(&quot;  &quot;);
     }
@@ -408,21 +408,21 @@ pub extend DirNode : TreeNode {
     for (any TreeNode child : root.children()) {
         printTree(child, depth + 1);
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>printTree</code> does not know about files or directories. It knows the two methods TreeNode declares and recurses through them. Add a conforming symlink, device, or network mount, and it prints without a line of <code>printTree</code> changing.</p>
 <p>Why <code>any TreeNode</code> rather than a generic? The tree is heterogeneous, so the children list must hold different concrete types. A generic could print a homogeneous <code>Vec&lt;T&gt;</code> but not a mixed tree.</p>
 <p>Now add a second behaviour over the same data, counting nodes. The shape repeats: another recursion through the same two methods:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 countNodes(any TreeNode root) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 countNodes(any TreeNode root) {
     i32 total = 1;                       // the root itself
     for (any TreeNode child : root.children()) {
         total += countNodes(child);
     }
     return total;
-}</code></pre>
+}</code></pre></div>
 <p>Two operations, one set of node types, and neither mentions FileNode or DirNode. Data defines the cases; traits define the operations; one algorithm serves every type that keeps the promise. Without traits, each operation would need a switch over node kind, and every new kind would mean editing both. With traits, adding a kind adds a conformance and touches nothing else. This is the expression problem from <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>.</p>
 <section><h2 id="s6-13">A Second Worked Example: A Plugin Registry</h2></section>
 <p>The tree used <code>any</code> because the collection was heterogeneous. A plugin registry is the same shape because plugins are chosen at build or load time, so the program cannot name their types at compile time.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Plugin {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait Plugin {
     str name();
     void run();
     void shutdown() { }        // default: most plugins have nothing to release
@@ -443,10 +443,10 @@ pub extend Registry {
             p.run();
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The registry never mentions a concrete plugin type. It stores <code>any Plugin</code> and calls the trait's methods. A new plugin is a struct plus a conformance; registry code is untouched. <code>shutdown</code> has a default body, so a plugin with no resources writes nothing.</p>
 <p>Now make teardown automatic. Each concrete plugin that owns something conforms to <code>@drop</code> and routes its destructor to <code>shutdown</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct NetworkPlugin { Socket* sock; }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct NetworkPlugin { Socket* sock; }
 
 pub extend NetworkPlugin : Plugin {
     str name() { return &quot;network&quot;; }
@@ -460,7 +460,7 @@ pub extend NetworkPlugin : Plugin {
 
 pub extend NetworkPlugin : @drop {
     void drop() { self.shutdown(); }
-}</code></pre>
+}</code></pre></div>
 <p>The <code>Plugin</code> conformance promises the interface; the <code>@drop</code> conformance makes cleanup automatic. Neither the registry nor its callers call <code>shutdown</code> by hand; the destructor does, at scope end. Small interface, automatic lifetime, no forgotten cleanup.</p>
 <section><h2 id="s6-14">Exercises</h2></section>
 <section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>Explain the difference between a method in an inherent extend block and a method in an extend Trait block. Give one method that belongs in each for a <code>Stack&lt;T&gt;</code>, and say who decides which block it goes in.</li><li><span class="ex-label">Comprehension</span>Why can a const method be called on a const value but a non-const method cannot? Write a two-sentence explanation a C programmer would accept, and point at the diagnostic family that enforces it.</li><li><span class="ex-label">Implementation</span>Declare a trait <code>Comparable</code> with a method <code>lessThan(other) bool</code>, implement it for <code>Point</code> (compare by distance from the origin) and for a struct of your choice. Then write a generic <code>minimum&lt;T&gt;(T a, T b) T</code> whose body calls <code>lessThan</code>, and explain where the requirement that <code>T</code> has that method is checked.</li><li><span class="ex-label">Implementation</span>Add a <code>@toStr</code> conformance to a struct with three fields so that <code>println("{}", instance)</code> prints all three. Then add a wrong-way version where you print the fields in the wrong order and explain why the compiler cannot catch that.</li><li><span class="ex-label">Built-ins</span>Give one type that should implement <code>@drop</code> and one that should not, with a one-sentence reason each. For the one that should, write the conformance and the correct usage; for the one that should not, explain what a <code>drop</code> would even mean.</li><li>Drop attributes. You are writing a function that allocates a large buffer, hands it to a C library that frees it later, and returns. Which attribute applies to the buffer, <code>#[[no_drop]]</code> or <code>#[[no_drop_all]]</code>, and why is the other the wrong tool here? Write the function.</li><li><span class="ex-label">Diagnostics</span>Trigger each of E1301, E1303, and E1304 with a small example, and write the corrected version beside it. For E1302, describe in your own words why a comptime-variable-size type cannot have a fixed destructor.</li><li><span class="ex-label">Dispatch</span>Write a <code>Vec&lt;any Shape&gt;</code> holding a Circle, a Square, and a Triangle. Print each area. Why can the vector not have a concrete element type? Then rewrite the loop to use a generic function and explain what changes about the types accepted.</li><li>Generic versus dispatch. Write the same operation twice: once as a generic <code>totalArea&lt;T&gt;</code> and once as <code>totalAreaDyn(Vec&lt;any Shape&gt;)</code>. State what each accepts, what each costs at runtime, and which you would choose when the set of shapes is fixed at compile time.</li><li><span class="ex-label">Design</span>You are designing a serialisation library. Decide, with a sentence for each, what should be a trait, what should be a generic function, and what should be a plain concrete function. Then name one thing that goes wrong if you make the wrong one a trait.</li><li><span class="ex-label">Defaults</span>Declare a trait with three methods, one of which has a default body calling the other two. Implement it for a type, override the default, and explain when overriding is right and when it is over-engineering.</li><li><span class="ex-label">Meta</span>Coral has no inheritance; a type acquires behaviour only by extending or conforming, and sealing requires an explicit <code>#[[no_extend]]</code>. Argue that this is a limitation, then argue that it is a strength. Which position do you find more convincing, and why?</li><li><span class="ex-label">Sealing</span>Declare a <code>#[[no_extend]]</code> opaque handle with a private field and one public accessor, and write what a caller loses when the type is sealed and what the author gains.</li></ol></section>

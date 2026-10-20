@@ -40,14 +40,14 @@
 <section><h2 id="s10-2">Structs Are the Class</h2></section>
 <p>A class is a blueprint describing the fields and methods of its instances. Coral's blueprint is the struct, and a value of a struct type is the instance.</p>
 <p>The standard library's vector, quoted from <code>std::vec</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Vec&lt;T&gt; {
     T*    data;
     usize len;
     usize cap;
-}</code></pre>
+}</code></pre></div>
 <p>The struct declares the data. <code>Vec&lt;i32&gt;</code> is the type, and a particular vector with three elements, capacity four, and a heap buffer is a value of it. The five-vector and the thousand-vector are two instances carrying their own <code>data</code>, <code>len</code>, and <code>cap</code>.</p>
 <p>Behaviour lives in an extend block beside the declaration:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend&lt;T&gt; Vec&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend&lt;T&gt; Vec&lt;T&gt; {
     static Vec&lt;T&gt; new() {
         return Vec&lt;T&gt; { .data = null, .len = 0, .cap = 0 };
     }
@@ -60,28 +60,28 @@
         self.data[self.len] = val;
         self.len += 1;
     }
-}</code></pre>
+}</code></pre></div>
 <p>The struct and extend block are one type to the reader but two declarations to the compiler. Because they are separate, an extend block can add behaviour to any visible type, even one from another module. That is what makes traits and dynamic dispatch possible, since a conformance is an extend block naming a trait.</p>
 <p><code>pub</code> makes the struct and extend block visible outside the module; without it they are private to the file. A type that must not be extended says so with <code>#[[no_extend]]</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_extend]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[no_extend]]
 struct SecurityToken {
     u64 secret;
     i64 expiry;
-}</code></pre>
+}</code></pre></div>
 <p>Most types stay open, so sealing requires an annotation.</p>
 <section><h2 id="s10-3">Value Semantics and Reference Semantics</h2></section>
 <p>A reference type is shared: two variables can name the same object. A value type is copied: each variable holds its own value. In class languages a class is usually a reference type; in Coral the struct is a value, and there is no reference type.</p>
 <p>A struct variable holds the struct's fields. Assignment copies them, passing to a function passes them, and returning moves them out. There is no hidden address, no managed identity, and no aliasing you did not write. Two <code>Point</code> values with the same x and y are the same point.</p>
 <p>A struct variable is a box of pieces, not a pointer to a shared box. A pointer (<code>T*</code>) is an address two people can share, and Coral makes you write the pointer when you want that sharing.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Point { f64 x; f64 y; }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Point { f64 x; f64 y; }
 Point a = Point { .x = 1.0, .y = 2.0 };
 Point b = a;          // b gets its own copy of the two fields
 b.x = 9.0;
-println(&quot;{} {}&quot;, a.x, b.x);   // 1.0 9.0, a is untouched</code></pre>
+println(&quot;{} {}&quot;, a.x, b.x);   // 1.0 9.0, a is untouched</code></pre></div>
 <p>Two <code>Point</code> variables, two independent boxes. Nothing can make <code>a</code> change when <code>b</code> does.</p>
 <p>When a struct owns a resource such as a heap buffer or a file handle, copying its fields would leave two variables freeing one resource. Coral moves instead: <code>Vec&lt;u32&gt; b = a;</code> copies the fields, and the compiler cancels <code>a</code>'s cleanup, leaving one owner.</p>
 <p>Value semantics and moves are two sides of the same idea: a struct is its fields, and ownership is handed over rather than shared. To share on purpose, write it down with a pointer or a counted smart pointer:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;u32&gt; source = Vec&lt;u32&gt;::withCap(16);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Vec&lt;u32&gt; source = Vec&lt;u32&gt;::withCap(16);
 Vec&lt;u32&gt;* shared = &amp;source;          // an explicit reference, no copy
 shared-&gt;push(7);                     // the original sees the change
 
@@ -89,14 +89,14 @@ SharedPtr&lt;Config&gt; config = ...;      // several holders, one count
 SharedPtr&lt;Config&gt; alias;
 alias.ptr = config.ptr;              // sharing, written by hand
 alias.rc  = config.rc;
-alias.rc-&gt;count += 1;</code></pre>
+alias.rc-&gt;count += 1;</code></pre></div>
 <p>Coral does not lack references; the reference is a type you write (<code>T*</code>, <code>SharedPtr&lt;T&gt;</code>) instead of a default you inherit. A value parameter is a copy or a move, a pointer parameter is a reference, and the signature says which.</p>
 <p>A struct value is a box you own; a pointer is a shared address you chose to write down. Sharing happens only when a <code>*</code> appears in the type.</p>
 <section><h2 id="s10-4">Methods and the Receiver</h2></section>
 <p>A method is a function bound to a type, whose receiver is a value of that type. This section fixes the vocabulary and the two spellings.</p>
 <p>The receiver is the value the method was called on. In <code>c.bump()</code>, <code>c</code> is the receiver, and inside <code>bump</code> it is named <code>self</code>. A method call is a function call with the receiver as its first argument.</p>
 <p>The receiver is supplied by Coral, not written in the parameter list, and the call site names it with a dot:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Counter {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend Counter {
     void bump() {
         self.value += 1;
     }
@@ -105,27 +105,27 @@ alias.rc-&gt;count += 1;</code></pre>
     i32 current() {
         return self.value;
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>bump</code> mutates the receiver through <code>self</code>; <code>current</code> promises not to, and the <code>#[[const]]</code> attribute is the promise. A const method that assigns to <code>self</code> is an error, and a const method can be called on a read-only value where a mutating one cannot.</p>
 <p>A method belonging to the type rather than a value is <code>static</code>, and it has no <code>self</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Counter {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend Counter {
     static Counter start() {
         return Counter { .value = 0 };
     }
-}</code></pre>
+}</code></pre></div>
 <p>Statics are called on the type with <code>::</code>; instance methods are called on a value with <code>.</code>. The distinction between a type and a value is visible at every call site.</p>
 <p>If the thing on the left is a type name, use <code>::</code>; if it is a value, use <code>.</code>. <code>Counter::start()</code> makes a new counter; <code>c.bump()</code> changes an existing one.</p>
 <p>The receiver is always implicit: there is no <code>self</code> parameter and no pointer spelling to declare. A static method has no receiver. To mark an instance method read-only, use <code>#[[const]]</code>; the compiler flags any mutation through <code>self</code>.</p>
 <section><h2 id="s10-5">Encapsulation and Information Hiding</h2></section>
 <p>Encapsulation bundles data with its operations and controls how the data is reached. Coral has no <code>public</code>, <code>private</code>, or <code>protected</code>: a field is reachable by any code that can name its type. Coral controls visibility between modules with one switch, <code>pub</code> or not.</p>
 <p>Coral hides implementation with the type rather than the field. An opaque type hides its storage behind a layout with no meaning to the reader. A distinct type hides its representation behind a name:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct File = i32;</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub distinct File = i32;</code></pre></div>
 <p>A <code>File</code> is an <code>i32</code> under the hood, but the type system will not let you use one where the other is expected. The representation is hidden by the type and checked by the compiler. When a type's fields really are its interface, as with <code>Vec</code>, the library leaves them public on purpose.</p>
 <p>The library adds a convention: a leading underscore marks a name internal, as in <code>_ensure</code>, <code>_grow</code>, <code>_normalize</code>, and <code>_sortByRange</code>. Nothing enforces it; the library honours it. Encapsulation is therefore structural: a field is hidden when the type makes it meaningless, marked internal when it is the library's business, and otherwise open.</p>
 <section><h2 id="s10-6">Constructors</h2></section>
 <p>A constructor brings an object into existence and leaves it in a valid state. It matters because of the invariant, a property the type promises always to hold, such as a vector's length never exceeding its capacity. An object built wrong fails later in a method that trusted the invariant.</p>
 <p>Coral's only constructor is the static factory. A static method fills the fields and returns the value, and the library's constructors all declare the variable, set every field, and return it.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend&lt;T&gt; Vec&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend&lt;T&gt; Vec&lt;T&gt; {
     static Vec&lt;T&gt; withCap(usize capacity) {
         return Vec&lt;T&gt; {
             .data = alloc&lt;T&gt;(capacity),
@@ -133,35 +133,35 @@ alias.rc-&gt;count += 1;</code></pre>
             .cap  = capacity
         };
     }
-}</code></pre>
+}</code></pre></div>
 <p>Because <code>cap</code> is the size actually allocated and <code>len</code> is zero, the rule that length never exceeds capacity holds from the first instant. The constructor is setup code, named and visible.</p>
 <p>Factories are called on the type with <code>::</code>: <code>Vec&lt;i32&gt;::new()</code>, <code>Vec&lt;i32&gt;::withCap(1024)</code>, <code>Duration::fromSecs(seconds)</code>, <code>str::fromCstr(cstr)</code>. There is no constructor keyword and no overloading; <code>new</code> and <code>withCap</code> are two constructors named for what they do.</p>
 <p>There are no copy or move constructors. A copy is a struct assignment that copies the fields; a move is the same assignment on an owning type. For a deep copy, the type provides a method such as <code>String::clone</code>, and the caller writes its name, so no copy happens behind a <code>=</code>.</p>
 <section><h2 id="s10-7">Destructors and Deterministic Cleanup</h2></section>
 <p>A destructor releases what an object held when its life ends. Coral's answer is the scope, in three forms.</p>
 <p>The first is the ordinary cleanup method, which the library's owning types call <code>dispose</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend&lt;T&gt; Vec&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend&lt;T&gt; Vec&lt;T&gt; {
     void dispose() {
         dealloc&lt;T&gt;(self.data);
         self.data = null;
         self.len  = 0;
         self.cap  = 0;
     }
-}</code></pre>
+}</code></pre></div>
 <p>The release happens when <code>dispose</code> is called, at a line you can point at.</p>
 <p><code>defer</code> promises cleanup on every exit from a block, including an early return, and keeps the cleanup next to the acquisition.</p>
 <p>The second form is <code>defer</code>, which binds a cleanup to a block and guarantees it on every exit:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void process(File f) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void process(File f) {
     defer fileClose(f);
     // ... read the file ...
     // fileClose(f) runs here, on every path out, including an early return
-}</code></pre>
+}</code></pre></div>
 <p>The third form is the compiler-provided <code>@drop</code> trait. A conforming type gets its cleanup emitted automatically at the end of every scope where a value dies, once, on every exit path, in reverse order of declaration, like the <code>defer</code> statements of the same scope:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend&lt;T&gt; SmartPtr&lt;T&gt; : @drop {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend&lt;T&gt; SmartPtr&lt;T&gt; : @drop {
     void drop() {
         self.dispose();
     }
-}</code></pre>
+}</code></pre></div>
 <p>With this conformance, every <code>SmartPtr&lt;T&gt;</code> local is released at its closing brace with no release written.</p>
 <p>Most standard library files free by hand and disable automatic cleanup for the whole file with <code>#[[no_drop_all]]</code>, which keeps compile times down because every program compiles the library. Application files get automatic release. Never call <code>drop()</code> yourself; E1301 forbids it because the scope will also call it. To release early, call the ordinary cleanup method or scope the value.</p>
 <p>If a value conforms to <code>@drop</code>, the scope fires its <code>drop</code> on exit; a hand-written <code>drop()</code> call is E1301 because it would release twice. Call <code>dispose</code> to release early; otherwise let the scope do it once.</p>
@@ -172,7 +172,7 @@ alias.rc-&gt;count += 1;</code></pre>
 <section><h2 id="s10-9">Composition and Delegation</h2></section>
 <p>Composition builds a type by containing other types: where inheritance says is-a, composition says has-a. The containing type holds the contained one as a field and builds its behaviour from it. In Coral composition is the only option, and the library proves it is enough.</p>
 <p>Delegation is composition in action: a type contains another and forwards operations to it. The library's queue is the cleanest example, a double-ended queue with the far door removed.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Queue&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Queue&lt;T&gt; {
     Deque&lt;T&gt; inner;
 }
 
@@ -187,11 +187,11 @@ pub extend&lt;T&gt; Queue&lt;T&gt; {
     usize count() const   { return self.inner.count(); }
     bool isEmpty() const  { return self.inner.isEmpty(); }
     void dispose()        { self.inner.dispose(); }
-}</code></pre>
+}</code></pre></div>
 <p>Every operation forwards: <code>enqueue</code> is <code>pushBack</code>, <code>dequeue</code> is <code>popFront</code>, and the queue's behaviour is the deque's with fewer doors. The queue reuses the deque's logic, so a fix or speedup in the deque reaches the queue for free.</p>
 <p>Inheritance says a queue is a kind of deque; composition says a queue has a deque. The second is truer, because a queue is not interchangeable with a general deque but a deque with a narrower promise. Holding one as a field keeps the queue's own interface and lets the deque change underneath.</p>
 <p>A decorator is delegation with behaviour added at the seam. A logging queue wraps a queue, forwards the core operations, and adds an extra:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct LoggingQueue&lt;T&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct LoggingQueue&lt;T&gt; {
     Queue&lt;T&gt; inner;
 }
 
@@ -206,13 +206,13 @@ pub extend&lt;T&gt; LoggingQueue&lt;T&gt; {
         println(&quot;dequeue&quot;);
         return v;
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>LoggingQueue</code> is a queue by interface and a wrapper by construction, and the pattern works for any seam you want to observe. The library composes further: the set is a hash map with a restricted interface, and the cache is a map and a list working together. The containing type is built from what it holds, not descended from it.</p>
 <section><h2 id="s10-10">Traits as Interfaces</h2></section>
 <p>The interface is the trait, covered fully in <a href="../06-traits-extend-and-polymorphism/index.html">Chapter 6</a>. This chapter gives the object-oriented framing, because the trait replaces the interface and much of inheritance.</p>
 <p>A trait is a job description: it lists what a type must be able to do, <code>area</code>, <code>perimeter</code>, <code>name</code>, without saying how. Each type writes its answers in an extend block, and the compiler checks that every duty was filled.</p>
 <p>A drawing program that holds a list of shapes and reports the largest area would otherwise inspect each shape's kind and switch, and every new kind would mean editing the measuring code. The trait declares the operations once, and the measuring code is written against them:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Shape {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait Shape {
     f64 area() const;
     f64 perimeter() const;
     str name() const;
@@ -222,35 +222,35 @@ pub extend Circle : Shape {
     f64 area() const      { return 3.14159 * self.radius * self.radius; }
     f64 perimeter() const { return 2.0 * 3.14159 * self.radius; }
     str name() const      { return &quot;circle&quot;; }
-}</code></pre>
+}</code></pre></div>
 <p>The colon reads satisfies: <code>Circle : Shape</code> means Circle keeps the Shape promise. Circle stays exactly Circle and merely implements the three methods. Conformance is nominal and checked method by method: a missing method is E1203, a wrong signature is E1202, at the conformance site.</p>
 <p>A type may satisfy several traits, one block each, and traits do not form a hierarchy. A type may conform to a given trait only once, so there is exactly one <code>Shape::area</code> for Circle; defining it twice is E1201. Shared code is written against the trait, checked at instantiation:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">f64 largestArea&lt;T&gt;(Vec&lt;T&gt; shapes) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">f64 largestArea&lt;T&gt;(Vec&lt;T&gt; shapes) {
     f64 best = 0.0;
     for (T s : shapes) {
         f64 a = s.area();
         if (a &gt; best) best = a;
     }
     return best;
-}</code></pre>
+}</code></pre></div>
 <p>The body calls <code>area()</code> on values of <code>T</code> without knowing what <code>T</code> is. At instantiation the compiler confirms that <code>T</code> has the operation; a type without it fails the build naming the type. The function works for circles, rectangles, and triangles written next week, with no table lookup or runtime cost.</p>
 <section><h2 id="s10-11">Dynamic Dispatch: any Trait and Function Pointers</h2></section>
 <p>So far every conformance has been static: the concrete type is known and the call resolves to one implementation. When you have a list mixing circles and squares, <code>any Trait</code> makes the choice at runtime.</p>
 <p>A universal remote holds buttons and controls any television that speaks the standard signal; which television answers is decided when you point it.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;any Shape&gt; shapes = Vec&lt;any Shape&gt;::new();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Vec&lt;any Shape&gt; shapes = Vec&lt;any Shape&gt;::new();
 shapes.push(Circle { .radius = 1.0 });
 shapes.push(Square { .side = 2.0 });
 
 for (any Shape s : shapes) {
     println(&quot;{}: area {}&quot;, s.name(), s.area());
-}</code></pre>
+}</code></pre></div>
 <p>An <code>any Shape</code> is a fat pointer: a reference to the value and a reference to its implementation. <code>s.area()</code> dispatches through the second reference, so the call site need not know the concrete type. The costs are an extra indirection, a pointer-sized pair, and no inlining.</p>
 <p>The other form of runtime choice is the function pointer, which the collections use. A hash map stores how to hash and compare its keys:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct HashMap&lt;K, V&gt; {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct HashMap&lt;K, V&gt; {
     usize(K)   hashFn;
     bool(K, K) eqFn;
     // ...
-}</code></pre>
+}</code></pre></div>
 <p>The constructor takes the two functions, and the map calls the stored function when hashing. The ordered map stores a comparison function, <code>i32(K)</code>. The behaviour is chosen by value and invoked through the pointer, visible in the field list. Coral shows the pointer and its type, and the compiler checks its shape.</p>
 <section><h2 id="s10-12">Polymorphism in Coral</h2></section>
 <p>Polymorphism lets one piece of code work with values of many types. Coral has two kinds; the third has no subject.</p>
@@ -260,7 +260,7 @@ for (any Shape s : shapes) {
 <section><h2 id="s10-13">Pattern Matching on Types</h2></section>
 <p>The class languages reach pattern matching through the visitor pattern and double dispatch on virtual calls. Coral uses the switch and compile-time comparison.</p>
 <p>A switch over a variant dispatches on the shape of a value, and the compiler checks that every case is covered:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">variant Shape {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">variant Shape {
     Circle    { f64 radius; }
     Rectangle { f64 width; f64 height; }
     Point,
@@ -274,11 +274,11 @@ pub extend Shape {
             Shape::Point                        =&gt; { 0.0; },
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>Shape::Circle { radius }</code> checks that the value is a circle and binds its radius to a local name. A switch over a variant or enum must be exhaustive or carry an <code>else</code>; a missing case is E0608, naming what is missing. Adding a case to a variant is safe, because every switch refuses to compile until it handles the new case.</p>
 <p>Given <code>Shape::Circle { .radius = 2.0 }</code>, the switch asks each arm in turn: is this a Circle? Yes, so it binds <code>radius</code> to <code>2.0</code>, computes <code>3.14159 * 2.0 * 2.0</code>, and never tries the other arms.</p>
 <p>The same dispatch happens on types inside a generic with a <code>comptime</code> block. The type parameter is known during the build, so the switch resolves to a single arm and only that arm is generated:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void render&lt;T&gt;(T value) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void render&lt;T&gt;(T value) {
     comptime {
         switch (@typeof(value)) {
             i32  =&gt; { printInt(value); },
@@ -286,7 +286,7 @@ pub extend Shape {
             else  =&gt; { @compileError(&quot;render has no case for this type&quot;); },
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The switch is decided at build time, and non-matching cases are never generated. <code>@compileError</code> lets a generic state a requirement in its own words. A visitor pattern can be built from these pieces: a switch over the variant dispatches by kind, and a function pointer field chosen at construction dispatches the call the way a visitor's vtable would.</p>
 <section><h2 id="s10-14">The Object Lifecycle</h2></section>
 <p>Every object is created, used, and released. In Coral the stages are the factory, the scope, and the drop.</p>
@@ -297,17 +297,17 @@ pub extend Shape {
 <p>A singleton permits one instance and gives the whole program one access point; its cost is hidden global state. An object pool keeps prebuilt instances that are borrowed and returned when construction is expensive and churn is high. A flyweight shares a heavy object across many uses, storing shared state once and per-use state with the user.</p>
 <p>Coral avoids the singleton idiom because it hides state behind a global accessor, reachable everywhere and accountable to no one. The library keeps a few visible module-level globals, such as the default allocator, accessed through ordinary functions. When a program needs one of something, it creates one value and passes it where needed.</p>
 <p>The pool is a real library type. <code>Pool&lt;T&gt;</code> holds a region carved into fixed-size blocks linked into a free list, hands a block out on <code>acquire</code>, and takes it back on <code>release</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Pool&lt;Node&gt; pool = Pool&lt;Node&gt;::new();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Pool&lt;Node&gt; pool = Pool&lt;Node&gt;::new();
 Node* n = pool.acquire();     // a recycled block, or null if it cannot grow
 // ... use n ...
 pool.release(n);
-pool.dispose();               // return the whole region</code></pre>
+pool.dispose();               // return the whole region</code></pre></div>
 <p>Reuse costs two pointer stores instead of an allocator round trip, and the blocks stay in a small, hot region. <a href="../11-memory-management/index.html">Chapter 11</a> covers the allocator form.</p>
 <p>The flyweight needs no type of its own because Coral's sharing is already explicit: store the pointer and copy the pointer, and the reader sees the sharing.</p>
 <section><h2 id="s10-16">A Worked Example: The Shape Library</h2></section>
 <p>The pieces assemble into the object model in miniature: a trait for the operations, concrete types, and a client that works through the trait.</p>
 <p>The trait states the rules; each concrete shape implements it with its own fields and formulas:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Square {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Square {
     f64 side;
 }
 
@@ -315,13 +315,13 @@ pub extend Square : Shape {
     f64 area() const      { return self.side * self.side; }
     f64 perimeter() const { return 4.0 * self.side; }
     str name() const      { return &quot;square&quot;; }
-}</code></pre>
+}</code></pre></div>
 <p>A client that reports on a collection uses the trait object because the collection is heterogeneous:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void report(Vec&lt;any Shape&gt; shapes) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void report(Vec&lt;any Shape&gt; shapes) {
     for (any Shape s : shapes) {
         println(&quot;{}: area {}, perimeter {}&quot;, s.name(), s.area(), s.perimeter());
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>report</code> is written once against Shape and runs for circles, squares, or any shape added later. Adding a shape is a new struct and a new conformance; existing code stays unchanged, which is the open-closed idea. <code>any Shape</code> is right because the vector mixes concrete types; a generic could report a homogeneous <code>Vec&lt;T&gt;</code> but not a mixed one.</p>
 <p>This is the shape behind a plugin system, a renderer, or a payment handler: write the walking or drawing code once against the trait, and every new kind is a new type plus a conformance. The cost is the visible runtime indirection of <code>any Shape</code>, the same trade a virtual call makes.</p>
 <p>If every element is the same type, <code>Vec&lt;Circle&gt;</code> plus a generic <code>report&lt;T&gt;</code> is faster and checked at compile time; <code>any</code> earns its keep only when the elements genuinely differ at runtime.</p>
@@ -332,12 +332,12 @@ pub extend Square : Shape {
 <section><h2 id="s10-18">A Worked Example: The Repository</h2></section>
 <p>The repository pattern gathers the model in one place: a trait as the interface, composition for the implementation, and a client written against the trait.</p>
 <p>The trait names the operations. <code>Record</code> is an ordinary struct with an id and a value, and the repository stores and finds records by id:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Repository {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait Repository {
     Option&lt;Record&gt; findById(u64 id);
     void insert(Record r);
-}</code></pre>
+}</code></pre></div>
 <p>The in-memory implementation composes a <code>Vec&lt;Record&gt;</code> and forwards to it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct MemoryRepository {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct MemoryRepository {
     Vec&lt;Record&gt; records;
 }
 
@@ -352,16 +352,16 @@ pub extend MemoryRepository : Repository {
     void insert(Record r) {
         self.records.push(r);
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>findById</code> returns <code>Option&lt;Record&gt;</code> rather than a pointer that might be null, so the caller cannot forget to check. A client written against the trait works for any implementation:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void touch&lt;R&gt;(R repo, u64 id) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void touch&lt;R&gt;(R repo, u64 id) {
     Option&lt;Record&gt; found = repo.findById(id);
     if (found.isSome()) {
         Record r = found.unwrap();
         r.value += 1;
         repo.insert(r);
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>touch</code> never names <code>MemoryRepository</code>; it names the operations the trait declares, and the compiler checks at instantiation that <code>R</code> supplies them. Swapping in a database-backed repository is a new struct and a new conformance, with <code>touch</code> unchanged. Composition, the trait, and static resolution replace inheritance.</p>
 <section><h2 id="s10-19">The OOP Verdict</h2></section>
 <p>Coral is not object-oriented in the class sense: no classes, no inheritance, no virtual methods, no overriding, no access modifiers, and no class-style destructor. The <code>@drop</code> trait and the scope provide automatic release.</p>

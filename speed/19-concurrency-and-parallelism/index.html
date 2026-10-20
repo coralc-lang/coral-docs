@@ -40,16 +40,16 @@
 <section><h2 id="s19-1">Threads</h2></section>
 <p>An OS thread is a sequence of instructions the kernel schedules onto a core, with its own stack and registers. Creating one creates a real kernel object and a real stack. Nothing in Coral stands between the call and that object.</p>
 <p>The thread module has a deliberately small interface:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::thread {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::thread {
     threadCreate, threadJoin, threadExit, threadCurrent, Thread, ThreadError
 };
 
 pub distinct Thread = rawptr;
 
-pub Result&lt;Thread, ThreadError&gt; threadCreate(rawptr(rawptr) fn, rawptr arg);</code></pre>
+pub Result&lt;Thread, ThreadError&gt; threadCreate(rawptr(rawptr) fn, rawptr arg);</code></pre></div>
 <p>A thread runs a function taking one <code>rawptr</code> and returning one <code>rawptr</code>, the C signature. It is deliberately raw: the compiler cannot know what your thread needs. <code>Thread</code> is a <code>distinct</code> type over <code>rawptr</code>, so a thread handle cannot be confused with another pointer.</p>
 <p>The smallest useful threaded program passes a number to a worker, doubles it, and joins:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::thread { threadCreate, threadJoin, Thread, ThreadError };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::thread { threadCreate, threadJoin, Thread, ThreadError };
 
 rawptr worker(rawptr arg) {
     i32* n = (i32*)arg;
@@ -65,14 +65,14 @@ void main() {
         threadJoin(t, null);
         println(&quot;{}&quot;, value);        // 42
     }
-}</code></pre>
+}</code></pre></div>
 <p>Three points matter:</p>
 <p><code>(i32*)arg</code> tells the compiler what the raw pointer points at; casts are written as the type in parentheses, with no <code>as</code> keyword. <code>(rawptr)&amp;value</code> takes an address and erases its type.</p>
 <p><code>threadCreate</code> returns <code>Result&lt;Thread, ThreadError&gt;</code> because creation can fail: the OS may refuse, the function pointer may be null, or allocation may fail. Branch on <code>created.isOk()</code>.</p>
 <p><code>threadJoin</code> orders the threads. Without it, the worker writes at an unknown moment and main reads at another. When <code>threadJoin</code> returns, the worker has finished and all its writes are visible. That guarantee happens exactly once.</p>
 <p><code>threadExit(retval)</code> ends the calling thread; <code>threadCurrent()</code> returns its handle. A joined thread's resources are reclaimed at the join; a detached thread runs to completion and cleans up itself. Join when a later computation needs the result; detach for genuine fire-and-forget.</p>
 <p>Threads pass one pointer, so several values usually travel in a struct:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Job {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Job {
     i32* input;
     i32* output;
     usize count;
@@ -83,13 +83,13 @@ rawptr runJob(rawptr arg) {
     for (usize i = 0; i &lt; job-&gt;count; i += 1)
         job-&gt;output[i] = job-&gt;input[i] * 2;
     return null;
-}</code></pre>
+}</code></pre></div>
 <p>This is how the flat C signature carries structured data. It is also where lifetime discipline begins: pointing a thread at a local that dies before the join is a use-after-free the compiler cannot see.</p>
 <section><h2 id="s19-2">Atomics</h2></section>
 <p>When two threads touch the same value and at least one writes, the result is a data race, which is undefined behaviour. The first defense is the atomic.</p>
 <p>Two threads each adding one to a shared counter a hundred thousand times should yield two hundred thousand, but <code>counter = counter + 1</code> is three actions: load, add, store. If both load <code>7</code>, both compute <code>8</code>, and both store <code>8</code>, one increment is lost. The loss comes from interleaving, not bad luck.</p>
 <p>An atomic fixes this for one word. The thread module provides <code>AtomicU64</code> and <code>AtomicU32</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::thread { AtomicU64, AtomicU32 };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::thread { AtomicU64, AtomicU32 };
 
 AtomicU64 counter;
 
@@ -97,27 +97,27 @@ void main() {
     counter.store(0);
     u64 old = counter.fetchAdd(1);   // read-modify-write as one step
     println(&quot;{} {}&quot;, old, counter.load());
-}</code></pre>
+}</code></pre></div>
 <p><code>load()</code> reads, <code>store(v)</code> writes, <code>fetchAdd(delta)</code> and <code>fetchSub(delta)</code> update indivisibly, and <code>compareExchange(expected, desired)</code> writes only if the current value matches. These map to hardware instructions (<code>lock xadd</code> and <code>lock cmpxchg</code> on x86, load/store-exclusive on ARM); none is simulated, so no thread observes a half-done operation.</p>
 <p>Rule of thumb: use an atomic when the shared state is exactly one integer (a counter, flag, ticket, or index). Use a mutex when it is anything larger. An atomic guards one cell; a mutex guards a region. Do not build a region out of atomics.</p>
 <p>An atomic is a turnstile for one tiny operation; a mutex is a door with one key for a whole room.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">AtomicU64 ticket;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">AtomicU64 ticket;
 
 u64 nextTicket() {
     return ticket.fetchAdd(1);
-}</code></pre>
+}</code></pre></div>
 <p>Two threads calling <code>nextTicket</code> get different numbers, and no number is handed out twice.</p>
 <section><h2 id="s19-3">The Memory Model: Data Races, Happens-Before, and Ordering</h2></section>
 <p>The memory model explains why atomics exist and why a forgotten lock is not a small bug.</p>
 <p>Processors reorder, buffer, and speculate as long as one thread cannot tell. Trouble starts when threads must observe each other's writes, because a reordering invisible within one thread becomes visible between them. The rules for what one thread sees of another's writes are the memory model.</p>
 <p>If operation A happens-before operation B, A's effects are visible to B. Within a thread, program order creates the edge; between threads, you must create it. A data race is two threads accessing the same location, at least one writing, with no happens-before edge. A program with a data race has undefined behaviour: the compiler may assume the race never happens, and the result may change between builds.</p>
 <p>Synchronization creates the edge. A mutex unlock happens-before a later lock, <code>threadJoin</code> is an edge, an <code>await</code> is an edge, and atomics carry orderings:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">relaxed        only atomicity, no ordering with other memory
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">relaxed        only atomicity, no ordering with other memory
 acquire        a load that lets later reads observe the writer&#x27;s earlier writes
 release        a store that publishes everything written before it
-sequential     a total order all threads agree on (the strongest, the default)</code></pre>
+sequential     a total order all threads agree on (the strongest, the default)</code></pre></div>
 <p>Acquire and release form a pair. A release store synchronizes with an acquire load: everything written before the release is visible after the acquire. One thread fills a buffer then raises a flag with release; another waits on the flag with acquire then reads the buffer:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Shard {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Shard {
     AtomicU64 ready;
     u64 data[1024];
 }
@@ -137,13 +137,13 @@ rawptr consumer(rawptr arg) {
     for (u64 i = 0; i &lt; 1024; i += 1)
         checksum += s-&gt;data[i];
     return null;
-}</code></pre>
+}</code></pre></div>
 <p>The busy-wait is a teaching scaffold, not good style; a real program uses a join or condition variable. The ordering lesson is real: the release publishes the thousand writes, and any consumer that sees <code>1</code> sees all of them. With an ordinary <code>u64</code>, a weakly ordered machine could expose half-written data.</p>
 <p>Relaxed gives atomicity and nothing else: other memory may reorder freely. Use it only for a pure counter where nothing else must be visible; it is where the flag-and-buffer bug appears. When unsure, use acquire/release, and when still unsure, use a mutex. Coral's shipped atomics compile to the strong end of the spectrum, safe by default.</p>
 <section><h2 id="s19-4">Mutex, Read-Write Locks, and Semaphores</h2></section>
 <p>An atomic guards one word. For larger shared state, use a mutex: lock before touching the data, unlock after.</p>
 <p>Picture a room with one key. To enter, take the key; everyone else waits until you return it. Forgetting to unlock, or returning early from inside the locked region, leaves the key taken forever and every other thread waiting.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
 
 Mutex m;
 u64 counter;
@@ -155,28 +155,28 @@ rawptr bumper(rawptr arg) {
         m.unlock();
     }
     return null;
-}</code></pre>
+}</code></pre></div>
 <p>With both lock lines, two threads print <code>200000</code> every time; without them, a smaller number that changes each run. The lock makes the read-add-write indivisible and carries the acquire/release pair that moves memory safely.</p>
 <p>Initialize a mutex with <code>m.init()</code> and destroy it with <code>m.destroy()</code>. <code>initRecursive()</code> lets one thread lock twice, useful when locked functions call each other, but prefer designs that avoid it. <code>tryLock()</code> acquires only if free and reports success:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">if (m.tryLock()) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">if (m.tryLock()) {
     // we have it
     m.unlock();
 } else {
     // someone else holds it; carry on without waiting
-}</code></pre>
+}</code></pre></div>
 <p><code>tryLock</code> refuses to wait, at the cost of handling the not-acquired case. It is one of the standard defenses against deadlock.</p>
 <p>A deadlock needs four conditions at once (Coffman): mutual exclusion, hold-and-wait, no preemption, and circular wait. The classic shape is a transfer that locks both accounts:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void transfer(Account* from, Account* to, u64 amount) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void transfer(Account* from, Account* to, u64 amount) {
     from-&gt;lock.lock();
     to-&gt;lock.lock();
     from-&gt;balance = from-&gt;balance - amount;
     to-&gt;balance = to-&gt;balance + amount;
     to-&gt;lock.unlock();
     from-&gt;lock.unlock();
-}</code></pre>
+}</code></pre></div>
 <p>If Alice transfers X to Y while Bob transfers Y to X, Alice holds X and waits for Y, Bob holds Y and waits for X, and the bank freezes. The cheapest remedy is lock ordering: give every lock a total order and always acquire in that order. Both transfers then take the smaller-numbered account first and no cycle can form. The library cannot prevent deadlock; the discipline is yours.</p>
 <p>An <code>RwLock</code> allows any number of readers or one writer, never both:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::rwlock { RwLock };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::rwlock { RwLock };
 
 RwLock rw;
 Config config;
@@ -191,10 +191,10 @@ void updateConfig(Config* next) {
     rw.writeLock();
     config = *next;
     rw.unlock();
-}</code></pre>
+}</code></pre></div>
 <p><code>readLock</code> and <code>writeLock</code> acquire; <code>unlock</code> releases either. <code>tryReadLock</code> and <code>tryWriteLock</code> are the non-blocking forms. The configuration cache is canonical: many concurrent reads, rare writes. An rwlock costs more than a plain mutex, so for short critical sections a <code>Mutex</code> is usually faster. Holding a read lock and writing anyway turns the whole apparatus into a placebo.</p>
 <p>A semaphore is a gate that lets a fixed number through. It holds a count; <code>wait</code> decrements and blocks at zero, and <code>post</code> increments and wakes a waiter.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::semaphore { Semaphore };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::semaphore { Semaphore };
 
 Semaphore connections;
 connections.init(4);            // at most four at once
@@ -204,11 +204,11 @@ void fetchPage(str url) {
     openConnection(url);
     readAndClose(url);
     connections.post();
-}</code></pre>
+}</code></pre></div>
 <p>The semaphore guarantees at most four open connections. Change the initial value to cap downloads, workers, or printers. <code>tryWait</code> is non-blocking, and <code>value</code> reads the count. A binary semaphore (<code>init(1)</code>) is almost a mutex, but has no owner: any thread may <code>post</code>. Use semaphores to limit and signal; use mutexes to own.</p>
 <section><h2 id="s19-5">The Condition Variable: Waiting on a Predicate</h2></section>
 <p>A thread waiting for work could spin, burning a core, or sleep and check, which is slow or wasteful. A condition variable is a nap with an alarm: block until the predicate might be true.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::thread { ConditionVar };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::thread { ConditionVar };
 import(lib) std::concurrent::mutex { Mutex };
 
 Mutex mutex;
@@ -220,16 +220,16 @@ void consume() {
         cond.wait(&amp;mutex);
     // take the work; the mutex is held again here
     mutex.unlock();
-}</code></pre>
+}</code></pre></div>
 <p><code>ConditionVar</code> provides <code>wait</code>, <code>signal</code>, and <code>broadcast</code>. <code>wait</code> releases the mutex and blocks; <code>signal</code> wakes one waiter; <code>broadcast</code> wakes all. Every <code>wait</code> must be paired with a mutex, and the protocol is rigid because a wake-up is only a suggestion.</p>
 <p>Three hazards enforce the loop. A lost wakeup: the producer signals between the check and the sleep, so the waiter misses the event; <code>wait</code> releases the mutex atomically with sleeping to prevent this. A spurious wakeup: the platform may wake a waiter without a signal. A stale predicate: another waiter may consume the resource first. The medicine for all three is to recheck in a <code>while</code>, never an <code>if</code>.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// canonical, and the while is not a style choice
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// canonical, and the while is not a style choice
 while (!predicate())
-    cond.wait(&amp;mutex);</code></pre>
+    cond.wait(&amp;mutex);</code></pre></div>
 <p>That is the whole rule. The next section applies it.</p>
 <section><h2 id="s19-6">The Producer and the Consumer: A Complete Exchange</h2></section>
 <p>The producer-consumer queue is the hello world of condition variables and the engine behind the thread pool, channel, and actor mailbox. Build it once from a ring buffer, a mutex, and two condition variables (item ready, room free).</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::mutex { Mutex };
 import(lib) std::concurrent::thread { ConditionVar };
 import(lib) std::mman { alloc, dealloc };
 
@@ -296,10 +296,10 @@ pub struct BoundedQueue {
         self.roomFree.broadcast();
         self.mutex.unlock();
     }
-}</code></pre>
+}</code></pre></div>
 <p>Every access to <code>items</code>, <code>count</code>, <code>head</code>, and <code>closed</code> happens under the mutex. Every wait is a <code>while</code> that rechecks its predicate, because wakeups may be spurious and another thread may take the item. <code>push</code> signals <code>itemReady</code>; <code>pop</code> signals <code>roomFree</code>. The ring arithmetic <code>(head + count) % cap</code> keeps the oldest item at <code>head</code> without moving data. <code>close</code> broadcasts to both conditions so every blocked thread wakes, sees <code>closed</code>, and leaves.</p>
 <p>The using program has one producer of a hundred values and one consumer:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">rawptr producerMain(rawptr arg) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">rawptr producerMain(rawptr arg) {
     BoundedQueue* q = (BoundedQueue*)arg;
     for (u64 i = 1; i &lt;= 100; i += 1)
         q-&gt;push(i);
@@ -326,22 +326,22 @@ void main() {
     if (p.isOk()) threadJoin(p.unwrap(), null);
     if (c.isOk()) threadJoin(c.unwrap(), null);
     q.destroy();
-}</code></pre>
+}</code></pre></div>
 <p>The buffer holds sixteen, the producer pushes a hundred, and the queue never drops or overflows: the sum is always <code>5050</code>, because the producer blocks when full and the consumer wakes it. That blocking is backpressure. The consumer's loop ends on <code>false</code> when <code>close</code> wakes it with <code>count</code> zero. The queue, not the join, is the synchronization here.</p>
 <p>The producer and consumer share one lunchbox: put food in only when there is room, take it out only when there is some, and never look inside without the lock. The two condition variables are the bells for food ready and room free.</p>
 <p>Never write <code>if (empty) wait()</code>: it checks once and can proceed after a spurious wakeup with the item already gone. The <code>while</code> rechecks after every wake. This is a correctness rule, not style.</p>
 <section><h2 id="s19-7">Thread Pools</h2></section>
 <p>Spawning a thread per task does not scale: thread creation, stack reservation, and scheduling are expensive. A thread pool keeps a fixed set of workers and feeds them tasks from a queue.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::threadpool { ThreadPool };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::threadpool { ThreadPool };
 
 ThreadPool pool;
 pool.init(8);                 // eight workers
 pool.enqueue(work, arg);      // queue a task
 // ...
-pool.deinit();                // drain, then shut the workers down</code></pre>
+pool.deinit();                // drain, then shut the workers down</code></pre></div>
 <p><code>init(numThreads)</code> creates workers and reports success. <code>enqueue(func, arg)</code> adds a task and reports acceptance. <code>deinit</code> drains remaining tasks and shuts the workers down. The pool implements <code>@drop</code>, but explicit <code>deinit</code> is needed when shutdown must drain.</p>
 <p>The pool is the bounded queue in production form: tasks are items, workers are consumers, and a stop flag handles shutdown. The worker loop generalizes the consumer loop:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void _worker() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void _worker() {
     loop {
         self.mutex.lock();
         while (self.queueHead == null &amp;&amp; !self.stop)
@@ -359,13 +359,13 @@ pool.deinit();                // drain, then shut the workers down</code></pre>
 
         t-&gt;func(t-&gt;arg);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The <code>wait</code> is inside a <code>while</code>. <code>deinit</code> sets <code>stop</code> under the lock and broadcasts, so a sleeping worker wakes, rechecks, and exits after draining queued tasks. A task enqueued just before stop is either run or freed, never stranded.</p>
 <p>A pool replaces one <code>threadCreate</code> per task with one per worker; per-task cost becomes a queue push and a signal. With eight workers, at most eight tasks run. Size is a tuning decision: one worker per core for CPU-bound work, more for I/O-bound work where workers block, fewer for lock contention. A pool suits many independent short tasks and is wrong for a strictly ordered pipeline.</p>
 <section><h2 id="s19-8">Async: Overlapping I/O on Fibers</h2></section>
 <p>Threads are often wrong for I/O-bound work: a blocked socket holds a stack and scheduler slot doing nothing. Async expresses the same overlap without a thread per operation. A task yields where it would block and resumes when the operation completes; an async sleep frees the thread.</p>
 <p>Coral's async is built on fibers, lightweight stacks switched without the OS scheduler. There is no <code>async</code> keyword yet, so the runtime is driven by hand. The scheduler is a stack of contexts, a task is a function on one, and the driver is whoever calls <code>run</code>.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::async;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::async;
 import(lib) std::concurrent::threadpool { ThreadPool };
 
 void fetchAndStore(rawptr arg) {
@@ -382,18 +382,18 @@ void main() {
     async::init();
     Result&lt;async::Future*, async::AsyncError&gt; c = async::spawn(coordinator, null);
     async::run();                        // drive the scheduler to completion
-}</code></pre>
+}</code></pre></div>
 <p><code>spawn(fn, arg)</code> schedules a function on a fresh fiber and returns a one-shot <code>Future*</code>. <code>await(future)</code> suspends the calling fiber until the result is ready. <code>run()</code> drives the scheduler to completion; <code>runOnce()</code> runs one slice; <code>poolRun(pool, fn, arg)</code> offloads a job to a thread pool and returns a future.</p>
 <p><code>await</code> suspends the calling fiber, but the top level is not a fiber, so awaiting there returns an error. Spawn a coordinator fiber and drive from the top level. Await inside a fiber; drive from outside.</p>
 <p><code>sleep(ms)</code> returns an awaitable future that does not block the thread. <code>AsyncChannel</code> passes raw values between fibers: one task sends, another receives, and the queue handles synchronization.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::async;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::concurrent::async;
 
 async::AsyncChannel ch;
 ch.init(8);                  // buffered; 0 makes it a rendezvous
 
 if (ch.send((rawptr)value))  // succeed if buffered or a receiver is parked
     // ...
-async::Future* got = ch.recv(); // resolve now, or when a later send delivers</code></pre>
+async::Future* got = ch.recv(); // resolve now, or when a later send delivers</code></pre></div>
 <p>A channel implements <code>@drop</code> and is cleaned up at scope exit. <code>send</code> does not block: it hands the value to a parked receiver, buffers it if there is room, or returns false. A receiver gets an already-resolved future or one that resolves on a later send; awaiting it parks the fiber.</p>
 <p>Threads are simpler to reason about: code runs straight through, and a blocking call blocks only that thread. Async lets one thread serve thousands of I/O operations on less memory, but requires awaiting at the right points, avoiding blocking calls inside tasks, and remembering suspension. Use async for I/O-bound concurrency at scale, threads for CPU-bound parallelism, and a pool for a bounded number of independent CPU-bound tasks.</p>
 <section><h2 id="s19-9">Threading Models: OS Threads, Green Threads, and Coroutines</h2></section>
@@ -413,7 +413,7 @@ async::Future* got = ch.recv(); // resolve now, or when a later send delivers</c
 <section><h2 id="s19-11">The Actor Model</h2></section>
 <p>The actor model turns message passing into a discipline. An actor owns its state, has a mailbox, and processes messages one at a time. Actors do not call each other; they send asynchronously, and the mailbox is the only contact. There is no shared state to guard, and an actor can be paused, restarted, or moved because its state is its own.</p>
 <p>In Coral, an actor is a pattern: a struct holding state, a bounded queue under a mutex as the mailbox, and a worker thread running the message loop. The smallest actor is a counter that cannot race because only its own thread touches the state:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct CounterActor {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct CounterActor {
     BoundedQueue mailbox;
     Thread thread;
     u64 value;
@@ -435,16 +435,16 @@ bool spawnCounter(CounterActor* a) {
     if (r.isErr()) return false;
     a-&gt;thread = r.unwrap();
     return true;
-}</code></pre>
+}</code></pre></div>
 <p>Senders put amounts in the mailbox; only the actor's thread touches <code>a-&gt;value</code>. No lock around <code>value</code>, no race to audit, because the mailbox is the only, single-file door. Real actors carry structs or variants through the same door.</p>
 <p>A supervision tree is the model's answer to failure. A parent supervises children and restarts a crashed child, containing the crash. In Coral this is ownership plus a join: the supervisor owns the child's resources, the join returns when the child exits, and the supervisor decides whether to restart with fresh state. The actor model's gift is not a primitive but a boundary: the mailbox is the one place ownership crosses.</p>
 <section><h2 id="s19-12">Lock-Free Programming and the ABA Problem</h2></section>
 <p>A mutex is general and an atomic is one-word; some structures can avoid locks entirely using <code>compareExchange</code>. The everyday lock-free shape is a unique-identifier generator:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">AtomicU64 ticket;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">AtomicU64 ticket;
 
 u64 nextTicket() {
     return ticket.fetchAdd(1);
-}</code></pre>
+}</code></pre></div>
 <p>Two threads get different numbers, and each is never handed out again. The fetch-add is one machine instruction with no kernel and no waiting. Lock-free means at least one thread always makes progress because nothing blocks. Its price is discipline: the atomic protects one word, not a structure.</p>
 <p>Every lock-free algorithm eventually meets compare-exchange's shadow. The pattern is load, compute a new value, compare-exchange, and retry if the value changed. The shadow is that the value can change and change back.</p>
 <p>Thread A loads <code>1</code> and plans to store <code>2</code>. Before its compare-exchange, thread B changes the cell to <code>5</code> and back to <code>1</code>. A's exchange succeeds, believing nothing changed. The cell holds the same bits but a different world. That is the ABA problem.</p>
@@ -453,22 +453,22 @@ u64 nextTicket() {
 <section><h2 id="s19-13">Thread-Local Storage</h2></section>
 <p>Thread-local storage is the memory model's loophole: each thread sees a private copy, so no thread can race on another's copy. The fastest shared state is state that is not shared.</p>
 <p>Coral exposes the platform mechanism with an attribute on a static:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[threadlocal]] u64 scratch;</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[threadlocal]] u64 scratch;</code></pre></div>
 <p>Each thread sees its own <code>scratch</code>, initialized independently. Thread-locals let allocators keep per-thread caches, loggers keep per-thread buffers, and random generators keep per-thread state without contention. A thread-local is a lock that would never be contended, sold as a variable.</p>
 <p><code>errno</code> is the famous example. Old C libraries kept one global, so one thread's failure could be read as another's success. Modern libraries keep one <code>errno</code> per thread. The same pattern serves per-thread allocator caches, replacing a mutex on every use.</p>
 <p>Coral treats thread-locals as a design review, not a refusal. A thread-local is implicit state, initialized by machinery the caller never wrote and owned by a thread not visible in the spelling. In a language built on visibility, it is a quiet exception. Prefer passing per-thread state explicitly, as part of the worker's argument or its managed context. Low-level code may need thread-locals, but the explicit form is checkable.</p>
 <section><h2 id="s19-14">Parallel Patterns: Data, Task, and Pipeline</h2></section>
 <p>Given cores, how do you divide the work? A few recurring shapes answer.</p>
 <p>Data parallelism applies the same operation to many independent elements and divides them among cores. The canonical example is darkening pixels:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void darken(u8* pixels, usize n) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void darken(u8* pixels, usize n) {
     for (usize i = 0; i &lt; n; i += 1) {
         u8 v = pixels[i];
         pixels[i] = v &lt; 30u ? (u8)0 : (u8)(v - 30u);
     }
-}</code></pre>
+}</code></pre></div>
 <p>Give each worker a non-overlapping slice of the array. No lock, atomic, or race is needed because sharing is designed out. The correctness lies in dividing the index ranges. The same shape covers audio, matrices, and ray tracing; SIMD and GPUs are this pattern at hardware scale.</p>
 <p>Task parallelism divides tasks rather than elements, which is the thread pool's shape: enqueued functions are tasks, pool threads are workers, and concurrency is the pool size. The natural use is a batch of files, URLs, or images:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">rawptr parseOne(rawptr arg) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">rawptr parseOne(rawptr arg) {
     str* path = (str*)arg;
     ParseResult r = parseFileAt(*path);
     storeResult(r);
@@ -479,10 +479,10 @@ void parseDirectory(str* paths, usize n, ThreadPool* pool) {
     for (usize i = 0; i &lt; n; i += 1)
         pool-&gt;enqueue(parseOne, (rawptr)&amp;paths[i]);
     pool-&gt;deinit();     // wait for every parse before returning
-}</code></pre>
+}</code></pre></div>
 <p><code>deinit</code> is the join in pool clothing. The failure mode is imbalance: if one task takes twice as long, cores idle. Choose a grain fine enough to balance but coarse enough to amortize queue operations.</p>
 <p>Pipeline parallelism divides work by stage. Each stage's output feeds the next, and each stage can work on a different item simultaneously. A photo pipeline (load, decode, resize, save) uses a thread per stage and a bounded queue per boundary:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">BoundedQueue loaded;   // raw bytes -&gt; decoder
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">BoundedQueue loaded;   // raw bytes -&gt; decoder
 BoundedQueue resized;  // decoded pixels -&gt; resizer
 
 rawptr loaderMain(rawptr arg) {
@@ -504,11 +504,11 @@ rawptr decoderMain(rawptr arg) {
     }
     resized.close();
     return null;
-}</code></pre>
+}</code></pre></div>
 <p>While the resizer works on photo 3, the decoder works on 4 and the loader reads 5, with no locks outside the queues. Bounded queues apply backpressure from slow stages to fast ones. A pipeline wins when stages are balanced and items are many; it is only as fast as its slowest stage.</p>
 <section><h2 id="s19-15">Fork-Join and Map-Reduce</h2></section>
 <p>Fork-join is recursion in parallel: divide a problem, run the halves concurrently, and combine. The join is where the parent waits for the children's results, exactly <code>threadJoin</code>.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Slice {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Slice {
     const u64* data;
     usize n;
     u64 result;
@@ -540,32 +540,32 @@ u64 parallelSum(u64* data, usize n) {
         return s.result + upper;
     }
     return parallelSum(data, half) + parallelSum(data + half, n - half);
-}</code></pre>
+}</code></pre></div>
 <p>The recursive call is the fork. The <code>if (n &gt;= 65536)</code> threshold is the grain size: below it, forking costs more than it saves. Parallelism's ceiling is the recursion's depth.</p>
 <p>Map-reduce restructures fork-join. Map applies an independent operation to every element; reduce combines results with an associative operation; parallelism lives in the map. Summing an array is canonical. The reduction must be associative: integer addition is, but floating-point addition is not, so a parallel float sum may differ from a serial one in the last digits. Map is safe by construction; reduce is safe only when the operation is honestly associative.</p>
 <section><h2 id="s19-16">Amdahl's Law</h2></section>
 <p>Every pattern hits the same ceiling. If a fraction <code>P</code> is parallel and <code>1 - P</code> is serial, the maximum speedup with <code>N</code> workers is:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">speedup(N) = 1 / ((1 − P) + P/N)</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">speedup(N) = 1 / ((1 − P) + P/N)</code></pre></div>
 <p>As <code>N</code> grows, speedup approaches <code>1/(1 - P)</code>, and the serial part rules. A 90% parallel program is capped at 10x, a 50% one at 2x, and a 99% one at 100x. Serious parallel programmers hunt percentages, not cores.</p>
 <p>Ten cars can drive at the same speed, but one toll booth sets the pace for all. The booth is the serial fraction.</p>
 <p>The serial part includes critical sections, joins, the shared queue, the straggler stage, and the I/O before and after the parallel work. A report generator that reads a file, transforms in parallel, and writes output still has serial I/O at both ends. Each serial second is a term in <code>(1 - P)</code>, invisible on one core and dominant on sixteen.</p>
 <p>Shrink the serial part first, then parallelize the rest: hold locks for less, amortize reads, batch the queue, balance tasks, combine incrementally. The law assumes a serial baseline and identical cores; real caches and memory buses bend the curve sooner. It is not a reason to give up on parallelism, but a reason to attack the serial fraction first.</p>
 <section><h2 id="s19-17">Cancellation, Timeouts, and Backpressure</h2></section>
 <p>Concurrency support machinery is where concurrent programs actually die. Cancellation handles work that is no longer wanted. Threads are cancelled cooperatively: a stop flag the loop checks. Nothing can force a thread out of a loop except the loop's own exit. A download manager's cancel button sets a flag; the loop checks it between reads, closes the connection, and exits normally.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">AtomicU64 canceled;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">AtomicU64 canceled;
 
 rawptr downloadMain(rawptr arg) {
     while (!canceled.load()) {
         // read one chunk; on completion, write it
     }
     return null;
-}</code></pre>
+}</code></pre></div>
 <p>A timeout is cancellation by clock, implemented as a deadline. It turns "wait forever" into "wait two seconds, then fail on the ordinary error path." In async, race a <code>sleep</code> future against a real future by awaiting whichever resolves first.</p>
 <p>Backpressure is the refusal that keeps a system from being overwhelmed, and you already built it: the bounded queue whose full state blocks the producer. The encoder's frame limit, the pipeline's queued files, and the server's request ceiling all make the fast side slow down instead of growing memory without bound. In a bounded channel, a failed <code>send</code> returns false, and that false is the backpressure signal.</p>
 <p>The program that can stop, the program that can wait, and the program that can refuse stay responsive. Each is a boundary decision no language can automate.</p>
 <section><h2 id="s19-18">The Double Buffer</h2></section>
 <p>The double buffer is what games, video players, and audio devices use. A producer draws the next frame while a consumer displays the current one, and the consumer must never see a half-drawn frame. Two buffers and an atomic index solve it: the writer draws into the unpublished buffer, and the reader displays the published one.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct FrameData { u8 pixels[1920 * 1080 * 4]; }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct FrameData { u8 pixels[1920 * 1080 * 4]; }
 
 struct Renderer {
     FrameData buffers[2];
@@ -578,7 +578,7 @@ FrameData* beginFrame(Renderer* r) {
 
 void publishFrame(Renderer* r) {
     r-&gt;front.store(1 - r-&gt;front.load());
-}</code></pre>
+}</code></pre></div>
 <p>The reader loads <code>front</code> and uses the named buffer. Only <code>front</code> is shared, and it is atomic: the store that flips it releases every frame write, and the reader's load acquires the whole frame. The frame data needs no synchronization because at any instant exactly one buffer belongs to the reader and the writer draws only in the other. The reader always gets a complete frame, old or new, never a mixture. Staleness is a feature.</p>
 <p>The caveat: the writer must not start drawing into a buffer the reader may still hold. A render loop uses the vertical blank, waiting for the display before starting the next frame. If that assumption fails, add a third buffer or a handshake. The pattern fits producer-consumer exchanges where one frame of staleness is tolerable: render to display, audio callbacks, telemetry to UI.</p>
 <section><h2 id="s19-19">The Color of Functions</h2></section>
@@ -587,7 +587,7 @@ void publishFrame(Renderer* r) {
 <p>Coral has no colors because it has no <code>async</code> syntax. Threads, pools, and fibers are the same everywhere, with no keyword dividing the world. A function submitting work to a pool is ordinary; a blocking socket call blocks its caller's thread, and the caller decides in ordinary code whether to use a worker. The boundary that colored languages enforce with types is here an architectural boundary drawn in code.</p>
 <section><h2 id="s19-20">A Worked Example: The Parallel Word Counter</h2></section>
 <p>Here are the tools together: count the words in a text file in parallel, using map-reduce with a pool. Chunks are fine enough to balance and coarse enough to amortize.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">struct Job {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">struct Job {
     const u8* data;     // the chunk
     usize len;          // its length
     u64* count;         // where the map writes its result
@@ -635,7 +635,7 @@ u64 countFile(const u8* text, usize size, u32 workers) {
     dealloc&lt;Job&gt;(jobs);
     dealloc&lt;u64&gt;(counts);
     return total;
-}</code></pre>
+}</code></pre></div>
 <p>The pool's <code>deinit</code> is the join, and the joining is the happens-before edge that publishes the counts. Each chunk writes its own result slot, so the map phase shares no words and needs no synchronization. Addition is associative, so the parallel total equals the serial one. The final chunk's <code>len</code> is the boundary the program draws. <code>deinit</code> also makes it safe to free <code>jobs</code> and <code>counts</code>, because no worker can still be reading them after it.</p>
 <section><h2 id="s19-21">Exercises</h2></section>
 <section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>Distinguish concurrency from parallelism. Give a workload that is concurrent but not parallel, and one that is parallel but not concurrent.</li><li><span class="ex-label">Comprehension</span>Why does <code>threadCreate</code> return <code>Result</code> rather than <code>Thread</code>? Name two failure modes and what the type system protects.</li><li><span class="ex-label">Comprehension</span>Explain happens-before and why a missing edge is undefined behaviour, not a performance concern.</li><li><span class="ex-label">Implementation</span>Spawn four threads, each incrementing a shared counter a million times. Run with <code>u64</code> and with <code>AtomicU64</code>. Explain the difference and why the atomic remains correct under reordering.</li><li><span class="ex-label">Locks</span>Protect the counter with a <code>Mutex</code> and compare throughput to the atomic. Which is faster, why, and when is the mutex still right?</li><li><span class="ex-label">Deadlock</span>Build a two-mutex deadlock by acquiring in opposite orders, then fix it with a global order. Which Coffman condition does the fix break?</li><li>Condition variables. Change both <code>signal</code> calls in the producer-consumer queue to <code>broadcast</code> and explain the performance change. Why is changing <code>while</code> to <code>if</code> a correctness bug?</li><li><span class="ex-label">Async</span>Write a fiber that sleeps a hundred milliseconds with <code>async::sleep</code> without blocking its thread, and show that <code>runOnce</code> can drive other work. What would a thread sleep do, and why can <code>await</code> not run at top level?</li><li><span class="ex-label">Patterns</span>Rewrite the parallel sum to handle <code>n</code> not divisible by the worker count. What is the naive-chunking bug and the fix? Classify: (a) darkening pixels, (b) parsing a directory, (c) load-decode-save, (d) summing halves.</li><li><span class="ex-label">Meta</span>A colleague concludes from Amdahl's law that parallelism is not worth pursuing. Correct them in one paragraph using the producer-consumer queue or double buffer. Then describe how you would find the serial fraction in unfamiliar code.</li></ol></section>

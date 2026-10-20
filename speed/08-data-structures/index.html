@@ -42,12 +42,12 @@
 <p>The three are inseparable: layout enables operations, operations give layout its purpose, and cost is the price of both. Do not pick an interface while ignoring the layout that must pay for it.</p>
 <p>A data structure is a choice about how to arrange data in memory, and each arrangement makes some jobs fast and others slow.</p>
 <p>In Coral the layout is not hidden. Here is the vector exactly as <code>std::collections::vec</code> declares it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec&lt;T&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Vec&lt;T&gt;
 {
     T* data;
     usize len;
     usize cap;
-}</code></pre>
+}</code></pre></div>
 <p><code>data</code> points at a block of <code>cap</code> slots, <code>len</code> is how many hold live elements, and <code>cap</code> is the block's capacity. Every operation is bookkeeping on those three numbers.</p>
 <p>When you can see the fields, you can see the cost, and choosing a structure becomes arithmetic.</p>
 <section><h2 id="s8-2">Two Kinds of Work: Arithmetic and Movement</h2></section>
@@ -64,52 +64,52 @@
 <p>With scattered elements, iteration follows pointers to random addresses. Each hop is a fresh cache line, and you use perhaps eight of its sixty-four bytes. A program that misses on every element can be an order of magnitude slower than one that never misses, with the same algorithmic step count.</p>
 <p>This is pointer chasing, or indirection. A pointer holds an address instead of the thing; it buys flexibility and costs a cache miss each time you follow it.</p>
 <p>A pointer is a slip of paper with an address: cheap to pass around, but you must travel to the address to get the thing. Contiguous memory is a book read page by page; pointers are a trail of notes left in different buildings.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 value = 42;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 value = 42;
 i32* address = &amp;value;    // a pointer: the address of value
-println(&quot;{}&quot;, *address);  // 42, follow the address to reach the value</code></pre>
+println(&quot;{}&quot;, *address);  // 42, follow the address to reach the value</code></pre></div>
 <p>This is why the vector is the default in Coral and almost everywhere else, and why the linked list is the special case. Both iterate in linear time, but the vector reads forward and the list jumps around, and on modern hardware that difference is enormous.</p>
 <p>Suppose each element is eight bytes and a cache line is sixty-four. A million-element vector touches about a hundred and twenty-five thousand cache lines, using every byte, all sequential and easy to prefetch. A million-element linked list touches one cache line per node, a million fetches the prefetcher cannot guess.</p>
 <section><h2 id="s8-4">The Fixed Array: When the Size Is Part of the Type</h2></section>
 <p>The array is the simplest collection: a fixed number of consecutive elements, nothing else. In Coral the array is generic over element type and count:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Arr&lt;T, N&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Arr&lt;T, N&gt;
 {
     T data[N];
-}</code></pre>
+}</code></pre></div>
 <p><code>N</code> is part of the type. <code>Arr&lt;i32, 3&gt;</code> and <code>Arr&lt;i32, 4&gt;</code> are different types, and the compiler knows each size before the program runs. An <code>Arr&lt;u8, 16&gt;</code> is exactly sixteen bytes, inline in a stack frame or containing object, with no heap allocation and no pointer.</p>
 <p><code>at</code> reads and <code>set</code> writes an element, both checking the index. <code>count</code> returns <code>N</code>, <code>isEmpty</code> asks whether <code>N</code> is zero, <code>front</code> and <code>back</code> read the ends, <code>fill</code> writes every element, <code>copyTo</code>/<code>copyFrom</code> copy the whole array, and <code>ptr</code>/<code>constPtr</code> expose the storage:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::arr { Arr };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::arr { Arr };
 
 Arr&lt;str, 3&gt; months = Arr&lt;str, 3&gt; { &quot;jan&quot;, &quot;feb&quot;, &quot;mar&quot; };
 for (usize i = 0; i &lt; months.count(); i++)
     println(&quot;{}&quot;, months.at(i));
-println(&quot;first is {}, last is {}&quot;, months.front(), months.back());</code></pre>
+println(&quot;first is {}, last is {}&quot;, months.front(), months.back());</code></pre></div>
 <p>Because <code>N</code> is a compile-time constant, storage is exact and bounds are knowable. A lookup table, conversion table, or small constant-size buffer is an array, needing no allocation, growth, or bookkeeping.</p>
 <p>A small example of the no-allocation promise:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Arr&lt;i32, 4&gt; dice = Arr&lt;i32, 4&gt; { 1, 2, 3, 4 };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Arr&lt;i32, 4&gt; dice = Arr&lt;i32, 4&gt; { 1, 2, 3, 4 };
 i32 total = 0;
 for (var face : dice)
     total += face;
-println(&quot;four dice total {}&quot;, total);</code></pre>
+println(&quot;four dice total {}&quot;, total);</code></pre></div>
 <p>When a count is truly fixed and known, an <code>Arr</code> states that fact in the type, so no caller can make it larger or forget to grow it.</p>
 <p>The array is the base case. Every other collection is "an array plus a strategy" or "arrays connected by pointers." The vector is an array that can move. The hash map is an array indexed by a computed key. The heap is an array encoding a tree. The bitset is an array of words used as bits.</p>
 <section><h2 id="s8-5">The Vector: A Contiguous Buffer That Grows</h2></section>
 <p>The array's fixed size is its limitation: programs often do not know the count until runtime. The vector is the array with growth, a contiguous buffer that starts small and expands when full.</p>
 <p>The layout is the array's storage plus two numbers:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Vec&lt;T&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Vec&lt;T&gt;
 {
     T* data;
     usize len;
     usize cap;
-}</code></pre>
+}</code></pre></div>
 <p><code>data</code> points at the buffer, <code>len</code> is the live count, and <code>cap</code> is the capacity. <code>len</code> never exceeds <code>cap</code>, and live elements occupy <code>data[0]</code> through <code>data[len - 1]</code>.</p>
 <p>Create one empty or with room set aside:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 Vec&lt;i32&gt; empty = Vec&lt;i32&gt;::new();
-Vec&lt;i32&gt; roomy = Vec&lt;i32&gt;::withCap(1024);</code></pre>
+Vec&lt;i32&gt; roomy = Vec&lt;i32&gt;::withCap(1024);</code></pre></div>
 <p><code>new</code> allocates nothing until the first push. <code>withCap</code> allocates immediately, useful when the count is roughly known: allocate once, then push without growth. The operations are the array's plus growth. <code>at</code> and <code>set</code> index (checked); <code>atPtr</code> and <code>atConst</code> return element pointers; <code>ptr</code>/<code>constPtr</code> return the buffer; <code>push</code> appends; <code>pop</code> removes the last; <code>insert</code>/<code>removeAt</code> modify the middle; <code>front</code>/<code>back</code> read the ends; <code>count</code>/<code>isEmpty</code> report state.</p>
 <p>The push method is the vector in miniature:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void push(T val)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void push(T val)
 {
     if (self.len &gt;= self.cap)
     {
@@ -118,35 +118,35 @@ Vec&lt;i32&gt; roomy = Vec&lt;i32&gt;::withCap(1024);</code></pre>
     }
     self.data[self.len] = val;
     self.len++;
-}</code></pre>
+}</code></pre></div>
 <p>Check the room, grow if needed, store, advance the length. Every growth-triggering operation has that shape.</p>
 <p>The middle operations have their costs in their shapes. <code>insert</code> and <code>removeAt</code> move every element after the index, so they are linear in the tail. Appending is the fast path; the middle is where a vector pays for contiguity.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;u64&gt; squares = Vec&lt;u64&gt;::withCap(10);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Vec&lt;u64&gt; squares = Vec&lt;u64&gt;::withCap(10);
 for (usize i = 0; i &lt; 10; i++)
     squares.push(i * i);
 
 u64 total = 0;
 for (usize i = 0; i &lt; squares.count(); i++)
-    total += squares.at(i);</code></pre>
+    total += squares.at(i);</code></pre></div>
 <p>Capacity management makes a vector fast. <code>reserve</code> grows to a requested capacity, <code>reserveExact</code> allocates exactly, <code>shrinkToFit</code> releases spare capacity, and <code>clear</code> resets the length without freeing the buffer. The vector is the default for "many elements of one type": array-like reads, list-like growth, contiguous and cache-friendly.</p>
 <p>Do not confuse <code>count()</code> with capacity. <code>count()</code> reports live elements; capacity is the room behind them, changed only by <code>withCap</code>, <code>reserve</code>, or growth. <code>clear</code> does not return memory; it sets length to zero and keeps the buffer.</p>
 <section><h2 id="s8-6">Growth, Doubling, and What "Amortized" Means</h2></section>
 <p>A push that triggers growth copies every live element, which is expensive for a large vector, yet appending is called constant time. Both are true, and that is amortized cost.</p>
 <p>"Amortized constant time" means the rare expensive step is paid for by a long run of cheap ones.</p>
 <p>When full, the vector does not grow by one slot; it doubles, with a floor of four on the first growth:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void reserve(usize newCap)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void reserve(usize newCap)
 {
     if (newCap &lt;= self.cap) return;
     self.data = realloc&lt;T&gt;(self.data, newCap);
     self.cap = newCap;
-}</code></pre>
+}</code></pre></div>
 <p>Doubling is the trick. After a growth, the vector has at least as much free room as it had live elements, so one expensive copy buys a long run of cheap appends. Total cost of n pushes divided by n stays constant.</p>
 <p>Push a million elements from empty. Capacities are 4, 8, 16, and so on, and the copies total roughly the final capacity, about a million moves. So a million pushes cost about two million operations, about two per push, a constant. Growing by one slot per push would copy the whole vector every time and be quadratic.</p>
 <p>A small trace from an empty vector whose first growth reaches capacity four:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// push 1..4   -&gt; room already there, no copy
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// push 1..4   -&gt; room already there, no copy
 // push 5      -&gt; buffer full: copy 4 elements, grow capacity to 8
 // push 6..8   -&gt; room already there, no copy
-// push 9      -&gt; buffer full: copy 8 elements, grow capacity to 16</code></pre>
+// push 9      -&gt; buffer full: copy 8 elements, grow capacity to 16</code></pre></div>
 <p>Four pushes triggered a copy and seven did not, and the triggering fraction keeps shrinking.</p>
 <p>Every growable collection follows the same analysis. The vector's <code>reserve</code>, the string's <code>_ensure</code>, the deque's <code>_grow</code>, and the hash map's rehash all double, and all are amortized constant.</p>
 <p>When the count is known, <code>withCap</code> allocates exactly and the vector never copies. When bounded, <code>reserve</code> allocates up front. The library names the methods that control growth, so a caller who knows the future can avoid the surprise.</p>
@@ -154,15 +154,15 @@ for (usize i = 0; i &lt; squares.count(); i++)
 <p>Some structures are usages of a type, not types. A stack is last-in-first-out: remember a value, get it back in reverse order. Every program has one underneath it, the call stack.</p>
 <p>A stack is a pile of plates: add and take from the top, so the last plate set down is the first picked up.</p>
 <p>Coral has no separate <code>Stack</code> type, by design. A stack is a <code>Vec</code> used with <code>push</code> and <code>pop</code> at the same end:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Vec&lt;u64&gt; stack = Vec&lt;u64&gt;::new();
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Vec&lt;u64&gt; stack = Vec&lt;u64&gt;::new();
 stack.push(1);
 stack.push(2);
 stack.push(3);
 u64 top = stack.pop();      // 3, the last one in
-u64 next = stack.pop();     // 2</code></pre>
+u64 next = stack.pop();     // 2</code></pre></div>
 <p>These are the vector's back-end operations at the same amortized constant cost. A data structure is a layout plus its operations, and when an existing type provides them, the type is the structure.</p>
 <p>A stack's canonical use is matching delimiters, because nesting is LIFO: the most recently opened delimiter must close first. Push each opener; on a closer, the matching opener must be the last pushed:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub bool balanced(str text)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub bool balanced(str text)
 {
     Vec&lt;u8&gt; stack = Vec&lt;u8&gt;::new();
     str open = &quot;([{&quot;;
@@ -180,14 +180,14 @@ u64 next = stack.pop();     // 2</code></pre>
         }
     }
     return stack.isEmpty();
-}</code></pre>
+}</code></pre></div>
 <p>The function is linear: each character is examined once, and each push and pop is amortized constant. The same LIFO order is an undo history and the shape of any backtracking search.</p>
 <p>When a problem says "use a stack" or "use a queue," look at the access pattern, not for a magic type. The pattern is the data structure; the container is just storage.</p>
 <section><h2 id="s8-8">Linked Nodes: The Other Way to Connect</h2></section>
 <p>If the array is everything packed, the linked list is the opposite. Each element gets its own block, a node, connected by pointers. To reach the tenth element you follow nine pointers. Nothing moves; insertion rewrites a couple of pointers.</p>
 <p>A linked list is a treasure hunt: each clue tells you where the next is hidden. A vector is a row of numbered boxes you can walk straight to.</p>
 <p>In Coral a node is an ordinary struct with a value and pointers, and the list is a struct with a pointer to the first node. The standard library declares a doubly linked version:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct ListNode&lt;T&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct ListNode&lt;T&gt;
 {
     T value;
     ListNode&lt;T&gt;* prev;
@@ -199,10 +199,10 @@ pub struct LinkedList&lt;T&gt;
     ListNode&lt;T&gt;* head;
     ListNode&lt;T&gt;* tail;
     usize len;
-}</code></pre>
+}</code></pre></div>
 <p>The node and list declarations show the cost before use: each element carries two pointers, and the list holds both ends plus a count.</p>
 <p>You can build a singly linked list by hand to control allocation. Allocation is explicit through <code>std::mman</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::mman { alloc, dealloc };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::mman { alloc, dealloc };
 
 pub struct Node&lt;T&gt;
 {
@@ -226,7 +226,7 @@ void freeList(Node&lt;i32&gt;* head)
         dealloc&lt;Node&lt;i32&gt;&gt;(head);
         head = next;
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>alloc&lt;T&gt;(count)</code> reserves <code>count</code> elements on the heap; <code>*</code> and <code>-&gt;</code> reach through a pointer; <code>dealloc&lt;T&gt;</code> returns the block. <code>pushFront</code> allocates one node, writes the value, points it at the old head, and returns the new head: constant time, no movement. Freeing walks the chain, saving each <code>next</code> before releasing the node.</p>
 <p><code>pushFront</code> and <code>pushBack</code> add at the ends, <code>popFront</code> and <code>popBack</code> remove, <code>insertAfter</code> and <code>remove</code> work on individual nodes, and <code>each</code> walks from head to tail. End operations are constant time because the list holds both ends. Reaching the middle walks from the head, linear time, and there is no index operation.</p>
 <p>End insertion and removal are constant time with no copying, since pointers are rearranged. Reaching the middle is linear, and iteration touches a different cache line per element. Use a list when work is at the ends and churn is high, not for indexing.</p>
@@ -239,17 +239,17 @@ void freeList(Node&lt;i32&gt;* head)
 <section><h2 id="s8-10">The Deque and the Ring Buffer: Both Ends</h2></section>
 <p>A vector is fast at the back and slow at the front: <code>push</code> appends in constant time, but <code>insert(0, x)</code> shifts the entire buffer. A work queue that takes from the front and adds to the back needs a deque.</p>
 <p>A deque (double-ended queue) supports constant-time insertion and removal at both ends. It is a ring buffer: one contiguous block with head and tail indices that wrap around.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Deque&lt;T&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Deque&lt;T&gt;
 {
     T* data;
     usize head;
     usize tail;
     usize cap;
     usize mask;
-}</code></pre>
+}</code></pre></div>
 <p>The <code>mask</code> field is the ring trick. Capacity is a power of two, mask is capacity minus one, and advancing an index means adding one and masking. <code>count</code> subtracts and masks; <code>_grow</code> allocates a new buffer and copies head to tail. Both ends are positions on a circle, so both are constant time, and storage stays contiguous.</p>
 <p>The operations are <code>pushFront</code>/<code>pushBack</code>, <code>popFront</code>/<code>popBack</code>, <code>front</code>/<code>back</code>, and index access through <code>at</code>/<code>set</code>, which index from the head. <code>Queue</code> is a thin wrapper over the deque:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::deque { Deque };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::deque { Deque };
 
 Deque&lt;u64&gt; work = Deque&lt;u64&gt;::new();
 work.pushBack(1);
@@ -259,32 +259,32 @@ while (!work.isEmpty())
 {
     u64 job = work.popFront();
     if (job &gt; 0) work.pushBack(job - 1);
-}</code></pre>
+}</code></pre></div>
 <p>The ring idea also appears with fixed capacity in <code>RingBuf</code>, in <code>std::collections::ringbuf</code>. It never allocates after construction; when full, a push overwrites the oldest element. Its declaration adds a <code>full</code> flag because with wrapping indices, empty and full look the same:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::ringbuf { RingBuf };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::ringbuf { RingBuf };
 
 RingBuf&lt;f64&gt; recent = RingBuf&lt;f64&gt;::new(16);
 recent.push(1.5);
 recent.push(2.5);
 if (recent.isFull())
     println(&quot;window full, oldest dropped&quot;);   // the overwrite is the policy
-println(&quot;oldest is {}&quot;, recent.front());</code></pre>
+println(&quot;oldest is {}&quot;, recent.front());</code></pre></div>
 <p>Fixed capacity makes the ring buffer predictable, which is why it appears wherever a buffer must never grow: streaming data, bounded producer-consumer buffers, and recent-event rings. It tells you when it is full, and you decide what full means.</p>
 <section><h2 id="s8-11">The Queue and the Order of Arrival</h2></section>
 <p>A queue is first-in-first-out: the first added is the first removed. It is the shape of fairness and of any process that preserves arrival order. <code>Queue</code> wraps the deque, exposing one-ended vocabulary:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Queue&lt;T&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Queue&lt;T&gt;
 {
     deque::Deque&lt;T&gt; inner;
-}</code></pre>
+}</code></pre></div>
 <p><code>enqueue</code> adds at the back, <code>dequeue</code> removes from the front, <code>peek</code> reads the front, and <code>count</code>, <code>isEmpty</code>, and <code>clear</code> delegate to the deque. Each enqueue and dequeue is constant time.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::queue { Queue };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::queue { Queue };
 
 Queue&lt;u64&gt; jobs = Queue&lt;u64&gt;::new();
 jobs.enqueue(1);
 jobs.enqueue(2);
-u64 first = jobs.dequeue();   // 1</code></pre>
+u64 first = jobs.dequeue();   // 1</code></pre></div>
 <p>The queue's deepest use is breadth-first search, where queue order is discovery order. Mark and enqueue the start. Each iteration dequeues a node, visits it, and enqueues its unmarked neighbours. Every node at distance one is visited before any at distance two, so the walk spreads outward one layer at a time. A <code>Bitset</code> can serve as the mark set for small integer nodes:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::bitset { Bitset };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::bitset { Bitset };
 
 pub void bfs(u64 start, const Vec&lt;Vec&lt;u64&gt;&gt;* adj, void(u64) visit)
 {
@@ -307,13 +307,13 @@ pub void bfs(u64 start, const Vec&lt;Vec&lt;u64&gt;&gt;* adj, void(u64) visit)
             }
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>A node is marked when enqueued, never when visited, so the mark means "discovered" and no node is enqueued twice. The queue delivers layers in order, and the walk ends when the frontier drains. Every edge is examined once, so the walk is linear.</p>
 <section><h2 id="s8-12">Hashing: Turning a Key Into an Address</h2></section>
 <p>Earlier collections index by position or walking. The hash map indexes by value: it hashes the key, reduces the number to a slot, and looks there, turning "search for the key" into "compute where it must be."</p>
 <p>Think of a coat check: hand over a coat, get a numbered ticket, and the number takes you straight to the shelf. The hash function turns a key into a ticket number. Shelves are ordered by ticket, not by the coats, so the map promises no key order.</p>
 <p>The standard hash map uses open addressing: entries live in one array, and each records whether it is occupied. Its fields include the two functions defining what a key means:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct HashMapEntry&lt;K, V&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct HashMapEntry&lt;K, V&gt;
 {
     K key;
     V value;
@@ -327,20 +327,20 @@ pub struct HashMap&lt;K, V&gt;
     usize len;
     usize(K) hashFn;
     bool(K, K) eqFn;
-}</code></pre>
+}</code></pre></div>
 <p>A hash map cannot hash an arbitrary <code>T</code> or know equality, so it asks the caller for both: <code>hashFn</code> turns a key into a number, and <code>eqFn</code> decides whether two keys are equal. The constructor takes them:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::hashmap { HashMap };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::hashmap { HashMap };
 
 pub usize hashU64(u64 k) { return (usize)k; }
 pub bool eqU64(u64 a, u64 b) { return a == b; }
 
 HashMap&lt;u64, str&gt; names = HashMap&lt;u64, str&gt;::new(hashU64, eqU64);
 names.insert(7, &quot;seven&quot;);
-names.insert(11, &quot;eleven&quot;);</code></pre>
+names.insert(11, &quot;eleven&quot;);</code></pre></div>
 <p>A hash function is a deterministic scramble. The same key must always produce the same number, and a good hash spreads different keys across the integer range. Hash order is not key order: two keys that hash near each other have no relationship. That is why the map promises no entry order.</p>
 <p>Do not expect a hash map to remember insertion order. It stores each key wherever its hash lands. For insertion order use a vector; for sorted keys use the tree map of Section8.15.</p>
 <p>Lookup hashes the key and probes from the resulting slot:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Option&lt;V&gt; get(K key)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Option&lt;V&gt; get(K key)
 {
     usize h = self.hashFn(key) % self.cap;
     usize start = h;
@@ -352,29 +352,29 @@ names.insert(11, &quot;eleven&quot;);</code></pre>
         if (h == start) break;
     }
     return Option&lt;V&gt;::None;
-}</code></pre>
+}</code></pre></div>
 <p>The method hashes, probes, and compares with the equality function. It returns an <code>Option</code>: <code>Some</code> when present, <code>None</code> when not. That is the map's honesty about absence, the same <code>Option</code> as <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a>. <code>getPtr</code> returns an <code>Option</code> wrapping a pointer for in-place modification. The module provides <code>insert</code>, <code>get</code>, <code>getPtr</code>, <code>contains</code>, <code>remove</code>, <code>clear</code>, <code>keys</code>, <code>values</code>, and <code>each</code>.</p>
 <section><h2 id="s8-13">Collisions, the Load Factor, and the Rehash</h2></section>
 <p>Two keys can hash to the same slot, so the map needs collision resolution. Coral uses linear probing: when the hashed slot is occupied, the probe moves to the next slot until it finds a free slot or the matching key. That is the <code>h = (h + 1) % self.cap;</code> in <code>get</code>.</p>
 <p>Linear probing keeps entries in one array, which is cache-friendly and simple. Its weakness is clustering: as the table fills, occupied slots form runs, new insertions extend them, and lookups walk long runs. Keeping clusters short means keeping the table sparse.</p>
 <p>The load factor is how full the table may get. Coral's map checks before inserting and grows when length reaches half capacity:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">if (self.len * 2 &gt;= self.cap)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">if (self.len * 2 &gt;= self.cap)
 {
     usize newCap = self.cap * 2;
     // allocate newCap, re-home every occupied entry by its hash
-}</code></pre>
+}</code></pre></div>
 <p>At or below a load factor of one half, probes stay short. Growth doubles and rehashes every occupied entry, because the slot is the hash modulo the capacity and capacity changed. The rehash is why the map remembers its hash function, and it is amortized like the vector's growth.</p>
 <p>The load factor is a trade: a denser table uses less memory and probes more; a sparser table uses more memory and probes less. The standard map's threshold is its chosen point:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Option&lt;V&gt; get(K key)        // returns a value, or None
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Option&lt;V&gt; get(K key)        // returns a value, or None
 Option&lt;V*&gt; getPtr(K key)    // returns a pointer, or None
 bool contains(K key)        // membership
-Result&lt;V, CollectionError&gt; insert(K key, V value)  // may allocate</code></pre>
+Result&lt;V, CollectionError&gt; insert(K key, V value)  // may allocate</code></pre></div>
 <p>The map is the choice for key lookup when order does not matter. Finding a key is constant time on average, provided the hash spreads its keys. A poor hash piles keys into one cluster and turns the map into a linear scan. Section8.14 shows the rules both functions must obey.</p>
 <p>A load factor is a car park deliberately kept half empty: if every space were filled, finding a free one would mean circling a long row. Keeping spaces open costs memory and keeps lookups fast.</p>
 <section><h2 id="s8-14">The Frequency Counter: A Map Put to Work</h2></section>
 <p>The hash map's natural job is counting. For each word in a stream, find its running count and add one. The word is the key, and lookup is constant time on average no matter how many distinct words there are.</p>
 <p><code>getPtr</code> combines lookup and update: find the value's pointer and increment through it. A <code>get</code> followed by <code>insert</code> would look up twice. For <code>str</code> keys, both functions are written by the caller:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub usize hashView(str s)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub usize hashView(str s)
 {
     usize h = 5381;
     for (usize i = 0; i &lt; s.len; i++)
@@ -408,11 +408,11 @@ pub void countWords(const Vec&lt;str&gt;* words)
         str w = keys.at(i);
         println(&quot;{} : {}&quot;, w, counts.get(w).unwrap());
     }
-}</code></pre>
+}</code></pre></div>
 <p>The first time a word appears, the slot is <code>None</code> and the word is inserted with count one; later, the <code>Some</code> pointer increments the count. Keys come out in hash order, not insertion order, because the map promises lookup, not order.</p>
 <p>A good hash uses the whole key, varies with every part, and spreads across the full range. A hash ignoring part of a key piles together records sharing that part. A constant hash turns the map into a linear search. An expensive hash is also bad, because the map pays it on every operation. The classic string hash, multiply an accumulator by a small prime and add each byte, is the model.</p>
 <p>Equal keys must hash to the same value, or the map searches one place for a key stored in another and quietly fails. For a composite key, use every field in both functions:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Point { i64 x; i64 y; }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Point { i64 x; i64 y; }
 
 pub usize hashPoint(Point p)
 {
@@ -427,11 +427,11 @@ pub bool eqPoint(Point a, Point b)
     return a.x == b.x &amp;&amp; a.y == b.y;
 }
 
-HashMap&lt;Point, str&gt; labels = HashMap&lt;Point, str&gt;::new(hashPoint, eqPoint);</code></pre>
+HashMap&lt;Point, str&gt; labels = HashMap&lt;Point, str&gt;::new(hashPoint, eqPoint);</code></pre></div>
 <p>The hash combines both coordinates so a change in either changes the hash, and equality compares the same two coordinates. If the hash and equality disagree, the map quietly fails.</p>
 <section><h2 id="s8-15">Order as a Feature: The Tree Map</h2></section>
 <p>Hashing deliberately destroys order. Sometimes order is the point: iterate keys smallest to largest, or find all keys in a range. The ordered map keeps entries in a balanced binary search tree. Coral's <code>Map</code> in <code>std::collections::map</code> is an AVL tree, tracking each node's height:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct MapEntry&lt;K, V&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct MapEntry&lt;K, V&gt;
 {
     K key;
     V value;
@@ -446,9 +446,9 @@ pub struct Map&lt;K, V&gt;
     usize len;
     i32(K, K) cmpFn;
     bool failed;
-}</code></pre>
+}</code></pre></div>
 <p>Ordering comes from <code>cmpFn</code>, which compares two keys and returns negative, zero, or positive, the same three-way protocol as <code>str::compare</code> and binary search. A rotation rebalances: when a subtree is too tall on one side, a few pointer changes move a node up and reattach the middle subtree, preserving search order. After insertion or removal the tree rebalances along the changed path, so depth stays a small constant times the logarithm of size.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::map { Map };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::map { Map };
 
 pub i32 cmpView(str a, str b) { return a.compare(b); }
 pub void printPair(str k, u64 v) { println(&quot;{} : {}&quot;, k, v); }
@@ -457,19 +457,19 @@ Map&lt;str, u64&gt; scores = Map&lt;str, u64&gt;::new(cmpView);
 scores.insert(&quot;ada&quot;, 42);
 scores.insert(&quot;bob&quot;, 7);
 scores.insert(&quot;cecile&quot;, 19);
-scores.each(printPair);       // delivered in key order: ada, bob, cecile</code></pre>
+scores.each(printPair);       // delivered in key order: ada, bob, cecile</code></pre></div>
 <p>The operations match the hash map's, but entries are kept in order. <code>each</code> walks in order (left subtree, node, right subtree), delivering keys smallest to largest. The tree is the keys' order made visible.</p>
 <p>The price is logarithmic lookup, insert, and remove, where the hash map is constant on average. The library provides both. <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a> calls the hash-based wrapper <code>UnorderedMap</code>, the same table behind a name stating "no order."</p>
 <section><h2 id="s8-16">Sets: Membership on Its Own</h2></section>
 <p>A set drops the values and keeps the keys. It holds distinct elements, answers "is this present?", and enforces no duplicates. Coral's <code>Set</code> is a <code>HashMap&lt;T, bool&gt;</code> underneath, storing each element as a key with a throwaway value:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Set&lt;T&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Set&lt;T&gt;
 {
     HashMap&lt;T, bool&gt; inner;
     usize(T) hashFn;
     bool(T, T) eqFn;
-}</code></pre>
+}</code></pre></div>
 <p>Membership is constant time on average, inherited from the map. <code>insert</code> records a value, <code>contains</code> asks whether it is present, and <code>remove</code> forgets one. This is the collection for "have I seen this before":</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::set { Set };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::set { Set };
 
 Set&lt;u64&gt; seen = Set&lt;u64&gt;::new(hashU64, eqU64);
 Vec&lt;u64&gt; unique = Vec&lt;u64&gt;::new();
@@ -481,31 +481,31 @@ for (usize i = 0; i &lt; values.count(); i++)
         seen.insert(v);
         unique.push(v);
     }
-}</code></pre>
+}</code></pre></div>
 <p>The first encounter keeps a value and later ones are skipped; since membership is constant on average, the pass is linear. The set's extra operations are <code>union</code>, <code>intersection</code>, <code>difference</code>, and <code>isSubset</code>/<code>isSuperset</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Set&lt;u64&gt; common = seen.intersection(&amp;other);   // elements in both
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Set&lt;u64&gt; common = seen.intersection(&amp;other);   // elements in both
 Set&lt;u64&gt; onlyA  = seen.difference(&amp;other);     // in seen but not other
-Set&lt;u64&gt; both   = seen.union(&amp;other);          // in either</code></pre>
+Set&lt;u64&gt; both   = seen.union(&amp;other);          // in either</code></pre></div>
 <p>The set's design is that the seen-list grows without a slowdown, and the same structure answers deduplication, overlap, and combining distinct collections.</p>
 <section><h2 id="s8-17">The Bitset: Membership in a Single Bit</h2></section>
 <p>A set of small integers in a dense range has a denser representation: one bit per integer. A bitset packs bits into machine words and answers membership by testing a bit:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Bitset
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Bitset
 {
     u64* words;
     u64 numBits;
     u64 numWords;
-}</code></pre>
+}</code></pre></div>
 <p>The word count is the bit count divided by sixty-four, rounded up. Each bit operation finds its word and offset with division and modulus, then applies a bit operation:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void set(u64 bit)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void set(u64 bit)
 {
     @assert(bit &lt; self.numBits);
     u64 word = bit / 64;
     u64 off = bit % 64;
     self.words[word] |= (1u &lt;&lt; off);
-}</code></pre>
+}</code></pre></div>
 <p><code>set</code> turns a bit on, <code>clear</code> off, <code>toggle</code> flips, and <code>test</code> reads. <code>countOnes</code> and <code>countZeros</code> count by clearing the lowest set bit, and <code>and</code>, <code>or</code>, <code>xor</code>, and <code>not</code> apply word operations. One bit per element means a million elements occupy about a hundred and twenty-five kilobytes. Membership is constant time, and set algebra is a few word operations per word.</p>
 <p>The classic demonstration is the sieve of Eratosthenes, whose universe is exactly a dense integer range:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::bitset { Bitset };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::bitset { Bitset };
 
 pub Vec&lt;u64&gt; primesBelow(u64 n)
 {
@@ -521,19 +521,19 @@ pub Vec&lt;u64&gt; primesBelow(u64 n)
         if (!composite.test(i))
             primes.push(i);
     return primes;
-}</code></pre>
+}</code></pre></div>
 <p>The set handles arbitrary values and pays for a hash table. The bitset handles a fixed, dense range and pays one bit each, asserting the bound on every operation. Arbitrary values: set; dense range: bitset.</p>
 <section><h2 id="s8-18">The Heap: Priority Without a Sort</h2></section>
 <p>A priority queue always yields the most important element available. It is a heap: a complete binary tree in an array, arranged so every parent outranks its children. No pointers are needed because the tree is the indices: a node at <code>i</code> has children at <code>2i+1</code> and <code>2i+2</code> and parent at <code>(i-1)/2</code>.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct PriorityQueue&lt;T&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct PriorityQueue&lt;T&gt;
 {
     T* data;
     usize len;
     usize cap;
     bool(T, T) less;
-}</code></pre>
+}</code></pre></div>
 <p>Priorities come from the <code>less</code> function the constructor takes. The queue does not know what "more important" means; the comparator decides, so the same collection serves a min-heap or max-heap. <code>push</code> places the new element at the end and sifts it up, swapping with its parent until the parent outranks it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void _siftUp(usize idx)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void _siftUp(usize idx)
 {
     while (idx &gt; 0)
     {
@@ -544,10 +544,10 @@ pub Vec&lt;u64&gt; primesBelow(u64 n)
         self.data[parent] = tmp;
         idx = parent;
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>pop</code> takes the root, moves the last element into its place, and sifts down. Each sift moves one level down a tree of logarithmic height, so each operation is logarithmic.</p>
 <p>The heap's beauty is that the tree lives in the array with no pointers: children and parent are computed from the index, so the heap never allocates a node. The cost is that the array is not sorted; only the heap property holds. That is enough, because the queue only needs the root, and sifting restores the property after each push and pop.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::priorityqueue { PriorityQueue };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::priorityqueue { PriorityQueue };
 
 pub bool lessU64(u64 a, u64 b) { return a &lt; b; }
 
@@ -555,11 +555,11 @@ PriorityQueue&lt;u64&gt; deadlines = PriorityQueue&lt;u64&gt;::new(lessU64);
 deadlines.push(30);
 deadlines.push(10);
 deadlines.push(20);
-u64 next = deadlines.pop();     // 10, the smallest</code></pre>
+u64 next = deadlines.pop();     // 10, the smallest</code></pre></div>
 <p>With <code>less</code> meaning "a is less than b," the queue is a min-heap; flip the comparator for a max-heap. Use it for "always take the most important next": earliest-deadline scheduling, event loops, and nearest-frontier algorithms. Push and pop are logarithmic, peek is constant.</p>
 <section><h2 id="s8-19">The Cache: Two Structures, One Job</h2></section>
 <p>A cache remembers a limited number of entries and forgets the rest. Coral's <code>Cache</code> is least-recently-used: when full and a new entry arrives, the coldest entry is evicted. It uses two structures, each doing what it does best.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct CacheEntry&lt;K, V&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct CacheEntry&lt;K, V&gt;
 {
     K key;
     V value;
@@ -575,19 +575,19 @@ pub struct Cache&lt;K, V&gt;
     usize maxSize;
     usize(K) hashFn;
     bool(K, K) eqFn;
-}</code></pre>
+}</code></pre></div>
 <p>The map finds an entry by key in constant time. The linked list keeps entries in recency order, most recent at the head, least recent at the tail. Every access moves the entry to the head in constant time; every insertion beyond the limit evicts the tail. The entry is both a list node and a map value, so the map stores a pointer to it. This is the pointer stability of section8.9 made useful.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::cache { Cache };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::cache { Cache };
 
 Cache&lt;u64, u64&gt; table = Cache&lt;u64, u64&gt;::new(128, hashU64, eqU64);
 table.insert(7, 49);
 table.insert(11, 121);
 Option&lt;u64&gt; hit = table.get(7);    // a hit also moves 7 to the hot end
 if (hit.isSome())
-    println(&quot;{}&quot;, hit.unwrap());</code></pre>
+    println(&quot;{}&quot;, hit.unwrap());</code></pre></div>
 <p>Every <code>get</code> is a map lookup plus a list move; every <code>insert</code> is a map insert, a list push, and at most one eviction, all constant time. The constructor's size is the maximum entries, defaulting to sixty-four when zero is passed.</p>
 <p>The cache's characteristic use is memoization: turning a repeating computation into one that remembers. Naive recursive Fibonacci recomputes values exponentially; the memoized version computes each distinct argument once:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u64 fib(u64 n, Cache&lt;u64, u64&gt;* memo)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u64 fib(u64 n, Cache&lt;u64, u64&gt;* memo)
 {
     Option&lt;u64&gt; hit = memo-&gt;get(n);
     if (hit.isSome())
@@ -595,11 +595,11 @@ if (hit.isSome())
     u64 result = (n &lt; 2) ? n : fib(n - 1, memo) + fib(n - 2, memo);
     memo-&gt;insert(n, result);
     return result;
-}</code></pre>
+}</code></pre></div>
 <p>Each call begins with a get; a hit returns the remembered answer, and a miss computes, stores, and returns. The cache turns exponential fib into linear. An unbounded table would grow forever; the cache stops at its maximum and evicts the least recently used answer, trading occasional recomputation for bounded memory.</p>
 <section><h2 id="s8-20">Hierarchies: The Generic Tree</h2></section>
 <p>Some data is naturally a hierarchy: directories contain files and directories, companies have departments, sentences parse into phrases and words. Each is a node with children, and the generic tree is the library's container for that shape. It is a shape, not a search structure like the tree map.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct TreeNode&lt;T&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct TreeNode&lt;T&gt;
 {
     T value;
     Vec&lt;TreeNode&lt;T&gt;*&gt; children;
@@ -608,10 +608,10 @@ if (hit.isSome())
 pub struct Tree&lt;T&gt;
 {
     TreeNode&lt;T&gt;* root;
-}</code></pre>
+}</code></pre></div>
 <p>A tree node is a value and a vector of pointers to child nodes. "Generic" means the value can be anything; vector children mean the number of children is not fixed, making this an n-ary tree. The tree itself is a pointer to the root.</p>
 <p>The key property is that node pointers returned by <code>setRoot</code> and <code>addChild</code> are stable. A child is created, and the caller keeps its pointer to add grandchildren:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::tree { Tree, TreeNode };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::tree { Tree, TreeNode };
 
 Tree&lt;str&gt; org = Tree&lt;str&gt;::new();
 TreeNode&lt;str&gt;* ceo = org.setRoot(&quot;ceo&quot;);
@@ -622,12 +622,12 @@ org.addChild(eng, &quot;frontend&quot;);
 org.addChild(ops, &quot;platform&quot;);
 
 pub void showOrg(str name) { println(&quot;{}&quot;, name); }
-org.preOrder(showOrg);</code></pre>
+org.preOrder(showOrg);</code></pre></div>
 <p><code>eng</code> points to the engineering node, and every later <code>addChild</code> naming <code>eng</code> hangs a child under it. <code>preOrder</code> visits the value before children; <code>postOrder</code> visits children first. <code>depth</code> measures the deepest chain, <code>size</code> counts nodes, and <code>toVec</code> collects every value.</p>
 <p>The tree's costs are its pieces' costs: vector children give each node a growable child list, and nodes are individual allocations linked by pointers, so traversal walks scattered memory like a linked list. Use it when the hierarchy is the point.</p>
 <section><h2 id="s8-21">Prefixes: The Trie</h2></section>
 <p>A trie is for "do many strings share prefixes?" Words are stored as a tree where each level holds one byte, so <code>car</code>, <code>card</code>, and <code>cart</code> share the path c-a-r and fork only at the end. The trie arranges words by character; the tree map arranges keys by comparison.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">const u32 TRIE_FANOUT = 256;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">const u32 TRIE_FANOUT = 256;
 
 pub struct TrieNode
 {
@@ -639,9 +639,9 @@ pub struct Trie
 {
     TrieNode* root;
     usize count;
-}</code></pre>
+}</code></pre></div>
 <p>Every node carries an array of 256 child pointers, one per byte value, and a flag marking whether a word ends there. Insert walks the bytes, creating missing nodes and setting <code>isEnd</code> at the final node. <code>contains</code> returns false when a child is missing and true only if the final node's <code>isEnd</code> is set, so <code>cat</code> is found but <code>ca</code> is not. <code>startsWith</code> is the same walk without the word-end check:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::trie { Trie };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::trie { Trie };
 
 Trie dict = Trie::new();
 dict.insert(&quot;cat&quot;);
@@ -652,7 +652,7 @@ dict.insert(&quot;dog&quot;);
 if (dict.startsWith(&quot;ca&quot;))
     println(&quot;there are words beginning with ca&quot;);
 if (dict.contains(&quot;cat&quot;))
-    println(&quot;&#x27;cat&#x27; is a word&quot;);</code></pre>
+    println(&quot;&#x27;cat&#x27; is a word&quot;);</code></pre></div>
 <p>Lookup costs the key's length and zero comparisons against other words: prefix membership is as cheap as the prefix is short, regardless of dictionary size. A trie stores a set of keys, not an associative map; for a payload per word, use a companion map.</p>
 <p>Each node is 256 pointers, so a long word with no shared prefixes builds a chain of wide nodes, and memory is far heavier than a set of the same words. Use a trie when the question is "what begins with this" (autocomplete, spell-check, routing); use a set or map when it is "is this whole thing present."</p>
 <section><h2 id="s8-22">Choosing Among the Collections</h2></section>
@@ -666,7 +666,7 @@ if (dict.contains(&quot;cat&quot;))
 <p>Every collection here is a generic type. The compiler generates a concrete version per element or key type. <code>Vec&lt;i32&gt;</code> is a real array of <code>i32</code>, not a boxed <code>void*</code> array. There is no per-element indirection and no runtime type tag.</p>
 <p>There are no bounds on a type parameter: you cannot write <code>&lt;T : Comparable&gt;</code>. The requirement on <code>T</code> is exactly the operations the body names, checked at each instantiation. That is why containers take key functions as parameters: a generic <code>K</code> has no built-in equality or hash, so the caller supplies them.</p>
 <p>When the concrete type is not known until runtime, as in a heterogeneous collection, plugin registry, or dispatch table, use <code>any Trait</code>, a trait object. A trait names methods; a type conforms with an extend block; <code>any Trait</code> is the dynamic view:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Shape
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait Shape
 {
     f64 area();
 }
@@ -687,43 +687,43 @@ Vec&lt;any Shape&gt; shapes = Vec&lt;any Shape&gt;::new();
 shapes.push(Circle { .radius = 1.0 });
 shapes.push(Square { .side = 2.0 });
 for (any Shape s : shapes)
-    println(&quot;area = {}&quot;, s.area());</code></pre>
+    println(&quot;area = {}&quot;, s.area());</code></pre></div>
 <p>An <code>any Shape</code> value carries a reference to the value and a reference to its <code>Shape</code> implementation, so <code>s.area()</code> dispatches at runtime. That lets one collection hold different concrete types. The trade is an extra indirection per call, no inlining across the boundary, and only the trait's methods visible. Keep dynamic dispatch at boundaries and internals static, because a generic <code>T</code> is monomorphised and free.</p>
 <p>A homogeneous collection with a compile-time element type wants a generic; a heterogeneous one, or one decided at runtime, wants <code>any Trait</code>. Neither is worse; they answer different questions.</p>
 <section><h2 id="s8-24">Text as a Data Structure</h2></section>
 <p>Text is the data structure most programs touch most, and it obeys the same layout-and-cost reasoning. Coral's text layer has two types: <code>str</code>, the borrowed view, and <code>String</code>, the owned, growable buffer. <a href="../17-text-unicode-formatting-and-parsing/index.html">Chapter 17</a> is the full treatment.</p>
 <p>The view is a pointer and a length, owning nothing:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct str
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct str
 {
     const u8* ptr;
     usize len;
-}</code></pre>
+}</code></pre></div>
 <p><code>str</code> is built in, and the standard library extends it with operations. A slice of a larger view is a new pointer and length into the same bytes, so slicing costs nothing:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str full = &quot;coral&quot;;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">str full = &quot;coral&quot;;
 str front = full.slice(0, 3);    // &quot;cor&quot;
-str back = full.slice(3, 5);     // &quot;al&quot;</code></pre>
+str back = full.slice(3, 5);     // &quot;al&quot;</code></pre></div>
 <p><code>at</code> reads a byte, <code>findByte</code> and <code>findView</code> search, <code>startsWith</code> and <code>endsWith</code> test the edges, and <code>equals</code> and <code>compare</code> compare text. Because the view borrows, reading functions take a <code>str</code> with no copying; it must not outlive the bytes it points at.</p>
 <p>The string is the owning, growable buffer, a vector of bytes with capacity:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct String
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct String
 {
     u8* ptr;
     usize len;
     usize cap;
-}</code></pre>
+}</code></pre></div>
 <p><code>String</code> grows by the same doubling strategy, so building by appending is linear with amortized copies. <code>pushChar</code> and <code>pushView</code> append, <code>insertView</code> and <code>removeRange</code> modify the middle, <code>truncate</code> cuts the end, and <code>asView</code> hands out a borrowed view:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">String name = String::from(&quot;coral&quot;);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">String name = String::from(&quot;coral&quot;);
 name.pushChar(&#x27;!&#x27;);
-println(&quot;{}&quot;, name.asView());</code></pre>
+println(&quot;{}&quot;, name.asView());</code></pre></div>
 <p>The view borrows, the string owns. Reading code takes views; building code returns strings. The string's buffer must be contiguous and its views cheap; the text layer is the vector idea applied to bytes.</p>
 <section><h2 id="s8-25">The Honest Boundaries</h2></section>
 <p>Two boundaries are worth stating plainly.</p>
 <p>First, the standard library has no time or date types. There is no <code>Duration</code>, clock, calendar, or time zone under <code>std</code>. A program needing elapsed time or the wall clock must use the platform layer or a library; civil dates must be built from a raw second count.</p>
 <p>Second, formatting. The <code>fmt</code> module provides typed functions: <code>formatInt</code>, <code>formatUint</code>, <code>formatFloat</code>, <code>formatHex</code>, <code>formatBin</code>, <code>formatChar</code>, <code>padLeft</code>, <code>padRight</code>, <code>repeat</code>, <code>join</code>, and <code>joinVec</code>, each returning a <code>String</code>. The general <code>format(str f, ...)</code> is a stub that does no placeholder substitution. For formatted output, use <code>print</code> and <code>println</code>, which take a comptime format string checked before the program runs:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::fmt { formatUint, padLeft };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::fmt { formatUint, padLeft };
 
 String hex = formatUint(255, 16, false);    // &quot;ff&quot;
 String pad = padLeft(&quot;7&quot;, 3, &#x27;0&#x27;);          // &quot;007&quot;
-println(&quot;{} and {} and {:x}&quot;, hex.asView(), pad.asView(), 255);</code></pre>
+println(&quot;{} and {} and {:x}&quot;, hex.asView(), pad.asView(), 255);</code></pre></div>
 <p>The <code>println</code> format supports <code>{}</code> for a value, <code>{:x}</code> and <code>{:b}</code> for bases, <code>{:.3}</code> for precision, <code>{..}</code> to spread an iterable, and <code>{{</code>/<code>}}</code> for literal braces. A mismatch is a build failure because the compiler sees both at the call site.</p>
 <p>Everything named here exists under <code>std::collections</code>, with <code>Vec</code>, <code>Arr</code>, <code>Option</code>, and <code>Result</code> also reachable through root shortcuts. The method catalogue is <a href="../16-collections-and-the-standard-library/index.html">Chapter 16</a>.</p>
 <section><h2 id="s8-26">Exercises</h2></section>

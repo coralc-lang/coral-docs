@@ -42,18 +42,18 @@
 <p>In every case, two sets of rules meet and someone must translate. That someone is you.</p>
 <section><h2 id="s20-2">Declaring an Extern Function</h2></section>
 <p>An extern function is a declaration with no body. The compiler records the signature, and the linker connects the name to a symbol.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern i64 read(i32 fd, cchar* buf, u64 count);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extern i64 read(i32 fd, cchar* buf, u64 count);
 pub extern i32 open(const cchar* path, i32 flags, i32 mode);
-pub extern void free(rawptr ptr);</code></pre>
+pub extern void free(rawptr ptr);</code></pre></div>
 <p>Three things matter:</p>
 <p>There is no body. <code>extern</code> with no <code>{}</code> promises the linker that a symbol with this name and signature exists. A missing symbol fails the link, early and correctly.</p>
 <p>Parameter names are optional. <code>i32 open(const cchar*, i32, i32);</code> is equally valid; names are documentation.</p>
 <p>The C standard library links by default. Other libraries need a link flag, supplied by the build:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// links against -lm
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// links against -lm
 pub extern f64 sqrt(f64 x);
-pub extern f64 pow(f64 x, f64 y);</code></pre>
+pub extern f64 pow(f64 x, f64 y);</code></pre></div>
 <p>The standard library's platform bindings are the model: <code>libc</code> for POSIX and <code>win32</code> for Windows, each a list of bodyless extern declarations:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// a fragment of platform/libc.crl
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// a fragment of platform/libc.crl
 pub extern u64 strlen(const cchar* s);
 pub extern rawptr malloc(u64 size);
 pub extern i32 open(const cchar* path, i32 flags, i32 mode);
@@ -61,27 +61,27 @@ pub extern i64 read(i32 fd, cchar* buf, u64 count);
 
 // a fragment of platform/win32.crl
 pub extern rawptr CreateFileA(const cchar* lpFileName, u32 dwDesiredAccess, u32 dwShareMode, rawptr lpSecurityAttributes, u32 dwCreationDisposition, u32 dwFlagsAndAttributes, rawptr hTemplateFile);
-pub extern bool ReadFile(rawptr hFile, cchar* lpBuffer, u32 nNumberOfBytesToRead, u32* lpNumberOfBytesRead, rawptr lpOverlapped);</code></pre>
+pub extern bool ReadFile(rawptr hFile, cchar* lpBuffer, u32 nNumberOfBytesToRead, u32* lpNumberOfBytesRead, rawptr lpOverlapped);</code></pre></div>
 <p>The Windows fragment shows longer names and types such as <code>u32</code> and <code>bool</code> where C has <code>unsigned</code> and its own boolean (see 20.4). Adding a missing binding is a one-line declaration.</p>
 <p>A complete binding can be tiny. This program opens and closes a file with no wrapper:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) platform::libc { open, close };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) platform::libc { open, close };
 
 void main() {
     i32 fd = open(C&quot;/etc/hosts&quot;, 0, 0);
     if (fd &gt;= 0) {
         close(fd);
     }
-}</code></pre>
+}</code></pre></div>
 <p>It works, and it shows why a wrapper is worth writing: the raw <code>i32</code> descriptor and magic <code>0, 0</code> flags are details a wrapper should hide.</p>
 <section><h2 id="s20-3">Calling Conventions and Function Pointers</h2></section>
 <p>A calling convention is the agreement about argument passing and cleanup: registers or stack, order, who pops. <code>extern</code> uses the platform's C convention by default. Name a non-default convention explicitly:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern(&quot;C&quot;) void callback_handler(i32 code);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extern(&quot;C&quot;) void callback_handler(i32 code);</code></pre></div>
 <p><code>extern("C")</code> makes the C convention explicit. On mainstream targets the call is identical, so it is mostly clarity. It matters when names could be mangled or the platform has multiple conventions.</p>
 <p>C passes callbacks as function pointers, and Coral passes functions as pointers too. A callback parameter is written as a Coral function-pointer type, <code>RetType(params)</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern void qsort(rawptr base, usize count, usize size, i32(const rawptr, const rawptr) cmp);
-pub extern rawptr signal(i32 signum, void(i32) handler);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extern void qsort(rawptr base, usize count, usize size, i32(const rawptr, const rawptr) cmp);
+pub extern rawptr signal(i32 signum, void(i32) handler);</code></pre></div>
 <p><code>i32(const rawptr, const rawptr)</code> is a pointer to a function taking two <code>const rawptr</code> and returning <code>i32</code>. <code>void(i32)</code> takes an <code>i32</code> and returns nothing. A Coral function with a matching signature is usable as that type:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 compareInts(const rawptr a, const rawptr b) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 compareInts(const rawptr a, const rawptr b) {
     i32 x = *(i32*)a;
     i32 y = *(i32*)b;
     return x - y;
@@ -91,11 +91,11 @@ void main() {
     i32 data[5];
     data[0] = 5; data[1] = 3; data[2] = 4; data[3] = 1; data[4] = 2;
     qsort((rawptr)data, 5u, 4u, compareInts);
-}</code></pre>
+}</code></pre></div>
 <p>A callback invoked by C must use the C convention and take and return only FFI-compatible types. It must not throw or unwind. Owned Coral types with drop behaviour cannot be passed by value; keep callbacks simple, and pass context through a raw pointer as C does.</p>
 <section><h2 id="s20-4">C Types and Coral Types</h2></section>
 <p>This translation table prevents the most common FFI bug: a type that is the right size on one platform and wrong on another.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">C type        Coral type       note
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">C type        Coral type       note
 int           i32              on the platforms Coral targets
 long          i64 (LP64)       i32 on Windows (LLP64), check the platform
 unsigned      u32
@@ -106,7 +106,7 @@ const char*   const cchar*     a read-only C string
 void*         rawptr           an untyped pointer
 bool          bool             C&#x27;s boolean, in the bindings
 struct foo    struct foo       by value, with a matching layout
-function ptr  void(rawptr)     the same, spelled Coral&#x27;s way</code></pre>
+function ptr  void(rawptr)     the same, spelled Coral&#x27;s way</code></pre></div>
 <p>Four deserve attention:</p>
 <p><code>cchar</code> is C's <code>char</code>: one byte whose signedness is platform-dependent, and the element of a C string. It is distinct from Coral's <code>char</code> (a Unicode codepoint) and from <code>u8</code> (unambiguously unsigned). Using <code>cchar</code> signals C's notion of a character and prevents passing a codepoint where a byte is wanted.</p>
 <p><code>rawptr</code> is <code>void*</code>: an address with no type. Convert explicitly with <code>(rawptr)x</code> and <code>(T*)ptr</code>, marking where type erasure and restoration happen.</p>
@@ -116,32 +116,32 @@ function ptr  void(rawptr)     the same, spelled Coral&#x27;s way</code></pre>
 <p>String handling is the largest source of FFI bugs. A Coral <code>str</code> is a pointer and a length; a C string is nul-terminated bytes with no length. They are not interchangeable.</p>
 <p>A <code>str</code> is a page with the word count at the top; a C string is a page that stops at the first blank line. Hand the first to C and it keeps reading until it finds a blank or walks off the page.</p>
 <p>To call a C function expecting a C string, you need a C string. A <code>C</code> literal is one:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">open(C&quot;/etc/hosts&quot;, 0, 0);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">open(C&quot;/etc/hosts&quot;, 0, 0);</code></pre></div>
 <p><code>C"..."</code> is nul-terminated and has type <code>const cchar*</code>, so it passes directly with no allocation. Use it whenever the string is known at compile time.</p>
 <p>For a runtime string, convert explicitly. A <code>String</code> keeps a trailing nul and can produce a C-string view; a <code>str</code> view must be copied into an owned buffer first:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">String s = String::from(&quot;config.txt&quot;);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">String s = String::from(&quot;config.txt&quot;);
 cchar* cstr = s.asCstr();          // valid while s is alive
 
 // a borrowed view that must be owned before it can be a C string
 String tmp = String::from(view);
-open(tmp.asCstr(), 0, 0);</code></pre>
+open(tmp.asCstr(), 0, 0);</code></pre></div>
 <p>Conversion is neither free nor implicit, by design. <code>asCstr()</code> does not allocate; it lends the <code>String</code>'s bytes, so the <code>String</code> must outlive the pointer.</p>
 <p>A common mistake is <code>open(tmp.asCstr(), ...)</code> where <code>tmp</code> is already gone when C reads it. If the pointer must outlive the string, copy the bytes first.</p>
 <p>The reverse direction is explicit too. <code>String::fromCstr</code> measures and copies into an owned <code>String</code>; <code>str::fromCstr</code> measures and returns a borrowed view:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">String owned = String::fromCstr(cstr);   // copies; owns its bytes
-str view = str::fromCstr(cstr);          // borrows; measures with strlen</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">String owned = String::fromCstr(cstr);   // copies; owns its bytes
+str view = str::fromCstr(cstr);          // borrows; measures with strlen</code></pre></div>
 <p>Two bugs everyone writes once: a borrowed <code>str</code> from C does not own the bytes, so freeing them in C leaves a dangling view; and a non-nul-terminated <code>str</code> must never be passed to C, which will read past the end looking for a nul.</p>
 <p>A C function returning <code>cchar*</code> may return null, as <code>getenv</code> does. Passing null to <code>String::fromCstr</code> sends it into <code>strlen</code> and faults. Check first:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern cchar* getenv(const cchar* name);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extern cchar* getenv(const cchar* name);
 
 String home(str name) {
     const cchar* val = getenv(name.asCstr());
     if (val == null) return String::from(&quot;(unset)&quot;);
     return String::fromCstr(val);
-}</code></pre>
+}</code></pre></div>
 <section><h2 id="s20-6">Passing Structures and Buffers</h2></section>
 <p>A struct can cross by pointer, or by value if its layout matches. By default the compiler may insert padding and reorder fields, so a plain Coral struct may not match C. Pin the layout for boundary structs:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[packed]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[packed]]
 struct Header {
     u8  version;
     u8  flags;
@@ -149,21 +149,21 @@ struct Header {
     u32 checksum;
 }
 
-pub extern i32 readHeader(i32 fd, Header* out);</code></pre>
+pub extern i32 readHeader(i32 fd, Header* out);</code></pre></div>
 <p><code>#[[packed]]</code> removes padding and keeps declaration order, so size is the sum of fields and bytes lie as written. It is required for wire formats, protocol headers, and any external ABI. The trade-off is access speed: unaligned fields cost more on some platforms, so pack only boundary structs.</p>
 <p><code>#[[reorder]]</code> lets the compiler permute fields for density. That is fine for private in-memory types and wrong across a boundary, because C reads bytes where it expects them. A struct with neither attribute has a private compiler-chosen layout. If a struct crosses the FFI, mark it packed; otherwise treat its layout as private.</p>
 <p>Buffers cross as a pointer plus an explicit length, because C cannot infer one. A function filling a buffer takes a <code>rawptr</code> or <code>cchar*</code> and a <code>usize</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u8 buffer[4096];
-i64 n = read(fd, (cchar*)buffer, 4096u);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u8 buffer[4096];
+i64 n = read(fd, (cchar*)buffer, 4096u);</code></pre></div>
 <p>The cast matches the parameter type, and the length is separate. The caller owns the buffer and its lifetime; C writes into it and returns the byte count, with a negative value meaning error. Wrapping this so callers get a <code>String</code> or typed result is the wrapper's job.</p>
 <section><h2 id="s20-7">Wrapping the Boundary</h2></section>
 <p>A C interface is designed for C: raw pointers, integer return codes, out-parameters, and global error codes. Do not let it leak into your program. Write a wrapper that converts, checks codes, returns <code>Result</code>s, and exposes a Coral-shaped API.</p>
 <p>A wrapper for a C file API shows the shape. The C side offers the standard trio:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extern rawptr fopen(const cchar* path, const cchar* mode);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extern rawptr fopen(const cchar* path, const cchar* mode);
 pub extern u64 fread(rawptr ptr, u64 size, u64 count, rawptr stream);
-pub extern i32 fclose(rawptr stream);</code></pre>
+pub extern i32 fclose(rawptr stream);</code></pre></div>
 <p>Wrap it in an owned type with a drop and a <code>Result</code>-returning open:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) platform::libc { fopen, fread, fclose };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) platform::libc { fopen, fread, fclose };
 import(lib) std::text::string { String };
 
 pub struct File {
@@ -193,32 +193,32 @@ pub Result&lt;File, FileError&gt; fileOpen(str path) {
 pub Result&lt;usize, FileError&gt; fileRead(File* f, u8* buf, usize len) {
     u64 n = fread((rawptr)buf, 1u, len, f-&gt;handle);
     return (usize)n;
-}</code></pre>
+}</code></pre></div>
 <p>The wrapper hides every awkward detail. <code>fopen</code>'s null becomes a typed <code>Result</code> error. The handle is owned and closed by <code>@drop</code>, so RAII works at the boundary. C-string conversion happens once inside. Callers write <code>fileOpen("config.txt")</code> and never hold a <code>rawptr</code> or remember to close.</p>
 <p>A wrapper turns a C library from a pile of footguns into a tool teammates can use without the C manual. Do the boundary work once, in one file.</p>
 <p>The wrapper also decides ownership. <code>File</code> owns the handle, so copying it would double-close; the wrapper must forbid copying or use reference counting. C did not decide this for you, so the wrapper must decide once and express it in the type.</p>
 <p>Two finishing details: map error codes to a small closed set, and group shared handling paths with <code>|</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (err) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">switch (err) {
     FileError::NotFound | FileError::PermissionDenied =&gt; { recover(); },
     FileError::Unknown { code } =&gt; { panic(code); }
-}</code></pre>
+}</code></pre></div>
 <p>This is the variants chapter's pattern matching applied at the boundary: a C integer becomes a compiler-checked Coral variant.</p>
 <p>When C reports failure with a sentinel and sets <code>errno</code>, the wrapper reads <code>errno</code> through its accessor. On POSIX, <code>errno</code> is reached through <code>__errno_location</code>, which returns a pointer to the current thread's error cell:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) platform::libc { __errno_location };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) platform::libc { __errno_location };
 
 i32 currentErrno() {
     return *__errno_location();
-}</code></pre>
+}</code></pre></div>
 <p>The function indirection is how <code>errno</code> is made thread-local, so one thread's error cannot be read by another.</p>
 <section><h2 id="s20-8">Inline Assembly and Clobbering</h2></section>
 <p>Inline assembly skips C entirely. When no C function exists for a raw syscall, fence, or unexposed instruction, write the instruction in a Coral statement. It trades safety for reach and underlies the standard library's platform layer: the <code>mmap</code> in <code>std/x86_64/linux/memory/intrinsics/memory.crl</code> is an inline syscall, and the atomics in <code>std/x86_64/linux/concurrent/thread.crl</code> are inline <code>lock</code>-prefixed instructions.</p>
 <p>The grammar is small: an <code>asm</code> keyword, optional <code>volatile</code>, and a brace block:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">asm [volatile] { &quot;template&quot; [ : outputs ] [ : inputs ] [ : clobbers ] }</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">asm [volatile] { &quot;template&quot; [ : outputs ] [ : inputs ] [ : clobbers ] }</code></pre></div>
 <p><code>volatile asm { ... }</code> is also accepted; the qualifier sets the <code>isVolatile</code> bit on <code>StmtKind::Asm</code>. The template is one or more string literals; adjacent literals join, as in C. Three optional colon-delimited sections follow: outputs, inputs, then clobbers. Sections may be omitted from the right, and <code>::</code> (one <code>ColonColon</code> token) closes a section and leaves the next empty, which is how the barrier <code>asm volatile { "" ::: "memory" }</code> reaches the clobber list. Operands are <code>"constraint"(expression)</code> pairs; clobbers are bare strings. The parser stores <code>StmtKind::Asm { template, outputs, inputs, clobbers, flags }</code> (coral-ast/stmt.crl:127).</p>
 <p>An <code>asm</code> block writes machine instructions and hands them to the C compiler to place around your Coral variables. The template is the instruction text; outputs, inputs, and clobbers tell the compiler what the block reads, writes, and tramples.</p>
 <p>The template is emitted verbatim inside the host C compiler's <code>__asm__</code> (or <code>__asm__ volatile</code>), because the backend lowers straight to GNU inline assembly (coral-backend/codegen.crl:4908). Operand placeholders are C's: <code>%0</code>, <code>%1</code>, and so on, outputs first then inputs; a literal percent is <code>%%</code>, so registers are <code>%%rax</code> and instruction streams use <code>\n\t</code>. Constraint letters are also C's, copied without interpretation (codegen.crl:4955): <code>"r"</code> general register, <code>"m"</code> memory, <code>"i"</code> immediate; on x86 <code>"a"</code>, <code>"D"</code>, <code>"S"</code>, <code>"d"</code> name AX, DI, SI, DX, and <code>"q"</code> a byte-addressable register. <code>=</code> marks an output, <code>+</code> a read-write operand, and a digit ties an input to an output. Operands bind by being lvalues: <code>"=r"(v)</code> names local <code>v</code>; the compiler loads inputs before and stores outputs after. Semantics checks template, output, and input expressions (coral-semantics/stmt.crl:203) but not constraints or clobbers.</p>
 <p>A syscall shows every piece. This is the shape of the standard library's <code>mmap</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub rawptr sysMmap(rawptr addr, usize length, i32 prot, i32 flags, i32 fd, i64 offset) {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub rawptr sysMmap(rawptr addr, usize length, i32 prot, i32 flags, i32 fd, i64 offset) {
     usize ret;
     asm volatile {
         &quot;movq %2, %%rdi\n\t&quot;
@@ -236,34 +236,34 @@ i32 currentErrno() {
     }
     if ((i64)ret &lt; 0 &amp;&amp; (i64)ret &gt;= -4095) return null;
     return (rawptr)ret;
-}</code></pre>
+}</code></pre></div>
 <p>The template moves the syscall number and arguments into kernel registers, issues <code>syscall</code>, and reads the result from <code>%%rax</code>. <code>%%</code> keeps register names literal; <code>%0</code>...<code>%7</code> are operands. <code>"=a"(ret)</code> puts the result in AX and stores it into <code>ret</code>. <code>"0"(9u)</code> shares output 0, and the rest use <code>"D"</code>, <code>"S"</code>, <code>"d"</code>, or generic <code>"r"</code>. Clobbers name destroyed registers (<code>"rcx"</code>, <code>"r8"</code>, <code>"r9"</code>, <code>"r10"</code>, <code>"r11"</code>) and <code>"memory"</code>, telling the compiler the call may touch arbitrary memory.</p>
 <p>A memory barrier is the shortest useful form, nothing but a clobber:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void memoryBarrier() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">void memoryBarrier() {
     asm volatile { &quot;&quot; ::: &quot;memory&quot; }
-}</code></pre>
+}</code></pre></div>
 <p>The template is empty, both operand sections are skipped with <code>::</code>, and <code>"memory"</code> is the whole point: it forbids keeping memory values in registers across the statement. <code>"cc"</code> is the sibling clobber for condition codes; naming a register says it does not survive the block.</p>
 <p>Reading a register is an output with no input. The stack pointer is always in <code>%%rsp</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">usize readStackPointer() {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">usize readStackPointer() {
     usize sp;
     asm volatile { &quot;movq %%rsp, %0&quot; : &quot;=r&quot;(sp) }
     return sp;
-}</code></pre>
+}</code></pre></div>
 <p>The timestamp counter has the same shape but splits its result across two registers: <code>asm volatile { "rdtsc" : "=a"(lo), "=d"(hi) }</code>.</p>
 <p>Inline assembly is the least safe surface in the language. It is architecture- and target-specific, and the target C compiler assembles it, not Coral. The standard library keeps separate files per platform (<code>std/x86_64/linux/...</code> versus <code>std/x86_64/windows/...</code>); quarantine <code>asm</code> the same way behind a wrapper. An <code>asm</code> without <code>volatile</code> or outputs is dead code and may be deleted; use <code>volatile</code> for side effects. Coral does not validate constraints or clobbers today: it copies constraint strings through and never inspects them, so a wrong constraint, unlisted clobber, or missing <code>"memory"</code> can miscompile differently at each optimization level. The catalogue reserves E0401 (invalid register-constraint allocation), E0402 (clobbered register also a live operand), and E0403 (volatile write flushed by a non-volatile read), but those are documented intentions in <code>errors.txt</code>, not current checks. Do not rely on being warned.</p>
 <p>Function attributes do not make assembly safer. <code>#[[noreturn]]</code> records that a function does not return, but is parsed, stored, and not yet honoured. <code>#[[noalias]]</code> is parsed but not emitted and is the wrong tool here: aliasing across asm is controlled by the <code>"memory"</code> clobber. <code>#[[inline]]</code> and <code>#[[inline_always]]</code> are codegen hints the current C backend ignores; inlining can change register allocation, never the asm. The asm's <code>volatile</code> differs from <code>#[[const]]</code>: <code>volatile</code> prevents movement or deletion, while <code>#[[const]]</code> promises no mutation of <code>self</code> or parameters. The const checker does not inspect asm operands, so const-correctness over asm is your responsibility.</p>
 <p>Reach for an ordinary <code>extern</code> binding first: it is checkable and portable. Use inline assembly only when no binding exists (a raw syscall, an unemitted instruction, a fence), then put it in one small, target-guarded function with an accurate clobber list, and let the rest of the program call it normally.</p>
 <section><h2 id="s20-9">Calling Into Coral From C</h2></section>
 <p>Sometimes a Coral function must be callable from C: an entry point, a callback, or a symbol in a shared object. It must have an FFI-compatible signature and an exported name. <code>#[[no_mangle]]</code> keeps the symbol unmangled so the linker matches what C expects:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">#[[no_mangle]]
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">#[[no_mangle]]
 pub extern(&quot;C&quot;) i32 coral_entry(i32 argc, cchar** argv) {
     return run(argc, argv);
-}</code></pre>
+}</code></pre></div>
 <p><code>extern("C")</code> asserts the C convention; <code>#[[no_mangle]]</code> keeps the symbol name. Together they make <code>coral_entry</code> visible and callable by that name. A callback needs no extra attributes beyond the C-compatible signature.</p>
 <p>Three rules keep the reverse direction safe. A Coral function passed to C must not throw, panic, or unwind across the boundary; communicate errors through return values. A <code>@drop</code> type must never be passed by value to C, because C cannot run the destructor; it may cross by pointer under the wrapper's ownership contract. Keep the exported surface small: every exported symbol is a contract with code you cannot see.</p>
 <section><h2 id="s20-10">A Worked Example: Reading a File Through a Wrapper</h2></section>
 <p>This program reads a text file through the wrapper, keeping the mess in one module. First the wrapper:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// file.crl, the only module that mentions a rawptr
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// file.crl, the only module that mentions a rawptr
 import(lib) platform::libc { fopen, fread, fclose };
 import(lib) std::text::string { String };
 
@@ -289,9 +289,9 @@ pub Result&lt;File, FileError&gt; fileOpen(str path) {
 
 pub Result&lt;usize, FileError&gt; fileRead(File* f, u8* buf, usize len) {
     return Result&lt;usize, FileError&gt;::Ok { .value = (usize)fread((rawptr)buf, 1u, len, f-&gt;handle) };
-}</code></pre>
+}</code></pre></div>
 <p>Then the program that uses it, which never sees C:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println, eprintln };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println, eprintln };
 import(lib) std::text::string { String };
 import file;
 
@@ -320,7 +320,7 @@ void main() {
         Ok { value } =&gt; { println(&quot;read {} bytes&quot;, value.len); },
         Err { error } =&gt; { eprintln(&quot;could not open the file&quot;); }
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>main</code> never sees a <code>rawptr</code>, <code>cchar</code>, or return code, only a <code>Result</code> and a <code>String</code>. The <code>File</code> is owned, so it closes automatically on success or failure. The buffer is a fixed array passed as pointer and length and converted by the wrapper. The boundary is invisible, and its discipline lives in one file.</p>
 <p>The wrapper does not hide failure, and should not: reading can fail, and failure is ordinary flow. C reported it with zero or null, the wrapper carried it as a <code>Result</code>, and the caller switched on it. The error never disappeared or surprised anyone. Speak both languages, decide once where translation happens, and let the rest of the code act as if C were never there.</p>
 <section><h2 id="s20-11">Exercises</h2></section>

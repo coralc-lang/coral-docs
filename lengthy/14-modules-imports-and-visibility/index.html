@@ -37,16 +37,16 @@
 <p>A Coral source file ends in <code>.crl</code>. A folder that participates in a build is a module. A module's public face is a file named <code>lib.crl</code> in that folder. Everything the module exports to the rest of the program is listed in <code>lib.crl</code>, and everything <code>lib.crl</code> re-exports becomes the module's namespace.</p>
 <p>Let us be careful about the word "namespace," because it is doing real work here. The namespace is the set of names an outsider can write after the module's name. If <code>lib.crl</code> contains one line exporting a submodule called <code>string</code>, then <code>text::string</code> is a name outsiders can reach; if it does not, <code>text::string</code> is not a name at all outside the module, no matter how many string files sit in the folder. The namespace is not the folder's contents. The namespace is the catalogue's contents.</p>
 <p>Consider a folder <code>src/text/</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">src/text/
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">src/text/
 ├── lib.crl          # the module surface
 ├── string.crl       # String
 ├── strutil.crl      # free functions on str
-└── ascii.crl        # ASCII helpers</code></pre>
+└── ascii.crl        # ASCII helpers</code></pre></div>
 <p>The surface declares what the module offers:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// src/text/lib.crl
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// src/text/lib.crl
 pub mod string  = import string;
 pub mod strutil = import strutil;
-pub mod ascii   = import ascii;</code></pre>
+pub mod ascii   = import ascii;</code></pre></div>
 <p>Each <code>pub mod NAME = import TARGET;</code> line takes a sibling, gives it a public name, and makes it reachable as <code>text::NAME</code> from outside. Read the line left to right as a sentence: "publicly, this module has a submodule called <code>string</code>, and it is the sibling file <code>string</code>." The <code>NAME</code> on the left is the name the outside world uses; the <code>TARGET</code> on the right is the sibling the name refers to. They are usually the same, but they do not have to be, and Section14.5 shows why you would want them to differ.</p>
 <p>Code that does not appear in <code>lib.crl</code> is not part of the module's surface; it is visible only within the module's own files. That single rule, the surface file is the contract, is what lets a module have a large private implementation and a small public face. A <code>text</code> module might have ten helper files inside it, full of internal machinery, and expose four submodules. A reader of the outside code never has to know the ten exist.</p>
 <p>Hold on, how is it that <code>string.crl</code> can be reached by an outsider at all, if it is just a file? Through the <code>pub mod</code> line, and only through it. The mechanism is worth stating plainly because it explains the whole chapter: a sibling file is not automatically part of the module. It becomes part of the module when the surface exports it. Until then it is a book in the back office. This is the opposite of how many languages work, where putting a file in a folder is itself a kind of export, and it is deliberate. In Coral, being reachable is a decision someone wrote down, not a side effect of where a file was saved.</p>
@@ -54,32 +54,32 @@ pub mod ascii   = import ascii;</code></pre>
 <section><h2 id="s14-2">The Four Import Forms</h2></section>
 <p>A file brings names into scope with <code>import</code>. Four forms exist, and each answers a different question. Learn the question each one answers and you will never have to memorise the syntax.</p>
 <p>The first form imports a sibling file by bare name. No quotes, no extension; the name is the file name without <code>.crl</code>, resolved in the importing file's own directory:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import lexer { Lexer, Token };</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import lexer { Lexer, Token };</code></pre></div>
 <p>This is the form you use inside a module, where files sit next to each other. Because the name is a bare identifier, it is greppable: searching for <code>import lexer</code> finds every file that depends on <code>lexer.crl</code>, and a bare name cannot accidentally contain a path that escapes upward. The braces name the symbols you want from that file. If a dependency is not a sibling, it is not a sibling import; it is one of the following forms.</p>
 <p>Read the braces carefully, because they are the "allow-list." <code>import lexer { Lexer, Token };</code> does not bring in the whole of <code>lexer.crl</code>; it brings in exactly two names. If someone later adds a <code>Parser</code> to <code>lexer.crl</code>, your file does not silently gain a <code>Parser</code> in scope. The list is the contract at the file level in the same way that <code>lib.crl</code> is the contract at the module level. This is the same philosophy applied twice: depend on names you chose, not on names that happened to appear.</p>
 <p>A common mistake is to import a file and assume every name inside it arrived. It did not: only the names in the braces came. If you then use a name that was never imported, the compiler reports it as unknown, and the fix is to add it to the list, which is the list quietly doing its job as the file-level contract.</p>
 <p>In plain words, an import is like ordering from a menu rather than raiding the kitchen. You name exactly the dishes you want, and if the kitchen adds a new one tomorrow, your order does not change. The braces are your order; what you leave out simply never reaches your table.</p>
 <p>The second form imports a name from another module through the module table. A double-colon path names the module and the exported item:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import lexer::table { TokenTable };
-import common::slice { Slice };</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import lexer::table { TokenTable };
+import common::slice { Slice };</code></pre></div>
 <p>The builder resolves <code>lexer::table</code> against the module map it generated from every module's <code>lib.crl</code> (Section14.6). The importing file never states a path; it states an identity, and the build system owns the mapping from identity to file. This is the shape you use to reach a module that is not sitting in your own folder, a module from elsewhere in the project. The double colon reads as "inside": <code>lexer::table</code> is the <code>table</code> inside the <code>lexer</code> module.</p>
 <p>The third form imports from a library surface, marked with the <code>(lib)</code> qualifier:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::string { String };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::string { String };
 import(lib) std::collections::vec { Vec };
 import(lib) std::io::ios { print, println, eprintln };
 import(lib) std::option { Option };
-import(lib) std::result { Result };</code></pre>
+import(lib) std::result { Result };</code></pre></div>
 <p>This is the everyday form for reaching the standard library. <code>std</code> is the library root; the path after it names the module; the braces name the symbols. The <code>(lib)</code> qualifier is the signal that the name after it is a root provided by the environment, the standard library, the core library, a platform library, rather than a module of your own project. When you see <code>(lib)</code>, read it as "this name lives in the installed library, not in our source tree."</p>
 <p>When you want a module's whole surface rather than specific symbols, drop the braces:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std;</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std;</code></pre></div>
 <p>That line brings <code>std</code> itself into scope. It is the blunt instrument: use it when you genuinely want everything, and prefer the brace forms when you want a few names, because a brace list is a record of what this file actually uses.</p>
 <p>The fourth form imports with an alias:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import renderer::framebuffer { FrameBuffer as FB };</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import renderer::framebuffer { FrameBuffer as FB };</code></pre></div>
 <p>An alias binds a different local name to the imported symbol. Use it when a name is long, or when two imported names collide and you want to keep both. A bare alias is also allowed when you are importing a single name and just want to rename it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import sym as alias;</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import sym as alias;</code></pre></div>
 <p>The <code>as</code> in an import changes the name in your file only. It does not change the name the symbol has anywhere else, and it does not change what the module exports. Think of it as a nickname you use privately: <code>FB</code> is what you write, <code>FrameBuffer</code> is what the world calls the type, and the compiler knows they are the same.</p>
 <p>Every form accepts a grouped, nested right-hand side, so a file can state several imports in one place without repeating the prefix:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std {
     io::{ print, println, eprintln },
     text::string::{ String },
     collections::vec::{ Vec },
@@ -93,26 +93,26 @@ import lexer {
 import(lib) std::text {
     string::{ String },
     strutil::{ split },
-};</code></pre>
+};</code></pre></div>
 <p>The nesting is purely textual grouping. The final binding is always the last segment: <code>io::{print}</code> binds the name <code>print</code>. A trailing comma after the last group is allowed, which keeps diffs small when you add an item. The advantage is not brevity for its own sake; it is that a related set of imports sits together as one block, so a reader can see at a glance that this file talks to <code>std</code>'s IO, text, and collections, and to nothing else.</p>
 <p>What is deliberately not allowed matters as much as what is. No string-literal import path, no <code>"…/foo.crl"</code>, no <code>../</code> to climb directories. A path string is nameless, it introduces no binding a reader can grep for and no constraint a compiler can check, so Coral removed it. Consider what a path gives you and what it costs. A path like <code>"../../common/util/lexer.crl"</code> tells you where a file sits relative to the importer, which depends on the importer's location, which means the same dependency is written differently from every file that uses it, and moving a file rewrites every path that named it. A module identity like <code>lexer::table</code> names the thing, not the route to it. If a file is not a sibling, it is reached through a module name, and module names are the builder's business, not the source's.</p>
 <section><h2 id="s14-3">Visibility and Enforced Privacy</h2></section>
 <p>An item is private to its file and module unless it is marked <code>pub</code>.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Point { f64 x; f64 y; }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Point { f64 x; f64 y; }
 struct Internal { i32 scratch; }        // private to this file
 
 pub f64 magnitude(Point p) { return ...; }
-f64 helper(i32 n) { ... }                // not callable from outside</code></pre>
+f64 helper(i32 n) { ... }                // not callable from outside</code></pre></div>
 <p>A private item is not merely undocumented; it is invisible. The compiler enforces module privacy: a name that is not <code>pub</code> cannot be called or referenced from outside the module that declares it, and the attempt is an error rather than a warning. Reaching across a module boundary to a private symbol is the kind of coupling that makes refactoring expensive, so the language refuses to allow it by accident. If you need something to be reachable, you mark it <code>pub</code> and it becomes part of the contract you are agreeing to maintain.</p>
 <p>Let me be precise about "error rather than warning," because this is the sentence people skim. In many languages, using a private member from outside produces a warning, or nothing at all, and the program still builds. Coral makes it a hard error. That means the privacy boundary is not advisory; it is structural. You cannot ship code that leans on another module's internals, because the build will not produce that code. The practical effect is that when a library author wants to change an internal representation, they can do it with confidence that nobody outside could have been relying on it, because the compiler would have refused to compile such a reliance in the first place.</p>
 <p>Privacy applies at the item level, not only the module level. In the surface file, only <code>pub mod</code> lines export anything. Inside a module, only <code>pub</code> functions, types, constants, and fields are visible to importers. And note that fields are items too: a <code>pub</code> struct may have private fields, in which case outside code can name the type but cannot read or write the fields directly. This is how you make an opaque handle, a type whose representation is the module's business:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// in module net, file socket.crl
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// in module net, file socket.crl
 pub struct TcpSocket {
     i32 fd;                    // private field
 }
 
 pub Result&lt;TcpSocket, IoError&gt; tcpConnect(str host, u16 port) { ... }
-pub void tcpSend(TcpSocket* s, const u8 data[]) { ... }</code></pre>
+pub void tcpSend(TcpSocket* s, const u8 data[]) { ... }</code></pre></div>
 <p>Outside code can hold a <code>TcpSocket</code>, pass it to <code>tcpSend</code>, and never touch the descriptor. If the representation changes from an fd to a pointer, no caller notices. That is the whole point of a private field: it makes the type's representation free to change.</p>
 <p>In plain words, a private field is a locked drawer inside a machine the user is allowed to operate. The user can press the buttons you expose, but they cannot reach into the drawer and rearrange its contents. That is the freedom that lets you change what is in the drawer later without breaking anyone who only ever pressed the buttons.</p>
 <p>Simply put, privacy is a promise about what will not change. A <code>pub</code> name is a promise that you will keep it working; a private name is one you are free to rewrite tomorrow. That is why starting a new public type with private fields is the safer habit: every field you expose is a small contract you now have to honour.</p>
@@ -121,43 +121,43 @@ pub void tcpSend(TcpSocket* s, const u8 data[]) { ... }</code></pre>
 <p>For a nominal type that must not be confused with its representation under any circumstance, <code>distinct</code> is the stronger tool (<a href="../04-control-flow/index.html">Chapter 4</a>): <code>pub distinct TcpSocket = i32;</code> gives a type that is the fd's bytes but not the fd's type, so no caller can treat a socket as an integer even by accident. A private field and a <code>distinct</code> type solve related problems from different directions: the private field hides the representation, and the <code>distinct</code> type makes the value's identity unambiguous. Often you want both.</p>
 <section><h2 id="s14-4">Qualifying Names</h2></section>
 <p>Imported symbols are used by their bare names. When you want to be explicit, or when a name would be ambiguous, you qualify with the module:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::text::string { String };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::text::string { String };
 import(lib) std::collections::vec { Vec };
 import(lib) std::option { Option };
 
 String greeting = String::from(&quot;hello&quot;);
 Vec&lt;i32&gt; nums = Vec&lt;i32&gt;::new();
-Option&lt;i32&gt; maybe = Option&lt;i32&gt;::Some { .value = 42 };</code></pre>
+Option&lt;i32&gt; maybe = Option&lt;i32&gt;::Some { .value = 42 };</code></pre></div>
 <p>The type name is bound by the import; <code>::</code> is how you reach an associated item (a static method such as <code>new</code>, a variant case such as <code>Some</code>, a constant). This is the same <code>::</code> that qualifies enum cases and variant cases in <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>, generalised to module members. A module's exported name is the last segment, so <code>std::text::string</code> exports <code>String</code>, <code>std::collections::vec</code> exports <code>Vec</code>, and so on. The standard library is organised in nested folders precisely so that a module name is short and a symbol name is unique within it; you write <code>vec::Vec</code> or just <code>Vec</code> after importing it, never the full folder path.</p>
 <p>Notice what is happening on each <code>::</code>. In <code>String::from("hello")</code>, the <code>String</code> is a type and <code>from</code> is a static method on it, a function that belongs to the type but does not need an instance. In <code>Option&lt;i32&gt;::Some { .value = 42 }</code>, the <code>Some</code> is a variant case of <code>Option</code>, and <code>::</code> is how you say "this case, of this type." In both cases <code>::</code> means "a member of what is on the left." The same operator reaches into modules, types, and variants, which is why the language has one <code>::</code> instead of three special syntaxes. Once you internalise "left side is the container, right side is the thing inside it," every use of <code>::</code> in Coral reads the same way.</p>
 <p>Here is a small example that puts qualification to work in a realistic function:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::vec { Vec };
 import(lib) std::text::string { String };
 import(lib) std::option { Option };
 
 Option&lt;String&gt; firstWord(const String[] words) {
     if (words.count() == 0) return Option&lt;String&gt;::None;
     return Option&lt;String&gt;::Some { .value = words[0] };
-}</code></pre>
+}</code></pre></div>
 <p>Every type in the signature is a bare name, because the imports brought them into scope. Every <em>use</em> of an associated item is qualified, because <code>None</code> and <code>Some</code> belong to <code>Option</code> and could not be reached without saying which type they belong to. That is the whole rule: import the type's name, qualify its members.</p>
 <p>A tiny example shows the pattern in the smallest possible form:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::collections::vec { Vec };
 import(lib) std::io::ios { println };
 
 Vec&lt;u64&gt; counts = Vec&lt;u64&gt;::new();
 counts.push(3);
-println(&quot;{} item&quot;, counts.count());</code></pre>
+println(&quot;{} item&quot;, counts.count());</code></pre></div>
 <p><code>Vec</code> is a bare name because the import brought it in; <code>Vec&lt;u64&gt;::new()</code> stays qualified because <code>new</code> is a member of the type. Read every colon as "belongs to": <code>std::collections::vec</code> is the vec module inside collections inside std, and <code>Vec::new</code> is new inside Vec.</p>
 <p>When two imports bring in the same name, the compiler rejects the collision rather than silently picking one. That is another small stand against surprise. If you genuinely need both, say two different <code>Config</code> types from two modules, you use an alias:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import app::server { Config as ServerConfig };
-import app::client { Config as ClientConfig };</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import app::server { Config as ServerConfig };
+import app::client { Config as ClientConfig };</code></pre></div>
 <p>Now your file has <code>ServerConfig</code> and <code>ClientConfig</code>, and a reader can tell at every use site which one is meant. Silent shadowing is the enemy here: if the language quietly let the second import win, a reader could not tell which <code>Config</code> a line referred to without chasing the import list, and a later reordering of imports could change the program's meaning. Coral makes you name the two things differently, which costs one word and saves an afternoon.</p>
 <section><h2 id="s14-5">Re-exports and Module Aliases</h2></section>
 <p>A module may re-export another module under a new name. <code>pub mod NAME = import TARGET;</code> is not a submodule declaration; it is a re-export, a one-line forwarding statement:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// src/lib.crl, the program&#x27;s own surface
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// src/lib.crl, the program&#x27;s own surface
 pub mod text   = import(lib) std::text;
 pub mod bits   = import(lib) std::collections::bitset;
-pub mod shapes = import shapes;</code></pre>
+pub mod shapes = import shapes;</code></pre></div>
 <p>The first two lines re-expose standard-library modules under the program's own surface; the third exposes a local module. Re-exports are how a library presents a curated view: a program can decline to re-export a <code>std</code> module it does not want to be part of its own API, and it can rename a module whose name is too generic for its domain. Because a re-export is a single line, the module table stays small and a reader can see the whole public surface at a glance.</p>
 <p>Why would a program have its own <code>lib.crl</code> at all? Because a program is, from its own perspective, also a library. The top-level <code>lib.crl</code> is where the program decides what its own modules are called and what it exposes to its own files. It is the same mechanism as a module's surface, one level up. If you are building an executable, the surface mostly exists to give friendly names to the pieces; if you are building a library that others will import, the surface is the product, it is the catalogue the whole world reads.</p>
 <p>The difference between a re-export and a definition is worth being explicit about. <code>pub mod shapes = import shapes;</code> does not copy <code>shapes.crl</code> into your module. It does not compile anything. It creates a name, <code>shapes</code>, that points at the same module. If the underlying module changes, the re-export changes with it, because it is a pointer, not a copy. This is the mechanism by which a library can present <code>text</code> as the standard library's text module without duplicating a line of it. One line, one pointer, no maintenance.</p>
@@ -170,18 +170,18 @@ pub mod shapes = import shapes;</code></pre>
 <p>In plain words, the compiler first walks the whole neighbourhood writing down who lives where, and only later delivers the mail. Because the address book is finished before any letter is sent, a house can send a letter to a house that is not built yet, as long as its address is already in the book.</p>
 <p>The one case that does not compose is a cyclic layout, which is <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>'s territory: a struct cannot contain itself by value, because the compiler needs the size of the inner value to compute the size of the outer one, and the cycle never bottoms out. You break it with a pointer. But naming each other's types, and calling each other's functions, is fine, because neither requires the other's body or its finished size.</p>
 <p>For cross-module imports, the builder does the resolution in a pass of its own, before the compiler runs. It walks every module listed in the build file, reads each <code>lib.crl</code>'s <code>pub mod</code> lines, and writes a module map: a plain-text table from a module identity such as <code>lexer::table</code> to the file that implements it. The builder places this map at <code>.coral/modules.map</code> in the build directory.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral"># .coral/modules.map, generated by the build, do not edit
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral"># .coral/modules.map, generated by the build, do not edit
 lexer::base     -&gt;  compiler/coral-lexer/base.crl
 lexer::table    -&gt;  compiler/coral-lexer/table.crl
-parser::expr    -&gt;  compiler/coral-parser/expr.crl</code></pre>
+parser::expr    -&gt;  compiler/coral-parser/expr.crl</code></pre></div>
 <p>The map is text, not JSON, for three reasons the build documentation states plainly: it diffs cleanly in git, it is greppable, and reading it needs no parser. When the compiler sees <code>import lexer::table</code>, it asks the map for a path and the map answers. The compiler never walks the filesystem guessing; the map is the single source of truth for where a module lives. That is worth emphasising: there is exactly one place that knows where each module's file sits, and it is a file you can open and read. If a build ever resolves a module somewhere surprising, you look at the map, and the mystery is over.</p>
 <p>Cycles in the module graph are detected by the builder, so a genuine build-order cycle is reported as a build error with a trace rather than hanging. When a module cannot be resolved, the builder reports it as its own class of error: an unresolved re-export path (<code>E1004</code>), a missing module (<code>E1001</code>), a duplicate module identity (<code>E1002</code>), an alias pointing at a nonexistent module (<code>E1003</code>), or an unresolved module import (<code>E1005</code>). These are build errors, distinct from the compiler's <code>E</code>-codes for source-level problems, and <a href="../21-build-system-and-tooling/index.html">Chapter 21</a> describes the build pipeline that produces them.</p>
 <p>The split between build errors and compiler errors is a useful thing to have in your head when something goes wrong. If the complaint is "I cannot find this module," it is the builder, and the answer is in <code>lib.crl</code> or the map. If the complaint is "this name does not exist" or "this field is private," it is the compiler, and the answer is in the source. Knowing which tool is unhappy cuts the search space in half before you read a single line of the error.</p>
 <section><h2 id="s14-7">Standard Library Roots and Resolution Order</h2></section>
 <p>The standard library is reached through two roots. <code>std</code> is the portable surface, the modules that every platform provides with the same names, parameters, and return types. <code>core</code> holds the pieces the language itself depends on: <code>str</code>, <code>cchar</code>, char utilities, and the numeric limits. A third root, <code>platform</code>, holds the parts that are genuinely platform-specific, such as libc bindings.</p>
 <p>Platform parity is a first-class rule of the standard library: every public API that exists for one platform has a direct equivalent on the other, with the same name, the same parameters, and the same return type including its error type. Internals differ, a Linux build issues one syscall and a Windows build issues another, but a program written against <code>std</code> compiles on both. A user's import does not change when the target changes:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { File, open, read, write };
-import(lib) std::concurrent::thread { threadCreate, threadJoin };</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { File, open, read, write };
+import(lib) std::concurrent::thread { threadCreate, threadJoin };</code></pre></div>
 <p>The same source builds on x86_64 Linux and x86_64 Windows because the module names are the contract. This is why the standard library organises by capability (<code>io</code>, <code>collections</code>, <code>text</code>, <code>concurrent</code>, <code>crypto</code>) rather than by platform: the platform lives behind the surface. The whole point of the parity rule is that you write your program once, against capability names, and the platform is somebody else's problem.</p>
 <p>When the compiler resolves an import, it searches, in order, the project's own lib, the current directory's lib, and finally the global library root (the <code>CORAL_HOME/lib</code> or <code>~/.coral/lib</code> installation), checking the platform subtree before the base subtree. That order means a project can shadow a standard module with its own implementation by placing a lib of the same name next to itself, a deliberate escape hatch, and one to use sparingly, because a shadowed <code>std</code> module is a surprise for the next reader.</p>
 <p>The order is "most specific wins," which is the same principle as local variables shadowing globals. Your project's own definition is the most specific, so it wins; the current directory is next; the installed library is the fallback. The escape hatch exists because sometimes you genuinely must replace a standard module, to patch a bug, to target an unusual platform, to instrument calls for debugging. But a shadowed module is invisible at every import site that uses it, so leave a comment in the shadowing file explaining why it exists, or the next person will spend an hour assuming <code>std</code> is doing the standard thing.</p>
@@ -191,12 +191,12 @@ import(lib) std::concurrent::thread { threadCreate, threadJoin };</code></pre>
 <p>Why this matters: knowing which root a name lives under tells you how far it will travel. A <code>std</code> import works on every platform the library supports; a <code>core</code> import is part of the language's own floor; a <code>platform</code> import is a conscious bet on one machine. When you review a dependency, the root is the first clue about whether the code is portable.</p>
 <section><h2 id="s14-8">A Worked Example: A log Module</h2></section>
 <p>Assemble the pieces. Suppose you are building a module that formats and emits log lines. Create a folder and give it a surface:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">src/log/
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">src/log/
 ├── lib.crl
 ├── level.crl
-└── logger.crl</code></pre>
+└── logger.crl</code></pre></div>
 <p>The level file declares the level as an enum and a rendering function, private to the module except for what <code>level.crl</code> marks <code>pub</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// src/log/level.crl
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// src/log/level.crl
 pub enum Level { Debug, Info, Warn, Error, Fatal }
 
 pub str levelName(Level l) {
@@ -209,10 +209,10 @@ pub str levelName(Level l) {
     };
 }
 
-str levelTag(Level l) { return levelName(l); }   // private helper</code></pre>
+str levelTag(Level l) { return levelName(l); }   // private helper</code></pre></div>
 <p>Notice <code>levelTag</code>. It is a real function, and <code>levelName</code> is free to call it, but it is not <code>pub</code>, so nobody outside the module can. It is a book in the back office. The author of this file can rename it, delete it, or change its signature tomorrow, and no code outside the module has a thing to say about it.</p>
 <p>The logger file imports the sibling and uses it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// src/log/logger.crl
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// src/log/logger.crl
 import level { Level, levelName };
 import(lib) std::io::ios { println };
 
@@ -224,21 +224,21 @@ pub struct Logger {
 pub void log(Logger* logger, Level l, str message) {
     if (l &lt; logger-&gt;minLevel) return;
     println(&quot;[{}] {}: {}&quot;, logger-&gt;name, levelName(l), message);
-}</code></pre>
+}</code></pre></div>
 <p>The sibling import <code>import level { Level, levelName };</code> brings in exactly two names, both of which <code>logger.crl</code> actually uses. It does not bring in <code>levelTag</code>, which is convenient because <code>levelTag</code> is private and would be rejected anyway. The <code>(lib)</code> import names exactly the one standard symbol this file prints through. Two imports, four names, and the dependency graph of this file is fully written down in two lines.</p>
 <p>Now the module's public surface exports exactly what it intends:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// src/log/lib.crl
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// src/log/lib.crl
 pub mod level  = import level;
-pub mod logger = import logger;</code></pre>
+pub mod logger = import logger;</code></pre></div>
 <p>Outside the module, code writes:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import myapp::log::logger { Logger, log };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import myapp::log::logger { Logger, log };
 import myapp::log::level { Level };
 
 var logger = Logger { .minLevel = Level::Info, .name = &quot;server&quot; };
-log(&amp;logger, Level::Warn, &quot;disk almost full&quot;);</code></pre>
+log(&amp;logger, Level::Warn, &quot;disk almost full&quot;);</code></pre></div>
 <p>Notice what a caller can and cannot see. It can see <code>Logger</code> and <code>log</code> because <code>logger.crl</code> marked them <code>pub</code> and <code>lib.crl</code> re-exported them. It can see <code>Level</code> because <code>level.crl</code> marked it <code>pub</code>. It cannot see <code>levelTag</code>, because that function is not <code>pub</code>. It cannot reach into <code>Logger</code>'s representation, only the fields the type exposes, and here both fields happen to be public, but a private field would be equally invisible. Each file's imports name exactly what it uses, so the dependency graph is readable line by line: <code>logger</code> depends on <code>level</code> and on <code>std::io::ios</code>, and nothing else.</p>
 <p>Let us push the example one step further, because the interesting part of a module system is what happens when it grows. Suppose a second caller wants to write log lines to a queue instead of to the console. Add a sibling:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// src/log/sink.crl
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// src/log/sink.crl
 pub enum Sink { Console, File, Memory }
 
 pub void emit(Sink s, str line) {
@@ -250,12 +250,12 @@ pub void emit(Sink s, str line) {
 }
 
 void appendToLogFile(str line) { ... }   // private
-void pushToRing(str line)     { ... }    // private</code></pre>
+void pushToRing(str line)     { ... }    // private</code></pre></div>
 <p>Then export it from the surface:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// src/log/lib.crl
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// src/log/lib.crl
 pub mod level  = import level;
 pub mod logger = import logger;
-pub mod sink   = import sink;</code></pre>
+pub mod sink   = import sink;</code></pre></div>
 <p>The outside world gains <code>Sink</code> and <code>emit</code>, and gains nothing else: <code>appendToLogFile</code> and <code>pushToRing</code> stay in the back office. The callers who only wanted <code>Logger</code> see no change at all, because a module's surface growing is backward-compatible; the callers who want the new capability import <code>sink</code>. This is the shape of a module growing in the open, one catalogue line at a time, without leaking internals.</p>
 <p>What makes this example worth re-reading is that every rule in the chapter is visible in it, and none of them felt like ceremony. The surface listed the exports. The sibling imports named their symbols. The <code>(lib)</code> imports pulled in the standard library. The private helpers stayed private. No path string appeared anywhere. No file needed to know where another file lived. And when we added a submodule, we added one line to the catalogue. That is the whole system.</p>
 <section><h2 id="s14-9">Exercises</h2></section>

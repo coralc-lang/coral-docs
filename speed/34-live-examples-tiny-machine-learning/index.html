@@ -41,7 +41,7 @@
 <p class="step-label">The approach</p>
 <p>Write the guess, the loss, and two partial derivatives, then loop. The slope's derivative is the average of <code>2 * (prediction - actual) * x</code>; the intercept's is the average of <code>2 * (prediction - actual)</code>.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub struct LinReg {
     // the two knobs: slope w and intercept b
@@ -90,7 +90,7 @@ pub struct LinReg {
             self.b -= lr * scale * gradB;
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The loop body is the gradient step: accumulate <code>err * x</code> and <code>err</code>, scale by two over the point count, and subtract a learning-rate multiple. Too small a rate is glacial; too large diverges.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each epoch is O(n), the whole fit O(epochs * n). Linear regression is convex, so gradient descent cannot get stuck in a local minimum, a guarantee lost with logistic regression or a neural network.</p>
@@ -106,7 +106,7 @@ pub struct LinReg {
 <p class="step-label">The approach</p>
 <p>Compute the mean, then the standard deviation, then rewrite the vector in place. The library's <code>sqrt</code> supplies the root.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::math::math { sqrt };
 
 pub struct Stats {
@@ -144,7 +144,7 @@ pub void standardise(Vec&lt;f64&gt;* xs) {
     // rewrite each value as its z-score: (x - mean) / std
     for (usize i = 0; i &lt; xs-&gt;count(); i += 1)
         xs-&gt;set(i, (xs-&gt;at(i) - s.mean) / s.std);
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>Two passes, O(n) time, O(1) space. The transformed data has mean zero and standard deviation one, so one learning rate works for all features. Normalise first when a model refuses to learn.</p>
 <p class="step-label">Edge cases</p>
@@ -159,7 +159,7 @@ pub void standardise(Vec&lt;f64&gt;* xs) {
 <p class="step-label">The approach</p>
 <p>One weight, one bias, a sigmoid, and the training loop from 33.1 with the new error.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::math::math { exp };
 
 pub f64 sigmoid(f64 z) {
@@ -205,7 +205,7 @@ pub struct LogReg {
             self.b -= lr * gradB / (f64)n;
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>classify</code> does not call <code>sigmoid</code>: the boundary is where <code>w*x + b</code> is zero, which is probability one half. Comparing the raw score to zero avoids the exponential.</p>
 <p class="step-label">Cost and notes</p>
 <p>Same O(epochs * n) as linear regression, plus one <code>exp</code> per example per epoch. The log-loss is convex, so training is reliable. The probabilities are not automatically calibrated: a model can rank correctly and still report 0.9.</p>
@@ -221,7 +221,7 @@ pub struct LogReg {
 <p class="step-label">The approach</p>
 <p>Store the points. For a query, compute the squared distance to each, select the <code>k</code> smallest without a full sort, and vote. Squared distance skips the square root.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub struct Example {
     // one stored training point and its known label
@@ -269,7 +269,7 @@ pub i32 knnPredict(const Vec&lt;Example&gt;* train, f64 qx, f64 qy, u32 k) {
     // majority wins; exactly half resolves toward label zero
     if (votesForOne &gt; k / 2) return 1;
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>Selection is <code>k</code> passes, each finding the nearest not-yet-chosen point: O(nk) with no sort. The vote is a count because labels are binary; more classes need an argmax.</p>
 <p class="step-label">Cost and notes</p>
 <p>O(nk) per query and no training cost: you pay at prediction time, every time. Fine for thousands of examples, unusable for billions.</p>
@@ -285,7 +285,7 @@ pub i32 knnPredict(const Vec&lt;Example&gt;* train, f64 qx, f64 qy, u32 k) {
 <p class="step-label">The approach</p>
 <p>Represent a 2-D point, initialise the centres to the first <code>k</code> points, and alternate for a fixed number of iterations.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub struct Pt {
     // a 2-D data point
@@ -341,7 +341,7 @@ pub Vec&lt;Pt&gt; kmeans(const Vec&lt;Pt&gt;* data, u32 k, u64 iterations) {
         }
     }
     return centres;
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>Each iteration is O(nk); the run is O(iterations * nk). It converges because neither step increases the within-cluster distance and assignments are finite, but it stops at a local optimum.</p>
 <p class="step-label">Edge cases</p>
@@ -356,7 +356,7 @@ pub Vec&lt;Pt&gt; kmeans(const Vec&lt;Pt&gt;* data, u32 k, u64 iterations) {
 <p class="step-label">The approach</p>
 <p>Two inputs, three hidden units, one output, all parameters in <code>Vec&lt;f64&gt;</code>. The forward pass computes hidden activations, then the output. The backward pass computes the output error, updates the second layer, propagates it through the sigmoid's derivative, and updates the first. That derivative is <code>sigmoid'(z) = h * (1 - h)</code>, so no new exponentials are needed.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::math::math { exp };
 
 f64 sigmoidF(f64 z) {
@@ -439,7 +439,7 @@ pub struct TinyNet {
             for (usize i = 0; i &lt; xs-&gt;count(); i += 1)
                 self.trainOne(xs-&gt;atPtr(i), ys-&gt;at(i), lr);
     }
-}</code></pre>
+}</code></pre></div>
 <p>Read the backward pass as the chain rule. The output error <code>out - label</code> updates the second-layer weights by multiplying with the hidden activation that fed them. To reach the first layer, scale it by the weight (<code>w2[j]</code>) and the sigmoid's derivative (<code>h * (1 - h)</code>); the first-layer gradient is that error times the input.</p>
 <p class="step-label">Cost and notes</p>
 <p>A forward pass is O(inputs <em> hidden) multiply-adds, the backward pass the same again plus updates, so a step is O(inputs </em> hidden) and an epoch O(n <em> inputs </em> hidden). Real networks differ in size, not structure.</p>
@@ -455,7 +455,7 @@ pub struct TinyNet {
 <p class="step-label">The approach</p>
 <p>A small struct accumulates the four counts and computes metrics on demand.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Confusion {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Confusion {
     // the four boxes every prediction falls into
     u64 truePositive;
     u64 falsePositive;
@@ -509,7 +509,7 @@ pub struct TinyNet {
         if (p + r == 0.0) return 0.0;
         return 2.0 * p * r / (p + r);
     }
-}</code></pre>
+}</code></pre></div>
 <p class="step-label">Cost and notes</p>
 <p>Every metric is O(1), and observing a prediction is a few comparisons. Report all four numbers: precision and recall separate the two ways to be wrong, and a spam filter and a rare-disease screen prefer opposite trade-offs.</p>
 <p class="step-label">Edge cases</p>
@@ -524,7 +524,7 @@ pub struct TinyNet {
 <p class="step-label">The approach</p>
 <p>A central difference, more accurate than one-sided, compared against the analytic gradient, one weight at a time.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::math::math { fabs };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::math::math { fabs };
 
 // scalar case: f is some function of one variable
 pub f64 numericalGradient(f64(f64) f, f64 x, f64 eps) {
@@ -546,7 +546,7 @@ pub bool gradientChecks(f64 x) {
     f64 numeric = numericalGradient(f, x, 1e-5);
     f64 analytic = analyticGradient(x);
     return fabs(numeric - analytic) &lt; 1e-4;
-}</code></pre>
+}</code></pre></div>
 <p>For many parameters, pick one, add <code>eps</code>, compute the loss, subtract <code>2 * eps</code>, compute again, restore, and divide by <code>2 * eps</code>. That is its numerical gradient, compared with the backward pass.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each numerical gradient costs two loss evaluations, so <code>P</code> parameters cost <code>2P</code> forward passes: absurd for training, reasonable for a one-time test. Error falls as the step shrinks, then rises with catastrophic cancellation, so <code>1e-5</code> is common.</p>
@@ -562,7 +562,7 @@ pub bool gradientChecks(f64 x) {
 <p class="step-label">The approach</p>
 <p>Logistic regression minus the sigmoid: predict a hard label, turn the error into a push, repeat.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub struct Perceptron {
     // the same two knobs, but a hard decision instead of a probability
@@ -592,7 +592,7 @@ pub struct Perceptron {
             }
         }
     }
-}</code></pre>
+}</code></pre></div>
 <p>The <code>error</code> is one of <code>-1</code>, <code>0</code>, or <code>1</code>, so the update is a plain nudge. Compare the logistic update from 33.3, which multiplies the same error by a probability and a learning rate.</p>
 <p class="step-label">Cost and notes</p>
 <p>O(epochs * n), like linear and logistic regression, with no exponential per step. Convergence holds only for linearly separable classes; on inseparable data the weights cycle forever, which is why smooth-loss logistic regression is preferred.</p>
@@ -608,7 +608,7 @@ pub struct Perceptron {
 <p class="step-label">The approach</p>
 <p>Two classes, binary features. Train by counting; predict by summing log-probabilities.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::math::math { log };
 
 pub struct NaiveBayes {
@@ -680,7 +680,7 @@ pub struct NaiveBayes {
         // the larger log-posterior wins
         return log1 &gt; log0 ? 1 : 0;
     }
-}</code></pre>
+}</code></pre></div>
 <p>The smoothing constant adds one imagined observation of each outcome; with smoothing one, an unseen feature has estimate one half, not zero, so a missing word cannot veto a prediction. Training is one pass of counting.</p>
 <p class="step-label">Cost and notes</p>
 <p>Training is O(n * features) and prediction O(features), cheaper than the gradient methods with no learning rate. The independence assumption is usually false: correlated features are counted more than once, distorting probabilities but leaving the ranking intact.</p>
@@ -696,7 +696,7 @@ pub struct NaiveBayes {
 <p class="step-label">The approach</p>
 <p>A one-hot function over a vocabulary, and hashing into fixed buckets using the library's FNV-1a hash.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::crypto::hash { fnv1aStr };
 
 pub Vec&lt;f64&gt; oneHot(str category, const Vec&lt;str&gt;* vocab) {
@@ -727,7 +727,7 @@ pub Vec&lt;f64&gt; hashFeatures(const Vec&lt;str&gt;* tokens, usize buckets) {
         v.set(idx, v.at(idx) + 1.0);   // count occurrences in the bucket
     }
     return v;
-}</code></pre>
+}</code></pre></div>
 <p>The one-hot vector has a one where the category lives, so its dot product with a weight vector picks out that category's weight. The hashed vector counts how many tokens fell into each bucket, and a linear model learns one weight per bucket. An unknown category yields all zeros.</p>
 <p class="step-label">Cost and notes</p>
 <p><code>oneHot</code> is O(vocab) to build and search; a hash map would make it O(1) for large vocabularies. <code>hashFeatures</code> is O(tokens) with one FNV hash per token, and its memory is exactly <code>buckets</code> doubles. That fixed budget makes online text learning possible, at the cost of collision noise.</p>
@@ -743,7 +743,7 @@ pub Vec&lt;f64&gt; hashFeatures(const Vec&lt;str&gt;* tokens, usize buckets) {
 <p class="step-label">The approach</p>
 <p>Try every data value as a threshold and both labellings of the two sides, keeping the lowest error. Deliberately quadratic.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 
 pub struct Stump {
     // one threshold and two constant predictions: the whole model
@@ -797,7 +797,7 @@ pub Stump fitStump(const Vec&lt;f64&gt;* xs, const Vec&lt;i32&gt;* ys) {
         }
     }
     return best;
-}</code></pre>
+}</code></pre></div>
 <p>For each threshold the code tries all four labellings, more than necessary but obviously complete. <code>error</code> starts at <code>1.0</code>, the worst possible, so the first real split improves on it.</p>
 <p class="step-label">Cost and notes</p>
 <p>The search is O(n^2): each of <code>n</code> thresholds costs a full pass and four labellings. The efficient version sorts once and sweeps with running label counts: O(n log n) for the sort and O(n) for the sweep.</p>
@@ -813,7 +813,7 @@ pub Stump fitStump(const Vec&lt;f64&gt;* xs, const Vec&lt;i32&gt;* ys) {
 <p class="step-label">The approach</p>
 <p>Standardise each dimension first (33.2), start from a unit vector, and iterate <code>v ← normalise(Xᵀ(Xv))</code> a fixed number of times.</p>
 <p>The implementation.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::vec { Vec };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::vec { Vec };
 import(lib) std::math::math { sqrt };
 
 f64 dotProduct(const Vec&lt;f64&gt;* a, const Vec&lt;f64&gt;* b) {
@@ -854,7 +854,7 @@ pub Vec&lt;f64&gt; firstPrincipalComponent(const Vec&lt;Vec&lt;f64&gt;&gt;* rows
         for (usize j = 0; j &lt; d; j += 1) v.set(j, next.at(j) / len);
     }
     return v;
-}</code></pre>
+}</code></pre></div>
 <p>The two nested loops are the data matrix and its transpose multiplied out, so the covariance matrix never exists. The fixed iteration count is a simplification: in practice you stop when the direction stops changing, and a dozen iterations suffices here.</p>
 <p class="step-label">Cost and notes</p>
 <p>Each iteration is O(n <em> d), so the routine is O(iters </em> n * d). Convergence is geometric, at a rate set by the ratio of the first two eigenvalues; when they are close, the direction is ill-defined and convergence slow.</p>

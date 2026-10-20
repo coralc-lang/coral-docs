@@ -63,10 +63,10 @@
 <p>Exceptions are invisible control flow. A throw can abort and unwind arbitrarily far, skipping intermediate functions and making cleanup, performance, and debugging hard to reason about.</p>
 <p>Coral uses explicit error values. A fallible function returns a Result carrying either a success value or an error. The caller must handle it, so every failure path is visible.</p>
 <p>A Coral file imports the modules and symbols it needs by name:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { parseU64, println };
-import(lib) std::result { Result };</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { parseU64, println };
+import(lib) std::result { Result };</code></pre></div>
 <p>The standard library parses text with functions that take a string view and a success pointer. <code>str</code> is the standard string view. Here is a Result-returning helper:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Result&lt;u64, str&gt; parse_count(str text)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub Result&lt;u64, str&gt; parse_count(str text)
 {
     bool ok = false;
     u64 value = parseU64(text, &amp;ok);
@@ -75,9 +75,9 @@ import(lib) std::result { Result };</code></pre>
         return Result&lt;u64, str&gt;::Err { .error = &quot;the text is not a number&quot; };
     }
     return Result&lt;u64, str&gt;::Ok { .value = value };
-}</code></pre>
+}</code></pre></div>
 <p>The call site handles failure where the program can respond:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var result = parse_count(&quot;42&quot;);
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">var result = parse_count(&quot;42&quot;);
 if (result.isOk())
 {
     println(&quot;parsed the count {}&quot;, result.unwrap());
@@ -85,7 +85,7 @@ if (result.isOk())
 else
 {
     println(&quot;the count was invalid&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>Failure is a value in the same type system as everything else, and the if statement chooses what each outcome means. Every path is written.</p>
 <p>Explicit failure forces you to confront it where you can act. The standard library returns Result throughout, with the error always in the signature.</p>
 <section><h2 id="s1-5">The Target User</h2></section>
@@ -99,7 +99,7 @@ else
 <p>On that core it layers:</p>
 <p>Structured data with behavior. Structs can contain methods. An instance method receives its object through <code>self</code>, which is available inside the body without being declared in the parameter list. A method call is a function call whose receiver is supplied by the compiler, so there is no vtable, hidden dispatch, or hidden copy unless asked for.</p>
 <p>The standard library writes methods inside the struct body. Here is a rectangle:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Rect
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Rect
 {
     f64 left;
     f64 right;
@@ -111,33 +111,33 @@ else
         return x &gt;= self.left &amp;&amp; x &lt;= self.right &amp;&amp;
                y &gt;= self.bottom &amp;&amp; y &lt;= self.top;
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>self</code> is the receiver, supplied by the compiler; it is not one of the parameters written in the signature. Calling <code>rect.contains(1.5, 2.0)</code> costs exactly a function call.</p>
 <p>Generic programming. Generics let a data structure or algorithm be written once and used with any type. Vec, hash map, set, and sorting are generic, compiled separately per instantiation.</p>
 <p>Trait-based polymorphism. Traits provide interface polymorphism through composition, not hierarchy. A type implements a trait by providing its methods; capability, not ancestry, is what matters.</p>
 <p>A trait declares the operations it requires:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">trait Shape
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">trait Shape
 {
     f64 area();
     f64 perimeter();
-}</code></pre>
+}</code></pre></div>
 <p>Any type providing these operations implements the trait, in an implementation block naming the type and trait, Circle::Shape. The type can then be used wherever the trait is expected.</p>
 <p>Functional-style data manipulation. The collections library offers map, filter, fold, and iteration over generic containers, and function pointers are first-class. Coral does not impose a functional style.</p>
 <p>So Coral is multi-paradigm deliberately: imperative core, structured data, generic and trait polymorphism, and functional collection tools, with each paradigm in a clear role.</p>
 <section><h2 id="s1-7">A First Program</h2></section>
 <p>The smallest complete program:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 
 pub void main()
 {
     println(&quot;Hello from Coral.&quot;);
-}</code></pre>
+}</code></pre></div>
 <p>Read it the way the language wants:</p>
 <p>The first line imports <code>println</code> from the standard library's I/O module. Coral has no magical built-in print; printing is an ordinary function. The same module offers <code>print</code> (no newline) and <code>eprint</code>/<code>eprintln</code> for standard error.</p>
 <p>void means the program returns nothing. (Coral also allows <code>i32 main</code> with <code>return 0;</code>.) main is the entry point, and its empty parentheses mean no arguments, though the startup code passes argc and argv and Coral tolerates a main that ignores them. A void main still exits with status zero.</p>
 <p>No framework, initialization routine, hidden wrapper, or runtime ceremony sits between source and machine code. What you write is what runs.</p>
 <p>Here is a slightly larger program that sums integers from zero to a limit:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 sum_to(i32 limit)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">i32 sum_to(i32 limit)
 {
     i32 total = 0;
     i32 i = 0;
@@ -147,10 +147,10 @@ pub void main()
         i = i + 1;
     }
     return total;
-}</code></pre>
+}</code></pre></div>
 <p>i32 declares a local variable, type first, exactly like C. total accumulates, i counts upward, and the function returns the result. Every piece is visible.</p>
 <p>A main function can call it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println };
 
 i32 sum_to(i32 limit)
 {
@@ -168,21 +168,21 @@ pub void main()
 {
     i32 result = sum_to(100);
     println(&quot;the sum is {}&quot;, result);
-}</code></pre>
+}</code></pre></div>
 <p><code>println</code> is variadic and driven by its format string: each <code>{}</code> is filled by the next argument, formatted by its type. The integer <code>result</code> is converted to text at print time, and the format is checked at build time, so a placeholder with no matching argument is a compile error. The machinery uses <code>comptime</code>, covered with generics.</p>
 <p>These programs are small to illustrate structure, not because Coral is small. Read the types, then the flow, then the details; that is how Coral presents information.</p>
 <section><h2 id="s1-8">Type-First: The Shape of a Coral Program</h2></section>
 <p>Coral is type-first: declarations lead with the type. A field is type then name; a function leads with its return type, then name, then type parameters. The first word tells you what a declaration is or produces.</p>
 <p>The type is what you most need to know when reading unfamiliar code. Types line up on the left, so a skim gives the program's shape. Name-first languages make you read each declaration through to its type.</p>
 <p>A struct field:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Circle
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Circle
 {
     f64 radius;
     f64 center_x;
     f64 center_y;
-}</code></pre>
+}</code></pre></div>
 <p>A function:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u32 clamp(u32 value, u32 low, u32 high)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u32 clamp(u32 value, u32 low, u32 high)
 {
     if (value &lt; low)
     {
@@ -193,16 +193,16 @@ pub void main()
         return high;
     }
     return value;
-}</code></pre>
+}</code></pre></div>
 <p>Read the signature: produces u32, named clamp, takes three u32 arguments. The type comes first because it is the fact you need first.</p>
 <p>There is no fn keyword. A function is a declaration whose body is a block, and the leading return type identifies it once the parentheses follow the name.</p>
 <p>Generics follow the same rule:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub T identity&lt;T&gt;(T value)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub T identity&lt;T&gt;(T value)
 {
     return value;
-}</code></pre>
+}</code></pre></div>
 <p>The signature reads: produces T, named identity, parameterized over T. The constraint comes before the name because the reader needs it first:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub f64 total_area&lt;any Shape&gt;(Vec&lt;any Shape&gt; shapes)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub f64 total_area&lt;any Shape&gt;(Vec&lt;any Shape&gt; shapes)
 {
     f64 total = 0.0;
     for (usize i = 0; i &lt; shapes.count(); i = i + 1)
@@ -210,19 +210,19 @@ pub void main()
         total = total + shapes.at(i).area();
     }
     return total;
-}</code></pre>
+}</code></pre></div>
 <p>Any type implementing Shape, circle, rectangle, or polygon, can be passed in, and each area call resolves to the right implementation.</p>
 <p>Methods are bound to structs in an extend block, keeping operations beside the data:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Circle
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub extend Circle
 {
     f64 diameter()
     {
         return self.radius + self.radius;
     }
-}</code></pre>
+}</code></pre></div>
 <p>Methods may also be written inside the struct body, but the standard library and this book keep fields in the declaration and behavior in an extend block.</p>
 <p>The receiver <code>self</code> is available implicitly in every instance method. A static method, which belongs to the type rather than an instance, has no <code>self</code> and is called with the type name and a double colon:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var total = Vec&lt;u64&gt;::withCap(4);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">var total = Vec&lt;u64&gt;::withCap(4);</code></pre></div>
 <p>The type is still named first, the operation second.</p>
 <p>Type-first syntax makes what the compiler enforces and what the reader sees line up.</p>
 <section><h2 id="s1-9">You Get What You Write: The Cost Model</h2></section>
@@ -246,40 +246,40 @@ pub void main()
 <p>Coral is strongly typed. Implicit conversions are limited to well-defined widening; everything else needs an explicit cast, avoiding C's silent conversion traps.</p>
 <p>Primitive types are explicit and fixed-width: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64. Write u32 and you get exactly 32 bits, with no platform-dependent width.</p>
 <p>The explicit cast is the counterpart of strong typing:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u32 total = 260u;
-u8 low_byte = (u8)total;</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">u32 total = 260u;
+u8 low_byte = (u8)total;</code></pre></div>
 <p>The cast is written where narrowing happens. If total exceeds u8, the truncation is your visible choice on that line.</p>
 <p>Composite types build on the primitives: structs with named fields, arrays and vectors, enums, and pointers. Fixed-size arrays carry their size in the type, enabling bounds safety.</p>
 <p>Coral infers types where unambiguous. Local declarations can use var:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var count = 4u;</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">var count = 4u;</code></pre></div>
 <p>The initializer shows the type. Inference is local and explicit, not a global engine, and the type is still known at compile time.</p>
 <p>The distinct keyword creates a new type with no implicit conversion to or from its underlying type, so a file handle or socket is not interchangeable with an integer. Here are two standard library examples:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub distinct File = i32;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub distinct File = i32;
 pub distinct TcpSocket = i32;
-pub distinct Dir = void*;</code></pre>
+pub distinct Dir = void*;</code></pre></div>
 <p>Related but different is typedef, which creates a new name for an existing type:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">typedef u64 nanoseconds;</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">typedef u64 nanoseconds;</code></pre></div>
 <p>nanoseconds is exactly a u64, and any u64 code accepts it; the typedef is for readability. A distinct type is genuinely new: File and TcpSocket are not interchangeable, and the compiler rejects mixing them.</p>
 <p>Generic types can take type parameters and compile-time value parameters. A generic array can be parameterized by element type and length:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Arr&lt;T, N&gt;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Arr&lt;T, N&gt;
 {
     T data[N];
 
     u64 count() { return N; }
-}</code></pre>
+}</code></pre></div>
 <p>The length is part of the type, so the compiler can specialize code and check bounds at compile time. The std semaphores use exactly this:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Arr&lt;void*, 8&gt; impl;   // from std/concurrent/semaphore.crl, where the field backs a sem_t</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">Arr&lt;void*, 8&gt; impl;   // from std/concurrent/semaphore.crl, where the field backs a sem_t</code></pre></div>
 <p>Variadic functions accept an arbitrary number and type of arguments, as in the print family. The value-variadic sibling used by the library's logger is declared in std/io/ios.crl:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void vaprint(... args)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void vaprint(... args)
 {
     u8 outBuf[1024];
     _Buf out = _Buf { .fd = 1, .data = outBuf, .len = 0 };
     comptime { for (var arg : args) _fprintOne(&amp;out, arg); }
     _pflush(&amp;out);
-}</code></pre>
+}</code></pre></div>
 <p>And used in the library's logger:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { vaprint };
-vaprint(&quot;[&quot;, label, &quot;][&quot;, self.name.asView(), &quot;] &quot;, msg);</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { vaprint };
+vaprint(&quot;[&quot;, label, &quot;][&quot;, self.name.asView(), &quot;] &quot;, msg);</code></pre></div>
 <p>Nullable values are not hidden as in C, where any pointer can be null. Coral's <code>Option</code> explicitly represents presence or absence, and the compiler verifies the absence case is handled. With Result for fallible operations, Coral gets modern safety without a GC or radical syntax.</p>
 <p>Coral's type system is how it is safe and fast at once: static strong typing, explicit widths, bounds-carrying arrays, distinct types, monomorphizing generics, and Option and Result.</p>
 <section><h2 id="s1-12">The Standard Library</h2></section>
@@ -297,15 +297,15 @@ vaprint(&quot;[&quot;, label, &quot;][&quot;, self.name.asView(), &quot;] &quot;
 <p>Coral compiles to native code with a self-hosted compiler written in Coral, so the language and library are tested by their own development.</p>
 <p>Compilation is a pipeline: lex, parse, monomorphize, lower through an intermediate representation, optimize, and generate native code. Coral also emits C and hands it to the platform C compiler, keeping Coral portable while producing real machine code.</p>
 <p>Conditional compilation is a language feature expressed with flag blocks:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">flag (platform)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">flag (platform)
 {
     LINUX   =&gt; { println(&quot;building for Linux&quot;); },
     WINDOWS =&gt; { println(&quot;building for Windows&quot;); },
     else    =&gt; { println(&quot;building for something else&quot;); },
-}</code></pre>
+}</code></pre></div>
 <p>The flag block is parsed and evaluated against the target platform and command-line flags. False branches are compiled out, and the conditions are visible. The platform layer uses nested flag blocks heavily.</p>
 <p>Compile-time evaluation lets the compiler reason about types and values during compilation. The printing machinery uses comptime to choose a formatter:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">comptime
 {
     switch (@typeof(T))
     {
@@ -316,13 +316,13 @@ vaprint(&quot;[&quot;, label, &quot;][&quot;, self.name.asView(), &quot;] &quot;
         str =&gt; { _fprintBytes(out, val.ptr, val.len); return; },
         else =&gt; { @compileError(&quot;print: unsupported type&quot;); }
     }
-}</code></pre>
+}</code></pre></div>
 <p>This is metaprogramming with the language's own types and control flow. Generics monomorphize first, so by the time the comptime block runs, T is concrete and checkable.</p>
 <p>Errors include file, line, column, a source snippet, and related locations. The compiler reports errors in batches and recovers to find more.</p>
 <p>1.13.1 The Build Pipeline</p>
 <p>Build a Coral program by invoking the compiler on your entry source: coralc myprog.crl -o build/myprog</p>
 <p>That lexes, parses, monomorphizes, generates C, and invokes the system C compiler to produce build/myprog. Useful flags:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">-h, --help            show this help
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">-h, --help            show this help
 
 --emit-h              emit a C header (declarations only)
 
@@ -354,7 +354,7 @@ vaprint(&quot;[&quot;, label, &quot;][&quot;, self.name.asView(), &quot;] &quot;
 
 -o &lt;file&gt;             set output file (default a.out)
 
---linker-flags &lt;flags&gt; pass flags to linker (gcc)</code></pre>
+--linker-flags &lt;flags&gt; pass flags to linker (gcc)</code></pre></div>
 <p>The command-line flags, platform, architecture, endianness, are the same flags your source's flag blocks test, and the compiler keeps them consistent. In C and C++ a large build command is a wall of defines that must be reproduced exactly; in Coral the flags that matter are visible in the source.</p>
 <p>1.13.2 The Whole Toolchain</p>
 <p>The compiler checks and reports precise diagnostics; flags make configuration a first-class language feature; generated C is available when wanted. Because compiler and library share a front end and philosophy, the toolchain has no seams.</p>

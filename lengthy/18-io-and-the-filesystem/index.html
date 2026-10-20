@@ -34,7 +34,7 @@
 <p>This chapter is a tour of the <code>std::io</code> tree and the closely related <code>std</code> modules that support it. It begins with the shape of the tree, then covers console input and output, then files, then the buffered and binary layers, then paths and directories, then the environment, processes, and command-line arguments, then logging and the terminal, and finally error handling and a complete worked program. It sits right after the chapter on text because half of I/O is text: printing a value, reading a line, parsing a number, joining a path. Here the text meets the disk.</p>
 <section><h2 id="s18-0">The Whole I/O Surface at a Glance</h2></section>
 <p>Before the tour, a map. The modules below live under <code>std::io</code>, and every one is a real file you can read. The columns say what each module is for and what it hands you. One of them, <code>ios</code>, is delivered by the compiler prelude, which loads <code>std::io::ios</code> (along with <code>std::text::string</code>, <code>std::option</code>, <code>std::result</code>, <code>std::vec</code>, <code>std::collections::arr</code>, and <code>core::str</code>) into every unit, so <code>print</code>, <code>println</code>, <code>readLine</code>, <code>read</code>, <code>readVal</code>, the parsers, the manipulators, and <code>String</code> need no import at all.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">module              purpose                          headline names
+<div class="code-block"><div class="code-head"><span class="code-lang">text</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-text">module              purpose                          headline names
 std::io::ios        console I/O and parsing          print println eprint vaprint readLine read readVal spaces hex parseI64
 std::io::fs         files, dirs, metadata            fileOpen fileRead fileWrite readFileToString
 std::io::bio        typed binary readers/writers     FileReader FileWriter readU32Le writeU32Be
@@ -44,21 +44,21 @@ std::io::process    subprocesses                     spawn waitFor readStdout ru
 std::io::env        environment variables            get getInto set unset all
 std::io::cmd        command-line arguments           ArgParser commandLine
 std::io::log        structured logging               Logger LogLevel
-std::io::term       ANSI terminal control            reset bold red cursorPos clearScreen</code></pre>
+std::io::term       ANSI terminal control            reset bold red cursorPos clearScreen</code></pre></div>
 <p>Three facts hold across the whole table, and they are worth stating before the first function. First, <code>fs</code> sits at the bottom: it is the one module the others can import without a cycle, and it defines the shared error type <code>IoError</code> that every other module returns. Second, the tree is layered. <code>fs</code> issues raw system calls; <code>fios</code> wraps the C library's buffered <code>FILE*</code>; <code>bio</code> adds typed binary encoding over an open file descriptor; <code>ios</code> sits at the top with the console conveniences a normal program actually calls. Third, the portable surface is the same on every platform, <code>std::io::fs</code> on Linux and <code>std::io::fs</code> on Windows present the same names and the same signatures, while the module underneath (<code>platform::libc</code> on Linux, <code>platform::win32</code> on Windows) is what differs. A program written against <code>std</code> does not change when it changes platform; only the raw error codes inside an <code>IoError</code> do.</p>
 <section><h2 id="s18-1">The Shape of the I/O Library</h2></section>
 <p>Start with the smallest question: where does a value go when you print it?</p>
 <p>In C the answer is a variadic function, <code>printf</code>, that trusts a format string at runtime and reads whatever arguments happen to be on the stack. In Coral the answer is a set of ordinary functions in <code>std::io::ios</code>, checked at compile time. The entry points are four:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void print&lt;comptime T&gt;(T fmt, ...)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void print&lt;comptime T&gt;(T fmt, ...)
 pub void println&lt;comptime T&gt;(T fmt, ...)
 pub void eprint&lt;comptime T&gt;(T fmt, ...)
-pub void eprintln&lt;comptime T&gt;(T fmt, ...)</code></pre>
+pub void eprintln&lt;comptime T&gt;(T fmt, ...)</code></pre></div>
 <p><code>print</code> writes to standard output with no trailing newline; <code>println</code> appends one. The <code>e</code> variants write to standard error, which is the channel a program uses for diagnostics so that they survive being piped somewhere else. There is also <code>vaprint(... args)</code>, which takes values and no format string at all, printing each argument in sequence through the default rendering.</p>
 <p>The <code>comptime T</code> in the signature is the mechanism the whole thing rests on. It is the compile-time parameter from the generics chapter, and it lets the compiler see the format literal and the argument types at the same time. A mismatch is a build error, not a runtime surprise. If you write <code>println("{} {}", a)</code> with one placeholder too many, the build stops and names the problem; a C <code>printf</code> in the same situation reads a stray word off the stack and prints garbage.</p>
 <p>The key at each layer is the same. <code>fs</code> is the platform's file system, <code>bio</code> and <code>fios</code> are two ways to move bytes through it, <code>ios</code> is what you call most of the time. The rest of this chapter walks from the top down.</p>
 <section><h2 id="s18-2">Console Output: print, println, and the Manipulators</h2></section>
 <p>Format a line is the first thing most programs do, so begin there.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println, eprintln };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println, eprintln };
 
 void main() {
     i32 x = 255;
@@ -70,22 +70,22 @@ void main() {
     // {:x} and {:b} are integer-only specifiers
     println(&quot;dec {} hex {:x} bin {:b}&quot;, x, x, x);
     eprintln(&quot;wrote {} bytes&quot;, 42);          // to stderr, not stdout
-}</code></pre>
+}</code></pre></div>
 <p>The default placeholder <code>{}</code> consumes the next argument and renders it by dispatching on the argument's type. The dispatcher handles every built-in scalar (<code>i8</code> through <code>u64</code>), <code>bool</code>, <code>cchar</code>, <code>char</code>, both C string types, <code>str</code>, <code>String</code>, <code>rawptr</code>, the manipulator types below, and any type implementing the built-in <code>@toStr</code> trait. A type that implements none of these is a compile error at the call site, which is the correct behaviour: you cannot accidentally print a struct as raw bytes.</p>
 <p>The two braces are escapes. <code>{{</code> prints a literal <code>{</code>, <code>}}</code> prints a literal <code>}</code>, and the count of placeholders must equal the count of trailing arguments exactly. <code>{:d}</code> renders an integer in decimal, <code>{:x}</code> in hexadecimal, <code>{:b}</code> in binary, and <code>{:p}</code> renders a pointer. <code>{..}</code> spreads a whole iterable, rendering each element through the default dispatch and separating them with a comma and a space:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// {:d} is decimal; {..} spreads an iterable, separating with &quot;, &quot;
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// {:d} is decimal; {..} spreads an iterable, separating with &quot;, &quot;
 println(&quot;value = {:d} hex = {:x} bin = {:b}&quot;, 255, 255, 255);
-println(&quot;items: {..}&quot;, numbers);</code></pre>
+println(&quot;items: {..}&quot;, numbers);</code></pre></div>
 <p>The integer specifiers are integer-only, a non-integer argument with <code>{:d}</code> is a compile error, and <code>char</code> counts as an integer, rendering its codepoint numerically, so the compiler catches the mistake of formatting a float with <code>{:x}</code> rather than silently producing nonsense. Likewise <code>{..}</code> requires something range-for can walk; a typo is caught at build time.</p>
 <p>When you want special rendering without a new specifier, pass a manipulator. A manipulator is a small value that renders specially through the plain <code>{}</code> placeholder. The <code>ios</code> module defines five:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { _spaces, _repeat, _hex, _bin, _fixed };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { _spaces, _repeat, _hex, _bin, _fixed };
 
 // a manipulator renders specially through the plain {} placeholder
 println(&quot;{}right-aligned&quot;, _spaces(10));   // ten spaces, then the text
 println(&quot;{}&quot;, _repeat(&#x27;-&#x27;, 30));           // a rule of thirty dashes
 println(&quot;{}&quot;, _hex(0xDEADBEEF));           // 0xdeadbeef
 println(&quot;{}&quot;, _bin(0b1010));               // 0b1010
-println(&quot;{}&quot;, _fixed(3.14159, 2));         // 3.14</code></pre>
+println(&quot;{}&quot;, _fixed(3.14159, 2));         // 3.14</code></pre></div>
 <p>The exact signatures are <code>_spaces(u64 count)</code>, <code>_repeat(u8 ch, u64 count)</code>, <code>_hex(u64 value)</code>, <code>_bin(u64 value)</code>, and <code>_fixed(f64 value, u64 precision)</code>. The manipulator structs themselves are module-internal; the underscore-prefixed constructors are the public API. <code>_repeat</code> here takes a single byte, not a string; the formatting module's <code>fmt::repeat</code> takes a <code>str</code> and a count, and the two are different tools with the same name in different modules, so import carefully.</p>
 <p>Two honest caveats belong in the text, in bold.</p>
 <p><strong>The <code>std::fmt::format</code> function is a stub.</strong> It is declared <code>String format(str f, ...)</code> and it does not interpolate. It deletes exact <code>{}</code> pairs from the format string and substitutes nothing, copying every other byte through unchanged, so a typed placeholder such as <code>{:x}</code> is left in the output literally. <code>format("x = {}", 3)</code> returns <code>"x = "</code>, with no error and no value. Real interpolation lives in <code>print</code>, <code>println</code>, <code>eprint</code>, and <code>eprintln</code>. When you need to build a <code>String</code> rather than print one, use the <code>formatX</code> family (<code>formatInt</code>, <code>formatFloat</code>, <code>formatHex</code>, and the rest) from the text chapter, not <code>format</code>.</p>
@@ -94,7 +94,7 @@ println(&quot;{}&quot;, _fixed(3.14159, 2));         // 3.14</code></pre>
 <section><h2 id="s18-3">Console Input: Reading a Line and Reading Values</h2></section>
 <p>Reading is the mirror image of printing, and it is more delicate, because a program that reads is at the mercy of what it is given.</p>
 <p>The basic operation reads one line into a <code>String</code> you own:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub bool readLine(String* out)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub bool readLine(String* out)
 
 import(lib) std::io::ios { readLine, println };
 import(lib) std::text::string { String };
@@ -107,12 +107,12 @@ void main() {
         println(&quot;you said: {}&quot;, line);
     }
     line.free();   // readLine fills a String you own
-}</code></pre>
+}</code></pre></div>
 <p><code>readLine</code> clears <code>out</code>, then reads bytes until a newline, dropping carriage returns so that Windows-style CRLF input is handled transparently. It returns <code>false</code> when the stream has ended and nothing was read; because it returns <code>true</code> for a final line that has no newline, the <code>while (readLine(...))</code> loop processes the last unterminated line and stops cleanly on the next call. <code>String</code> is growable, so the line can be arbitrarily long.</p>
 <p>For a single byte there is <code>readChar</code>, which returns a <code>u8</code> and returns zero at end of input:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub u8 readChar()</code></pre>
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub u8 readChar()</code></pre></div>
 <p>For a typed value, <code>read</code> parses the next line according to the type of its output parameter:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void read&lt;comptime T&gt;(T* out)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void read&lt;comptime T&gt;(T* out)
 pub T    readVal&lt;T&gt;()
 
 import(lib) std::io::ios { read, readVal };
@@ -122,12 +122,12 @@ i32 n = readVal&lt;i32&gt;();      // reads a line, parses an integer
 f64 g;
 read(&amp;g);                    // reads a line, parses a double
 String s;
-read(&amp;s);                    // reads a line into a String</code></pre>
+read(&amp;s);                    // reads a line into a String</code></pre></div>
 <p><code>read</code> dispatches on <code>@typeof(T)</code> at compile time. It handles the signed and unsigned integers and the floats by reading a line and parsing it, <code>bool</code> by reading a line and accepting <code>true</code>, <code>1</code>, or <code>yes</code> as true and anything else as false, <code>cchar</code> by reading a character, and <code>String</code> by reading a line. <code>readVal&lt;T&gt;</code> is the convenience form that reads into a local and returns it.</p>
 <p>Simply put, <code>readLine</code> is a conveyor belt that hands you one line at a time, and <code>readVal</code> is the belt followed by a converter that turns the line into a number. If the line is not a number, <code>readVal</code> has no good way to tell you, it returns the parse result through the same channel parses go through below, so a program that cares whether the input was well-formed should call <code>readLine</code> and then a <code>parseX</code> function, where failure is a value rather than a guess.</p>
 <section><h2 id="s18-4">Parsing Text into Values</h2></section>
 <p>The three parsing functions in <code>ios</code> turn a <code>str</code> into a number and report success through an out-parameter:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub i64 parseI64(str sv, bool* ok)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub i64 parseI64(str sv, bool* ok)
 pub u64 parseU64(str sv, bool* ok)
 pub f64 parseF64(str sv, bool* ok)
 
@@ -136,12 +136,12 @@ import(lib) std::io::ios { parseI64, parseF64 };
 bool ok = false;
 // success is reported through the out-parameter, not the return value
 i64 n = parseI64(&quot;-42&quot;, &amp;ok);       // ok is true, n is -42
-i64 bad = parseI64(&quot;12x&quot;, &amp;ok);     // ok is false, bad is 0</code></pre>
+i64 bad = parseI64(&quot;12x&quot;, &amp;ok);     // ok is false, bad is 0</code></pre></div>
 <p>The convention is deliberately simple: on success the function sets <code>*ok</code> true and returns the value; on failure it sets <code>*ok</code> false and returns zero. <code>parseI64</code> accepts an optional leading <code>+</code> or <code>-</code>, then decimal digits only, and rejects the empty string, a lone sign, any non-digit, and any value that would overflow <code>i64</code>, including the boundary case <code>-9223372036854775808</code>, which is handled exactly. <code>parseU64</code> accepts an optional leading <code>+</code> and digits only. <code>parseF64</code> defers to the C library's <code>strtod</code> on a bounded copy of the input, then insists that only trailing whitespace remains; so <code>" 3.5"</code> and <code>"3.5  "</code> parse, while <code>"3.5x"</code> fails.</p>
 <p>This is the lightweight alternative to <code>Result</code>, and the shape tells you when to use it. When the caller only needs a yes-or-no, an out-parameter is one line shorter than a <code>Result</code> and the failure carries no detail worth propagating. When the caller needs to know why the input was bad, reach for <code>Result</code> instead, as <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a> describes. A common beginner mistake is to ignore the <code>ok</code> flag and use the returned zero as though it were the parsed value: <code>parseI64("abc", &amp;ok)</code> returns <code>0</code>, which is indistinguishable from a genuine zero unless you check the flag.</p>
 <section><h2 id="s18-5">Files: Opening, Reading, Writing, Closing</h2></section>
 <p>Now to the disk. A file in Coral begins with an open call that returns a handle or an error.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { fileOpen, fileClose, File, IoError };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { fileOpen, fileClose, File, IoError };
 import(lib) std::result { Result };
 
 // fileOpen returns a Result, never a sentinel value
@@ -152,22 +152,22 @@ if (opened.isErr()) {
 }
 File f = opened.unwrap();
 // ... use f ...
-fileClose(f);   // every successful open needs exactly one close</code></pre>
+fileClose(f);   // every successful open needs exactly one close</code></pre></div>
 <p><code>File</code> is a distinct type wrapping the operating system's file descriptor (or handle), so the compiler will not let you pass a bare integer where a file is expected. <code>fileOpen</code> takes a stdio-style mode string, and it is worth knowing exactly what each one does, because the mode selects the flags passed to the system:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">mode    open flag combination                       effect
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">mode    open flag combination                       effect
 &quot;r&quot;     read only                                   file must exist
 &quot;w&quot;     write only, create, truncate                existing content is lost
-&quot;a&quot;     write only, create, append                  writes always land at EOF</code></pre>
+&quot;a&quot;     write only, create, append                  writes always land at EOF</code></pre></div>
 <p>Adding a <code>+</code> after the mode letter widens the handle to read-and-write (for example <code>"r+"</code> opens an existing file for both). The mode string is a small language of its own, and the table above is the whole of it for the common cases.</p>
 <p>Three operations move bytes through the handle:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// fileRead returns how many bytes were read; zero means end of file
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// fileRead returns how many bytes were read; zero means end of file
 pub Result&lt;isize, IoError&gt; fileRead(File f, u8* buf, usize count)
 pub Result&lt;isize, IoError&gt; fileWrite(File f, const u8* buf, usize count)
 // whence is SEEK_SET, SEEK_CUR, or SEEK_END
-pub Result&lt;isize, IoError&gt; fileSeek(File f, isize offset, i32 whence)</code></pre>
+pub Result&lt;isize, IoError&gt; fileSeek(File f, isize offset, i32 whence)</code></pre></div>
 <p><code>fileRead</code> reads up to <code>count</code> bytes into <code>buf</code> and returns how many it actually read; a return of zero means end of file, which is a success, not an error. <code>fileWrite</code> writes <code>count</code> bytes and returns how many it wrote. <code>fileSeek</code> moves the position of the handle and returns the new offset; the <code>whence</code> argument is one of the constants <code>SEEK_SET</code> (from the start), <code>SEEK_CUR</code> (from the current position), or <code>SEEK_END</code> (from the end). All three wrap the corresponding system call and translate a negative result into an <code>IoError</code>.</p>
 <p>Reading a whole file a chunk at a time is such a common shape that the library provides it directly, and it is the function to reach for first:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Result&lt;String, IoError&gt; readFileToString(str path)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub Result&lt;String, IoError&gt; readFileToString(str path)
 pub Result&lt;bool, IoError&gt;   writeFileFromString(str path, const String* data)
 
 import(lib) std::io::fs { readFileToString, writeFileFromString };
@@ -183,10 +183,10 @@ if (loaded.isOk()) {
 String out = String::from(&quot;hello, file\n&quot;);
 // &quot;w&quot; mode truncates at open, so a failure mid-write truncates the file
 (void)writeFileFromString(&quot;out.txt&quot;, &amp;out).unwrap();
-out.free();</code></pre>
+out.free();</code></pre></div>
 <p><code>readFileToString</code> opens the file read-only, reads it in 4096-byte chunks, and appends each chunk to a growable <code>String</code>, so it reads files of any size without a size query first. On any error it closes the handle, frees the partial buffer, and returns the <code>IoError</code>. <code>writeFileFromString</code> opens the path for writing, truncating whatever was there, and writes the entire buffer, looping until every byte is out; it returns <code>Ok(true)</code> on success. Notice the order of the truncation: <code>"w"</code> mode destroys the old contents at open time, so a failure partway through a write leaves a truncated file. When that matters, write to a temporary file and rename it over the target, which is atomic on the same filesystem.</p>
 <p>You do not have to open, read, and close when all you need is to ask whether a path exists or is accessible, and you do not have to open at all to delete or rename:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub bool   fileExists(str path)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub bool   fileExists(str path)
 pub bool   canAccess(str path, i32 mode)
 pub Option&lt;bool&gt; statPath(str path, Stat* out)
 pub Result&lt;bool, IoError&gt; deleteFile(str path)
@@ -198,14 +198,14 @@ import(lib) std::io::fs { fileExists, canAccess, deleteFile, renameFile, R_OK, W
 if (fileExists(&quot;config.txt&quot;)) { /* ... */ }
 if (canAccess(&quot;config.txt&quot;, W_OK)) { /* writable */ }
 (void)renameFile(&quot;a.txt&quot;, &quot;b.txt&quot;).unwrap();
-(void)deleteFile(&quot;old.txt&quot;).unwrap();</code></pre>
+(void)deleteFile(&quot;old.txt&quot;).unwrap();</code></pre></div>
 <p><code>fileExists</code> asks the system whether the path resolves and returns a plain <code>bool</code>; absence is not an error, it is the answer. <code>canAccess</code> takes one of <code>F_OK</code>, <code>R_OK</code>, <code>W_OK</code>, <code>X_OK</code> and reports whether the path is accessible in that mode. <code>statPath</code> fills a <code>Stat</code> structure with the file's metadata (size, mode, link count, and timestamps) and returns <code>Some(true)</code> on success or <code>None</code> when the path cannot be statted; it is the call that also tells you whether a path is a file or a directory, through <code>getFileType</code>, which we meet in 18.7.</p>
 <p>Whenever a <code>Result</code> comes back, the same discipline from <a href="../15-error-handling-option-result-and-failure/index.html">Chapter 15</a> applies: handle the <code>Err</code> case with a switch or a check, and let <code>unwrap</code> appear only after the failure has genuinely been dealt with. Reading from a file has no side channel and no hidden state; the value of the call is the whole story, and you have to open the parcel to get the bytes.</p>
 <p>A common beginner mistake is to open a file and forget to close it on the error path. The library's own functions do not have this problem, because each of them closes the handle before returning an error, but a hand-written function must do the same. The rule is simple: every successful <code>fileOpen</code> needs exactly one <code>fileClose</code>, on every path out of the function.</p>
 <section><h2 id="s18-6">Buffered and Binary I/O: bio and fios</h2></section>
 <p>The file functions in the last section talk to the system one call at a time. That is the right default, because it is the most predictable, but it is not the only layer, and two more deserve to be named.</p>
 <p>The first is <code>std::io::fios</code>, which wraps the C library's <code>FILE*</code> and therefore inherits C stdio's buffering. Its handle is a distinct <code>FileHandle</code> over the opaque stream:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// a distinct handle over the C library&#x27;s opaque buffered FILE*
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// a distinct handle over the C library&#x27;s opaque buffered FILE*
 pub distinct FileHandle = rawptr;
 
 pub Result&lt;FileHandle, IoError&gt; fileOpen(str path, str mode)
@@ -216,10 +216,10 @@ pub Result&lt;usize, IoError&gt; fileWriteString(FileHandle fh, const String* s)
 pub Result&lt;bool, IoError&gt;  fileReadAll(str path, String* out)
 pub bool   fileEof(FileHandle fh)
 pub bool   fileError(FileHandle fh)
-pub void   fileFlush(FileHandle fh)</code></pre>
+pub void   fileFlush(FileHandle fh)</code></pre></div>
 <p>The reason to use it is the buffering: <code>fios</code> accumulates small reads and writes in a user-space buffer and issues far fewer system calls than the raw layer would. For a program that writes many short pieces, or reads a file in very small increments, that difference is the difference between one syscall per piece and one syscall per buffer-full, and the cost per system call is hundreds to thousands of times the cost of a memory copy. When performance matters and the access pattern is many small operations, buffering is the first lever.</p>
 <p>The second module is <code>std::io::bio</code>, which is not about buffering at all, it is about <em>encoding</em>. It provides two wrapper types over an open <code>File</code> that read and write typed values in a chosen byte order:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct FileReader { i32 fd; ... }   // FileReader::fromFd(f)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct FileReader { i32 fd; ... }   // FileReader::fromFd(f)
 pub struct FileWriter { i32 fd; ... }   // FileWriter::fromFd(f)
 
 import(lib) std::io::bio { FileReader, FileWriter };
@@ -234,13 +234,13 @@ u16 version = r.readU16Be();      // big-endian, two bytes
 f64 sample = r.readF64Le();
 r.skip(8);                        // advance over a reserved field
 
-fileClose(f);   // the wrapper borrows the descriptor, it does not own it</code></pre>
+fileClose(f);   // the wrapper borrows the descriptor, it does not own it</code></pre></div>
 <p>There is a reader and a writer method for each scalar width and each byte order: <code>readU8</code>/<code>writeU8</code>, <code>readU16Le</code>/<code>readU16Be</code>, <code>readU32Le</code>/<code>readU32Be</code>, <code>readU64Le</code>/<code>readU64Be</code>, the signed variants, and <code>readF32</code>/<code>readF64</code> in both orders. <code>fromFd</code> wraps an already-open <code>File</code>; the wrapper owns the descriptor's position but not its lifetime, so you still close the <code>File</code> yourself. There are also the free byte-swap helpers <code>bswapU16</code>, <code>bswapU32</code>, and <code>bswapU64</code>.</p>
 <p>Two honest notes keep this layer from surprising you. First, the <em>typed</em> readers and writers do not report errors: <code>readU32Le</code> calls <code>readBytes</code> and ignores its result, yielding a zero-filled value on a short read, and <code>writeU32Le</code> ignores a failed <code>writeBytes</code>. Only <code>readBytes</code> and <code>writeBytes</code> return <code>Result&lt;bool, IoError&gt;</code>, and they do the exact-count guarantee, <code>readBytes</code> loops until it has <code>n</code> bytes or fails with <code>Eof</code>, and <code>writeBytes</code> loops until all bytes are written. If a truncated or corrupt file is a real possibility, use <code>readBytes</code> into your own buffer and check the result, then decode yourself. Second, <code>bio</code> does not buffer, so a struct of ten fields costs ten small system calls; combine it with <code>fios</code> (or read the whole record with one <code>readBytes</code>) when the record is hot.</p>
 <p>Why this matters: "I/O is slow" is true but imprecise. What is slow is the <em>crossing</em>, the system call, and the number of crossings is a property of how you read, not of how much you read. <code>fs</code> gives you control, <code>fios</code> reduces the crossings for you, and <code>bio</code> gives you the encoding. Knowing which problem you have is the whole of choosing between them.</p>
 <section><h2 id="s18-7">Paths, Directories, and Metadata</h2></section>
 <p>A path is a string with grammar, and the <code>path</code> module parses that grammar without ever touching the disk. Every function is a string operation, which is why they are cheap and why they work on paths that do not exist yet.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::path {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::path {
     join, normalize, absolute, changeExtension,
     extension, stem, parent, filename, isAbsolute, hasExtension
 };
@@ -256,18 +256,18 @@ println(&quot;{}&quot;, parent(p));        // /home/ada/notes
 String full = join(&quot;/home/ada&quot;, &quot;notes/today.txt&quot;);   // /home/ada/notes/today.txt
 String clean = normalize(&quot;/home/ada/./notes//today.txt&quot;); // /home/ada/notes/today.txt
 String abs = absolute(&quot;/home/ada&quot;, &quot;notes/today.txt&quot;);    // resolve relative to base
-String md = changeExtension(full.asView(), &quot;.md&quot;);        // /home/ada/notes/today.md</code></pre>
+String md = changeExtension(full.asView(), &quot;.md&quot;);        // /home/ada/notes/today.md</code></pre></div>
 <p>The odd one out is <code>findLastSep</code>, which returns the index of the last separator or <code>p.len + 1</code> when there is none; it is an implementation detail exposed for completeness, and the named functions built on it (<code>parent</code>, <code>filename</code>, <code>stem</code>, <code>extension</code>) are what you should use. <code>join</code> inserts a separator only when needed, so joining a path that already ends in <code>/</code> does not create a doubled one. <code>normalize</code> collapses repeated separators and <code>.</code> segments; <code>absolute</code> resolves a relative path against a base and then normalizes. Note that <code>normalize</code> does not resolve <code>..</code>, and none of these functions check the filesystem, so two different strings can name the same file and two equal strings can name different files on a case-insensitive platform. Path equality is not file identity.</p>
 <p>On Linux the separator is <code>/</code> and <code>\</code> is accepted as an alternate; on Windows the reverse is true. Because the module hides this behind <code>SEP</code> and the separator-aware functions, you should almost never write a separator literally in portable code; use <code>join</code> and the accessors instead.</p>
 <p>Directories are manipulated with <code>fs</code>:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Result&lt;bool, IoError&gt; createDir(str path, i32 mode)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub Result&lt;bool, IoError&gt; createDir(str path, i32 mode)
 pub Result&lt;bool, IoError&gt; createDirRecursive(str path, i32 mode)
 pub Result&lt;bool, IoError&gt; removeDir(str path)
 pub Result&lt;Dir, IoError&gt;  openDir(str path)
 pub bool readDirEntry(Dir dir, Dirent* out)
-pub void closeDir(Dir dir)</code></pre>
+pub void closeDir(Dir dir)</code></pre></div>
 <p><code>createDir</code> makes a single directory; <code>createDirRecursive</code> makes every missing component in the path, the way <code>mkdir -p</code> does, and treats an already-existing directory as success. The <code>mode</code> argument carries the permission bits (for example <code>448</code> for owner-only <code>rwx</code>, or <code>493</code> for the conventional <code>0755</code>). <code>removeDir</code> removes an <em>empty</em> directory; to remove one with contents you must walk it and delete the entries first. <code>openDir</code> returns a <code>Dir</code> handle, and you read it one entry at a time:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs {
     openDir, readDirEntry, closeDir, Dirent, getFileType, statPath, Stat
 };
 
@@ -287,10 +287,10 @@ void listDir(str path) {
         println(&quot;{}&quot;, name);
     }
     closeDir(dir);
-}</code></pre>
+}</code></pre></div>
 <p><code>readDirEntry</code> copies the next entry into the <code>Dirent</code> and returns <code>false</code> at the end of the stream; <code>d_name</code> is a NUL-terminated byte array, which is why the example converts it with <code>str::fromCstr</code> rather than treating it as a length-carrying view. The <code>.</code> and <code>..</code> entries are real directory entries and must be skipped by hand.</p>
 <p>To learn what an entry <em>is</em>, stat it and classify the mode:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Stat { /* size, mode, link count, timestamps */ }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Stat { /* size, mode, link count, timestamps */ }
 pub enum FileType {
     Unknown, Regular, Directory, CharDevice,
     BlockDevice, Fifo, Symlink, Socket
@@ -307,12 +307,12 @@ if (statPath(&quot;notes.txt&quot;, &amp;st).isSome()) {
         FileType::Directory  =&gt; { println(&quot;a directory&quot;); },
         else                 =&gt; { println(&quot;something else&quot;); },
     }
-}</code></pre>
+}</code></pre></div>
 <p><code>Stat</code> is shaped after the POSIX structure, so its fields are platform-defined numbers rather than friendly abstractions: <code>st_size</code> is the size in bytes, <code>st_mode</code> is the raw mode bits, and the three timestamp triples are seconds and nanoseconds. <code>getFileType</code> is the portable reading of <code>st_mode</code>; it maps the mode's top bits to the <code>FileType</code> enum so you never test magic numbers by hand. The timestamps are worth a warning: they are whatever the platform's <code>stat</code> returns, subject to the platform's epoch and resolution, so comparing them across platforms is a bug waiting to happen.</p>
 <section><h2 id="s18-8">Environment, Processes, and Arguments</h2></section>
 <p>Three modules bring a program into contact with the machinery around it.</p>
 <p><code>std::io::env</code> reads and writes environment variables:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub Option&lt;String&gt; get(str name)
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub Option&lt;String&gt; get(str name)
 pub bool getInto(str name, String* out)
 pub Result&lt;bool, IoError&gt; set(str name, str value)
 pub Result&lt;bool, IoError&gt; unset(str name)
@@ -336,10 +336,10 @@ pathVar.free();
 
 // set and unset can fail, so both return a Result
 (void)set(&quot;MY_APP_MODE&quot;, &quot;debug&quot;).unwrap();
-(void)unset(&quot;MY_APP_MODE&quot;).unwrap();</code></pre>
+(void)unset(&quot;MY_APP_MODE&quot;).unwrap();</code></pre></div>
 <p><code>get</code> returns an owned <code>String</code> inside an <code>Option</code>, so the caller frees it when done; <code>getInto</code> writes into a <code>String</code> you already own and returns whether the variable was set, freeing the old contents first. Absence is <code>None</code> or <code>false</code>, never an error, because a missing environment variable is a normal state, not a failure. <code>set</code> and <code>unset</code> return a <code>Result</code> because changing the environment can fail. <code>all</code> appends every <code>"NAME=VALUE"</code> entry to a <code>Vec&lt;String&gt;</code> and returns the count; as always with a container of owned values, the caller is responsible for freeing each string before disposing the vector.</p>
 <p><code>std::io::process</code> runs other programs:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Process { i32 pid; i32 stdinFd; i32 stdoutFd; i32 stderrFd; }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub struct Process { i32 pid; i32 stdinFd; i32 stdoutFd; i32 stderrFd; }
 pub struct ProcessResult { i32 exitCode; bool signaled; i32 termSignal; }
 
 pub Result&lt;Process, IoError&gt;       spawn(str cmd, Vec&lt;str&gt;* args)
@@ -348,10 +348,10 @@ pub Result&lt;isize, IoError&gt;         writeStdin(Process* p, const cchar* dat
 pub Result&lt;isize, IoError&gt;         readStdout(Process* p, u8* buf, usize maxLen)
 pub Result&lt;isize, IoError&gt;         readStderr(Process* p, u8* buf, usize maxLen)
 pub Result&lt;i32, IoError&gt;           run(str cmd, Vec&lt;str&gt;* args)
-pub void                           exit(i32 code)</code></pre>
+pub void                           exit(i32 code)</code></pre></div>
 <p><code>spawn</code> creates the child process with pipes connected to its standard input, output, and error. It does not wait; it hands you a <code>Process</code> and returns. You then talk to the child through the pipe file descriptors: <code>writeStdin</code> sends bytes to it, <code>readStdout</code> and <code>readStderr</code> pull bytes back, and <code>waitFor</code> blocks until the child exits, closes the pipes, and returns its exit status. Because <code>waitFor</code> closes the pipes, read everything you want from the child <em>before</em> waiting for it, or the child may block trying to write into a pipe nobody is draining.</p>
 <p><code>run</code> is the whole dance for the common case: it spawns the child, drains both its output pipes while it runs (so it never blocks), waits for it, and returns the exit code. When you only need "did it succeed," <code>run</code> is the one call to make.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::process { spawn, run, waitFor, readStdout, Process, ProcessResult };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::process { spawn, run, waitFor, readStdout, Process, ProcessResult };
 import(lib) std::vec { Vec };
 
 // run spawns, drains both pipes, waits, and returns the exit code
@@ -371,10 +371,10 @@ while (true) {
 }
 // drain the pipes before waitFor, or the child may block on a full pipe
 ProcessResult result = waitFor(&amp;p).unwrap();
-println(&quot;exit {}&quot;, result.exitCode);</code></pre>
+println(&quot;exit {}&quot;, result.exitCode);</code></pre></div>
 <p>The argument vector is a <code>Vec&lt;str&gt;</code>. Note that <code>spawn</code> uses the executable search path, exactly as the shell does, so <code>spawn("grep", ...)</code> finds <code>grep</code> on <code>PATH</code>; a path with a slash is used as given. <code>ProcessResult</code> distinguishes a normal exit (<code>exitCode</code> set, <code>signaled</code> false) from a child killed by a signal (<code>signaled</code> true, <code>termSignal</code> carrying the signal number), which is the distinction a shell needs to report "Segmentation fault" instead of an exit code. <code>exit(code)</code> terminates the current process immediately; use it when <code>main</code> cannot express the outcome you need, and prefer returning a code from <code>i32 main</code> when it can.</p>
 <p>Now the awkward part, stated honestly. <code>std::io::cmd</code> offers an <code>ArgParser</code>, but its methods take <code>argc</code> and <code>argv</code> directly:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// parse, hasFlag, and getOption all take argc/argv directly
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">// parse, hasFlag, and getOption all take argc/argv directly
 pub struct ArgParser {
     Vec&lt;String&gt; positional;
     bool error;
@@ -389,10 +389,10 @@ pub struct ArgParser {
     usize count()
     str get(usize idx)
 }
-pub Option&lt;str&gt; commandLine()</code></pre>
+pub Option&lt;str&gt; commandLine()</code></pre></div>
 <p><code>parse</code> collects the non-flag arguments as positional values, skipping anything that begins with <code>-</code> and stopping at a bare <code>--</code>. <code>hasFlag</code> tests for a short or long flag, <code>getOption</code> reads the value that follows one into a <code>String</code> you own, <code>count</code> and <code>get</code> read back the positionals, and <code>dispose</code> frees the owned strings. The catch is the <code>argc</code>/<code>argv</code> pair: Coral's usual entry point is <code>void main()</code> with no parameters, and the startup code passes arguments to the C <code>main</code> without the language exposing them as parameters. So <code>ArgParser</code> pairs naturally with a C-style entry point, <code>i32 main(i32 argc, cchar** argv)</code>, while a program written with <code>void main()</code> does not have the pair to hand it.</p>
 <p>The portable door for the plain entry point is <code>commandLine()</code>, which returns the raw process command line as an <code>Option&lt;str&gt;</code>. This is exactly what the standard library's own compiler uses to parse its flags. On Linux it is the contents of <code>/proc/self/cmdline</code>, with the arguments separated by NUL bytes; on Windows it is the single string from <code>GetCommandLineA</code>. Reading <code>argv[1]</code> on Linux is therefore a small scan:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::cmd { commandLine };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::cmd { commandLine };
 import(lib) std::option { Option };
 
 // Linux: argv[0]\0argv[1]\0...\0, return argv[1], or &quot;&quot; if absent.
@@ -409,13 +409,13 @@ str firstArg() {
     while (i &lt; all.len &amp;&amp; all.ptr[i] != 0) i += 1;
     if (i == start) return &quot;&quot;;
     return str::fromParts(all.ptr + start, i - start);
-}</code></pre>
+}</code></pre></div>
 <p>Returning a <code>str</code> view into the command line is safe here because the command-line buffer lives for the whole process. The Windows form of <code>commandLine</code> is a single space-separated string, so a portable <code>firstArg</code> would need to split on spaces there; the example is deliberately Linux-shaped, and the platform difference is exactly the kind of thing <code>#[[cfg]]</code> attributes or a <code>flag</code> block exist to handle.</p>
 <p>A common beginner mistake is to assume <code>main</code> receives <code>argv</code> the way it does in C. It does not, in the usual Coral idiom; the runtime supplies the C <code>main</code> arguments, but a <code>void main()</code> simply ignores them, and the portable accessor is <code>commandLine()</code>.</p>
 <section><h2 id="s18-9">Logging and the Terminal</h2></section>
 <p>Two modules remain, and both are conveniences worth knowing before you rebuild them.</p>
 <p><code>std::io::log</code> provides a small leveled logger:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant LogLevel { Debug, Info, Warn, Error, Fatal }
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub variant LogLevel { Debug, Info, Warn, Error, Fatal }
 
 pub struct Logger {
     LogLevel minLevel;
@@ -439,10 +439,10 @@ log.debug(&quot;starting&quot;);            // dropped: below the minimum
 log.info(&quot;listening on port {}&quot;, 8080);
 // Error and Fatal go to stderr; the rest go to stdout
 log.error(&quot;connection dropped&quot;);
-log.dispose();</code></pre>
+log.dispose();</code></pre></div>
 <p><code>new</code> copies <code>name</code> into an owned <code>String</code>, so <code>dispose</code> frees it; forgetting to dispose leaks one small buffer. <code>enabled</code> answers whether a message at a level would pass the filter, which lets a caller skip expensive formatting work for a message that will be dropped. The routing is worth memorizing: <code>Error</code> and <code>Fatal</code> go to standard error, everything else to standard output, so errors survive redirection while ordinary logs do not have to. The logger's <code>_log</code> helper formats a line as <code>[LEVEL][name] message</code> through <code>println</code>/<code>eprintln</code>; there is no file sink and no structured encoding, so a program that needs JSON logs or log rotation builds that on top rather than expecting it here.</p>
 <p><code>std::io::term</code> writes ANSI escape sequences for color and cursor control. It is a toolkit of small functions, each of which reads like the escape it emits:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub void reset()
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub void reset()
 pub void bold() dim() italic() underline() blink() reverse() hidden() strikethrough()
 
 pub void black() red() green() yellow() blue() magenta() cyan() white()
@@ -458,11 +458,11 @@ import(lib) std::io::term { green, reset, cursorUp, clearScreen };
 
 green();
 println(&quot;this line is green&quot;);
-reset();   // ANSI escapes are emitted even when output is redirected</code></pre>
+reset();   // ANSI escapes are emitted even when output is redirected</code></pre></div>
 <p>A terminal that understands ANSI will render these; a pipe or a file receives the raw escape bytes, because the public functions do not test whether the output is a terminal. A program that may be redirected should decide for itself, once, whether to emit color, rather than assuming a terminal on the other end. The cursor and clear helpers are the raw material of a terminal user interface; they are also the raw material of a mess, so confine them to the parts of a program that deliberately manage a region of the screen.</p>
 <section><h2 id="s18-10">Errors: Reading IoError Honestly</h2></section>
 <p>Every function in this chapter that touches the outside world returns a <code>Result</code>, and every <code>Err</code> carries the same type, defined in <code>fs</code> and used everywhere above it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub variant IoError {
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">pub variant IoError {
     Os       { i32 code; str op; },   // errno (Linux) / GetLastError (Windows)
     Eof      { str op; },             // stream ended before the requested bytes
     BadUsage { str msg; }             // caller-side problem, no system call
@@ -470,10 +470,10 @@ reset();   // ANSI escapes are emitted even when output is redirected</code></pr
 // os(op) captures the calling thread&#x27;s current error number
 pub extend IoError {
     static IoError os(str op)
-}</code></pre>
+}</code></pre></div>
 <p>The three cases split failures by <em>who</em> is responsible. <code>Os</code> means the operating system refused the operation; <code>code</code> is the raw platform error number and <code>op</code> names the operation that failed (<code>"open"</code>, <code>"read"</code>, <code>"mkdir"</code>). <code>Eof</code> means a stream ended before the requested bytes arrived, the <code>bio</code> reader's exact-count guarantee is the main producer. <code>BadUsage</code> means the caller asked for something nonsensical, such as an invalid open mode; no system call was made, and the <code>msg</code> says what was wrong. <code>IoError::os(op)</code> is a constructor used inside the library immediately after a failing call, capturing the calling thread's error number; user code rarely builds one, it inspects them.</p>
 <p>Inspecting one is an ordinary variant switch:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::fs { IoError };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::fs { IoError };
 
 void reportIoError(str path, IoError e) {
     // the three cases split failures by who is responsible
@@ -482,20 +482,20 @@ void reportIoError(str path, IoError e) {
         IoError::Eof { op }       =&gt; { eprintln(&quot;{}: unexpected end of file during {}&quot;, path, op); },
         IoError::BadUsage { msg } =&gt; { eprintln(&quot;{}: {}&quot;, path, msg); },
     }
-}</code></pre>
+}</code></pre></div>
 <p>The one thing to understand about <code>Os.code</code> is that it is the platform's number, not a portable one. On Linux it is the value of <code>errno</code>: for instance 2 is "no such file or directory", 13 is "permission denied", 21 is "is a directory", and 17 is "file exists". The same numbers mean something else on Windows, where <code>code</code> is a <code>GetLastError</code> value instead. This is a deliberate choice: the low-level number is preserved so a caller who needs it can have it, and the <code>op</code> string gives the human-readable context that is portable. A test that wants to distinguish "missing" from "permission denied" in a portable way cannot switch on the number; it should either check accessibility first with <code>canAccess</code>, or accept that this is a platform-specific corner and guard it accordingly.</p>
 <p>The common failure modes are worth naming, because recognizing them turns a mystery into a sentence:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">symptom                        usual cause                         first check
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">symptom                        usual cause                         first check
 open of a file that should exist fails   wrong working directory    paths are relative to CWD, not the source
 read returns 0 immediately      file is empty, or offset at EOF     a zero result is success, not failure
 write &quot;succeeds&quot; but file is short   old content truncated at open   &quot;w&quot; truncates before the first write
 open fails with a permission code    mode was never granted          canAccess(path, R_OK/W_OK)
 removeDir fails                 directory is not empty              walk and delete entries first
-child never returns             nobody drained its output pipe      read before waitFor, or use run</code></pre>
+child never returns             nobody drained its output pipe      read before waitFor, or use run</code></pre></div>
 <p>Two final points of discipline. First, <code>Result</code> does not force you to handle the error, but the language does force you to <em>open</em> it: <code>unwrap</code> on an <code>Err</code> aborts with a message that names the mistake, and that abort is the failure of last resort, not a strategy. Handle the <code>Err</code>, or propagate it, and let <code>unwrap</code> appear only after you have proven it cannot fail. Second, an I/O error is not a bug in your program in the way an out-of-range index is; it is the world being the world. That is why I/O failures are <code>Result</code> and not assertions, and why the same error can be worth a retry in one context and a fatal report in another.</p>
 <section><h2 id="s18-11">Putting It Together: A Word-Count Tool</h2></section>
 <p>Here is a complete program that uses console I/O, file reading, argument access, string scanning, and error handling together. It is a small <code>wc</code>: it reads a named file, counts lines and words, and prints the counts next to the byte size and the path.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println, eprintln };
+<div class="code-block"><div class="code-head"><span class="code-lang">coral</span><button class="copy-btn" type="button">Copy</button></div><pre><code class="language-coral">import(lib) std::io::ios { println, eprintln };
 import(lib) std::io::fs { IoError, readFileToString };
 import(lib) std::io::cmd { commandLine };
 import(lib) std::text::string { String };
@@ -563,7 +563,7 @@ i32 main() {
     println(&quot;{:d} {:d} {:d} {}&quot;, lines, words, text.len, path);
     text.free();   // release the String returned by readFileToString
     return 0;
-}</code></pre>
+}</code></pre></div>
 <p>Read the program from the top. <code>firstArg</code> asks for the raw command line, steps over the program name, and returns the first argument as a view into the command-line buffer, a view that is valid for the life of the process, which is why returning it is safe. <code>reportIoError</code> is the one place that knows how to turn an <code>IoError</code> into a sentence, and it handles all three cases so the caller never sees a raw number if it does not want one. <code>main</code> returns <code>i32</code> because this tool has meaningful exit codes: zero on success, one when the argument is missing or the file could not be read.</p>
 <p>The counting loop is deliberately index-based and byte-based. It walks the file once, incrementing <code>lines</code> at every newline and <code>words</code> at the transition from whitespace to non-whitespace, which is the same rule <code>wc</code> uses for its word count. <code>text.at(i)</code> is bounds-checked; since the loop condition already guarantees <code>i &lt; text.len</code>, the check never fires, and the code stays readable. The byte count is simply <code>text.len</code>, the authoritative length from the text chapter, and there is no <code>strlen</code> walk anywhere in the program.</p>
 <p>The ownership is explicit at the end: <code>readFileToString</code> returned an owned <code>String</code>, and <code>text.free()</code> releases it. If you were writing a library file rather than a user program, you would mark the file <code>#[[no_drop_all]]</code> and free everything by hand, as the standard library does; in ordinary code, the <code>@drop</code> conformance on <code>String</code> is what eventually reclaims a buffer you forget to free, which is exactly why you must not free it twice.</p>
