@@ -110,12 +110,13 @@ The receiver is supplied by Coral, not written in the parameter list, and the ca
             self.value += 1;
         }
 
-        i32 current() const {
+        #[[const]]
+        i32 current() {
             return self.value;
         }
     }
 
-`bump` mutates the receiver through `self`; `current` promises not to, and the trailing `const` is the promise. A const method that assigns to `self` is an error, and a const method can be called on a read-only value where a mutating one cannot.
+`bump` mutates the receiver through `self`; `current` promises not to, and the `#[[const]]` attribute is the promise. A const method that assigns to `self` is an error, and a const method can be called on a read-only value where a mutating one cannot.
 
 A method belonging to the type rather than a value is `static`, and it has no `self`:
 
@@ -129,7 +130,7 @@ Statics are called on the type with `::`; instance methods are called on a value
 
 If the thing on the left is a type name, use `::`; if it is a value, use `.`. `Counter::start()` makes a new counter; `c.bump()` changes an existing one.
 
-The standard library also has the explicit receiver, written as a first parameter: `T get(const self*)` and `void bump(self*)` mean the same as the trailing-`const` and mutating forms. The implicit form dominates application code; the explicit form appears where a method must hand the receiver onward or store it.
+The receiver is always implicit: there is no `self` parameter and no pointer spelling to declare. A static method has no receiver. To mark an instance method read-only, use `#[[const]]`; the compiler flags any mutation through `self`.
 
 10.5 Encapsulation and Information Hiding
 
@@ -348,9 +349,9 @@ A switch over a variant dispatches on the shape of a value, and the compiler che
     pub extend Shape {
         f64 area() const {
             switch (self) {
-                Shape::Circle { radius }           => 3.14159 * radius * radius,
-                Shape::Rectangle { width, height } => width * height,
-                Shape::Point                       => 0.0,
+                Shape::Circle { radius }            => { 3.14159 * radius * radius; },
+                Shape::Rectangle { width, height }  => { width * height; },
+                Shape::Point                        => { 0.0; },
             }
         }
     }
@@ -364,9 +365,9 @@ The same dispatch happens on types inside a generic with a `comptime` block. The
     void render<T>(T value) {
         comptime {
             switch (@typeof(value)) {
-                i32 => printInt(value),
-                f64 => printFloat(value),
-                else => @compileError("render has no case for this type"),
+                i32  => { printInt(value); },
+                f64  => { printFloat(value); },
+                else  => { @compileError("render has no case for this type"); },
             }
         }
     }

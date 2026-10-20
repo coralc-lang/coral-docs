@@ -46,23 +46,23 @@ void compilerBarrier() {
     asm volatile { &quot;&quot; ::: &quot;memory&quot; }
 }
 
-// publish a payload, then raise the flag that announces it
-void publish(u64* data, u64* flag, u64 value) {
+// publish a payload, then raise the ready flag that announces it
+void publish(u64* data, u64* ready, u64 value) {
     *data = value;          // the payload
     compilerBarrier();      // the compiler may not move the next store above this
-    *flag = 1u;             // the announcement
+    *ready = 1u;            // the announcement
 }
 
 import(lib) std::io::ios { println };
 
 void main() {
     u64 data = 0;
-    u64 flag = 0;
+    u64 ready = 0;
     // publish keeps the barrier between the two stores
-    publish(&amp;data, &amp;flag, 42u);
-    println(&quot;data {} flag {}&quot;, data, flag);
+    publish(&amp;data, &amp;ready, 42u);
+    println(&quot;data {} ready {}&quot;, data, ready);
 }</code></pre>
-<p>Line by line: <code>asm volatile</code> is the statement, <code>""</code> the template, the first <code>:</code> opens and second closes an empty output section, the third opens empty inputs, and <code>"memory"</code> is the clobber list. It lowers to <code>__asm__ volatile("" ::: "memory")</code>, forbidding the compiler from moving <code>*flag = 1u</code> above <code>*data = value</code>. The barrier names no variables; it is about all memory.</p>
+<p>Line by line: <code>asm volatile</code> is the statement, <code>""</code> the template, the first <code>:</code> opens and second closes an empty output section, the third opens empty inputs, and <code>"memory"</code> is the clobber list. It lowers to <code>__asm__ volatile("" ::: "memory")</code>, forbidding the compiler from moving <code>*ready = 1u</code> above <code>*data = value</code>. The barrier names no variables; it is about all memory.</p>
 <p class="step-label">Cost and notes</p>
 <p>No instructions and no run-time cost, only compile-time reloads the compiler might otherwise avoid. That is the point: a fence in the compiler's model, not the hardware's. If the processor must also observe the order, use a separate fence instruction with its own <code>"memory"</code> clobber. This is the standard library's <code>memoryBarrier</code>.</p>
 <p class="step-label">Edge cases</p>

@@ -68,9 +68,9 @@ if (light == TrafficLight::Red) {
 <p>The double colon <code>::</code> means "the case <code>Red</code> of the type <code>TrafficLight</code>." The left side is the container, the right side the item inside it, as with a module (<code>std::io</code>) or a static method (<code>Vec::new</code>).</p>
 <p>Enums let the compiler enforce a value's legal choices: a function taking a <code>TrafficLight</code> can never receive a stray <code>3</code>, and a switch over it can be checked for completeness. A fact that used to live in a comment becomes something the compiler enforces.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (light) {
-    TrafficLight::Red    =&gt; stop(),
-    TrafficLight::Green  =&gt; go(),
-    TrafficLight::Yellow =&gt; slowDown(),
+    TrafficLight::Red     =&gt; { stop(); },
+    TrafficLight::Green   =&gt; { go(); },
+    TrafficLight::Yellow  =&gt; { slowDown(); },
 }</code></pre>
 <p>Three arms, no <code>else</code>, and the compiler is satisfied because all three lights are covered. Add a fourth light and this switch stops building until the new case is handled.</p>
 <p>A Layer Behind: the actual integers</p>
@@ -139,9 +139,9 @@ Shape c = Shape::Point;</code></pre>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Shape {
     f64 area() {
         switch (self) {
-            Shape::Circle { radius }         =&gt; 3.14159 * radius * radius,
-            Shape::Rectangle { width, height } =&gt; width * height,
-            Shape::Point                     =&gt; 0.0,
+            Shape::Circle { radius }          =&gt; { 3.14159 * radius * radius; },
+            Shape::Rectangle { width, height }  =&gt; { width * height; },
+            Shape::Point                      =&gt; { 0.0; },
         }
     }
 }</code></pre>
@@ -171,9 +171,9 @@ u8 low = b.bytes.b0;      // which byte is this? depends on your machine</code><
 <p>We have built values that are one of several things. Now we take them apart with <code>switch</code>, which in Coral is both a statement and an expression: it can decide what to do and compute a value.</p>
 <p>Suppose a user types a command character and you want different behaviour for each:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (command) {
-    &#x27;q&#x27; | &#x27;Q&#x27; =&gt; quit(),
-    &#x27;h&#x27;      =&gt; help(),
-    else     =&gt; unknown(),
+    &#x27;q&#x27; | &#x27;Q&#x27;  =&gt; { quit(); },
+    &#x27;h&#x27;       =&gt; { help(); },
+    else      =&gt; { unknown(); },
 }</code></pre>
 <p>Read left to right: if the command is 'q' or 'Q', quit; if 'h', help; otherwise unknown. Each line is an arm. The thing left of <code>=&gt;</code> is a pattern, a shape to match, and the right is what to do. The first matching arm wins.</p>
 <p>For <code>command</code> equal to <code>'h'</code>, the first arm fails because the value is neither <code>'q'</code> nor <code>'Q'</code>. The second matches, so <code>help()</code> runs and the switch is done; <code>else</code> is never reached. For <code>'z'</code>, neither of the first two matches, so <code>else</code> runs <code>unknown()</code>.</p>
@@ -182,42 +182,42 @@ u8 low = b.bytes.b0;      // which byte is this? depends on your machine</code><
 <p>Patterns match against the shape of a value. The main kinds:</p>
 <p>Literal patterns match a specific constant. Several literals joined with <code>|</code> mean "any of these":</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (httpStatus) {
-    200            =&gt; println(&quot;OK&quot;),
-    301 | 302 | 307 =&gt; println(&quot;redirect&quot;),
-    404             =&gt; println(&quot;not found&quot;),
-    500 | 502 | 503 =&gt; println(&quot;server error&quot;),
-    else           =&gt; println(&quot;other&quot;),
+    200             =&gt; { println(&quot;OK&quot;); },
+    301 | 302 | 307  =&gt; { println(&quot;redirect&quot;); },
+    404              =&gt; { println(&quot;not found&quot;); },
+    500 | 502 | 503  =&gt; { println(&quot;server error&quot;); },
+    else            =&gt; { println(&quot;other&quot;); },
 }</code></pre>
 <p>Variant patterns match a case and pull its fields into local names. This is the workhorse:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (message) {
-    Message::Login { username, password } =&gt; authenticate(username, password),
-    Message::Logout { reason }            =&gt; logOut(reason),
-    Message::Data { sequence, payload }   =&gt; store(sequence, payload),
-    Message::Ping                         =&gt; sendPong(),
+    Message::Login { username, password }  =&gt; { authenticate(username, password); },
+    Message::Logout { reason }             =&gt; { logOut(reason); },
+    Message::Data { sequence, payload }    =&gt; { store(sequence, payload); },
+    Message::Ping                          =&gt; { sendPong(); },
 }</code></pre>
 <p>The names in braces are fresh locals scoped to that arm. Name only the fields you need: <code>Message::Login { username } =&gt; ...</code> binds just the username and ignores the password. <code>Some { value }</code> and <code>Option::Some { value }</code> mean the same thing.</p>
 <p>Tuple patterns match position by position, covered in <a href="../12-tuples-and-destructuring/index.html">Chapter 12</a>. A small useful one, deciding what a pair of signs means:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch ((x &gt;= 0.0, y &gt;= 0.0)) {
-    (true, true)   =&gt; println(&quot;first quadrant&quot;),
-    (false, true)  =&gt; println(&quot;second quadrant&quot;),
-    (false, false) =&gt; println(&quot;third quadrant&quot;),
-    (true, false)  =&gt; println(&quot;fourth quadrant&quot;),
+    (true, true)    =&gt; { println(&quot;first quadrant&quot;); },
+    (false, true)   =&gt; { println(&quot;second quadrant&quot;); },
+    (false, false)  =&gt; { println(&quot;third quadrant&quot;); },
+    (true, false)   =&gt; { println(&quot;fourth quadrant&quot;); },
 }</code></pre>
 <p>Four possible combinations, all listed, so the switch is exhaustive and the compiler confirms it. Encoding a decision as a tuple of small closed values and matching turns a chain of <code>if</code>s into a table the compiler can check.</p>
 <p>Binding patterns give a name to the whole value. A bare identifier in pattern position is a binding, not a constant to compare against:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (point) {
-    (x, 0) =&gt; println(&quot;on the x-axis at {}&quot;, x),
-    (0, y) =&gt; println(&quot;on the y-axis at {}&quot;, y),
-    (x, y) =&gt; println(&quot;at ({}, {})&quot;, x, y),
+    (x, 0)  =&gt; { println(&quot;on the x-axis at {}&quot;, x); },
+    (0, y)  =&gt; { println(&quot;on the y-axis at {}&quot;, y); },
+    (x, y)  =&gt; { println(&quot;at ({}, {})&quot;, x, y); },
 }</code></pre>
 <p>The wildcard is written <code>else</code>, not an underscore. Coral uses <code>else</code> for "anything not matched above."</p>
 <p>Guards: patterns with a condition</p>
 <p>Sometimes shape is not enough and you want "a key event, but only the escape key." A guard is an <code>if</code> clause between pattern and arrow. It is checked only after the pattern matches and may read the names the pattern bound:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (event) {
-    Event::Key { code } if code == ESC =&gt; quit(),
-    Event::Key { code }                =&gt; handleKey(code),
-    Event::Resize { width, height }    =&gt; onResize(width, height),
-    else                               =&gt; ignore(),
+    Event::Key { code } if code == ESC  =&gt; { quit(); },
+    Event::Key { code }                 =&gt; { handleKey(code); },
+    Event::Resize { width, height }     =&gt; { onResize(width, height); },
+    else                                =&gt; { ignore(); },
 }</code></pre>
 <p>The first arm matches any key event, binds its code, and asks whether it is ESC. If not, the arm fails and the next is tried. Without guards you would need one arm per key or a nested <code>if</code>; with them, the condition lives with the pattern.</p>
 <section><h2 id="s13-5">The Three Rules of a Coral switch</h2></section>
@@ -227,8 +227,8 @@ u8 low = b.bytes.b0;      // which byte is this? depends on your machine</code><
 
 str name(Color c) {
     switch (c) {
-        Color::Red   =&gt; return &quot;red&quot;,
-        Color::Green =&gt; return &quot;green&quot;,
+        Color::Red    =&gt; { return &quot;red&quot;; },
+        Color::Green  =&gt; { return &quot;green&quot;; },
         // Color::Blue is missing!
     }
 }
@@ -239,10 +239,10 @@ str name(Color c) {
 <p>Exhaustiveness means the compiler will not let you leave a case unhandled. Adding a case to a variant is therefore safe: the compiler visits every switch and makes each decide what to do.</p>
 <p>Second, be reachable. An arm that can never run is an error. A duplicate case, or a case an earlier arm already covered, is reported:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (c) {
-    Color::Red   =&gt; ...,
-    Color::Red   =&gt; ...,      // error E0609: unreachable case
+    Color::Red    =&gt; { ... },
+    Color::Red    =&gt; { ... },      // error E0609: unreachable case
 }</code></pre>
-<p>This catches a copy-paste mistake and overlapping ranges.</p>
+<p>This catches a copy-paste mistake where a case was meant to change but did not.</p>
 <p>Third, fallthrough must be deliberate. Arms do not fall through by default, but sometimes you want the C behaviour. Say so with <code>#[[fallthrough]]</code>:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (mode) {
     Mode::Initialize =&gt; {
@@ -261,39 +261,28 @@ str name(Color c) {
 <p>Because arms produce values, a switch can be the right-hand side of an assignment, an argument, or a function body. When every arm yields the same type and the switch is exhaustive, the switch has that type.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str severityLabel(LogLevel level) {
     return switch (level) {
-        LogLevel::Debug =&gt; &quot;DEBUG&quot;,
-        LogLevel::Info  =&gt; &quot;INFO&quot;,
-        LogLevel::Warn  =&gt; &quot;WARN&quot;,
-        LogLevel::Error =&gt; &quot;ERROR&quot;,
-        LogLevel::Fatal =&gt; &quot;FATAL&quot;,
+        LogLevel::Debug  =&gt; { &quot;DEBUG&quot;; },
+        LogLevel::Info   =&gt; { &quot;INFO&quot;; },
+        LogLevel::Warn   =&gt; { &quot;WARN&quot;; },
+        LogLevel::Error  =&gt; { &quot;ERROR&quot;; },
+        LogLevel::Fatal  =&gt; { &quot;FATAL&quot;; },
     };
 }</code></pre>
 <p>Each arm is an expression; all arms are strings and every <code>LogLevel</code> is covered, so the switch is a string. When an arm's body is a block, the block's final expression is the arm's value:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">f64 area(Shape s) {
     return switch (s) {
-        Shape::Circle { radius } =&gt; 3.14159 * radius * radius,
+        Shape::Circle { radius }  =&gt; { 3.14159 * radius * radius; },
         Shape::Rectangle { width, height } =&gt; {
             f64 a = width * height;
             return a;
         }
-        Shape::Point =&gt; 0.0,
+        Shape::Point  =&gt; { 0.0; },
     };
 }</code></pre>
 <p>A switch used for side effects is a statement and takes a semicolon. A switch used for a value is written where a value is expected.</p>
 <p>A value-computing switch turns a label into a result without temporary variables, and the compiler still checks exhaustiveness, so the promised value exists for every case in the type.</p>
-<section><h2 id="s13-7">Matching on Ranges and the Exhaustiveness Check Applied</h2></section>
-<p>Literal patterns cover exact values. For the common "between these bounds" case, Coral has range patterns, checked for overlap as literals are for duplicates.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">char grade;
-switch (score) {
-    90..=100 =&gt; grade = &#x27;A&#x27;,
-    80..=89  =&gt; grade = &#x27;B&#x27;,
-    70..=79  =&gt; grade = &#x27;C&#x27;,
-    60..=69  =&gt; grade = &#x27;D&#x27;,
-    0..=59   =&gt; grade = &#x27;F&#x27;,
-    else     =&gt; grade = &#x27;?&#x27;,
-}</code></pre>
-<p><code>..=</code> is an inclusive range, "from 90 up to and including 100." <code>..</code> is exclusive. Overlapping ranges make the second unreachable (E0609), a bug class that slips past <code>if</code> chains.</p>
-<p>Reach for ranges, enums, and tuples rather than long <code>if</code> chains because the compiler can check a closed, structured decision for completeness and overlap, and it cannot check a chain of <code>if</code>s at all. Every decision expressed as a match over a closed set is work handed to the compiler.</p>
+<section><h2 id="s13-7">The Exhaustiveness Check Applied</h2></section>
+<p>Reach for enums and tuples rather than long <code>if</code> chains because the compiler can check a closed, structured decision for completeness, and it cannot check a chain of <code>if</code>s at all. Every decision expressed as a match over a closed set is work handed to the compiler.</p>
 <section><h2 id="s13-8">A Worked Example: An Arithmetic Interpreter</h2></section>
 <p>The classic use of variants and matching is a little language, which shows how the shape of the data and the shape of the code mirror each other. Represent and evaluate expressions like <code>(3 + 4) * -(2)</code>.</p>
 <p>An expression is a number, the sum of two expressions, the product of two expressions, or the negation of one. That sentence is already a variant:</p>
@@ -306,10 +295,10 @@ switch (score) {
 <p>Evaluate a number by returning it; a sum by evaluating both sides and adding; a product by evaluating both sides and multiplying; a negation by evaluating the operand and negating. Each sentence is one arm:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">f64 eval(Expr e) {
     return switch (e) {
-        Expr::Num { value }       =&gt; value,
-        Expr::Add { left, right } =&gt; eval(left) + eval(right),
-        Expr::Mul { left, right } =&gt; eval(left) * eval(right),
-        Expr::Neg { operand }     =&gt; -eval(operand),
+        Expr::Num { value }        =&gt; { value; },
+        Expr::Add { left, right }  =&gt; { eval(left) + eval(right); },
+        Expr::Mul { left, right }  =&gt; { eval(left) * eval(right); },
+        Expr::Neg { operand }      =&gt; { -eval(operand); },
     };
 }</code></pre>
 <p>Two things stand out. <code>eval</code> is total: it covers all four cases, so the compiler guarantees no shape is forgotten. Add <code>Expr::Div</code> and <code>eval</code> stops compiling until it handles division. And the code mirrors the data: <code>eval</code> recurses on children, while <code>Num</code>, which has none, stops the recursion. One function per operation, one case per shape, is the functional style, and the variant makes it natural.</p>
@@ -317,10 +306,10 @@ switch (score) {
 <p>Printing shows the same mirroring from another operation:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str show(Expr e) {
     return switch (e) {
-        Expr::Num { value }       =&gt; formatFloat(value),
-        Expr::Add { left, right } =&gt; &quot;(&quot; + show(left) + &quot; + &quot; + show(right) + &quot;)&quot;,
-        Expr::Mul { left, right } =&gt; &quot;(&quot; + show(left) + &quot; * &quot; + show(right) + &quot;)&quot;,
-        Expr::Neg { operand }     =&gt; &quot;-&quot; + show(operand),
+        Expr::Num { value }        =&gt; { formatFloat(value); },
+        Expr::Add { left, right }  =&gt; { &quot;(&quot; + show(left) + &quot; + &quot; + show(right) + &quot;)&quot;; },
+        Expr::Mul { left, right }  =&gt; { &quot;(&quot; + show(left) + &quot; * &quot; + show(right) + &quot;)&quot;; },
+        Expr::Neg { operand }      =&gt; { &quot;-&quot; + show(operand); },
     };
 }</code></pre>
 <p>Two functions, two switches over the same variant. Add an operation and write a new switch; add a case and you must update both switches because the compiler insists. That trade, new operations are cheap while new cases touch every operation, is the expression problem. Whether it is good depends on which direction you expect to change more, and the variant makes the trade explicit.</p>
@@ -351,8 +340,8 @@ switch (score) {
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Connection {
     Result&lt;Connection, str&gt; open(str host, u16 port) {
         return switch (self) {
-            Connection::Disconnected =&gt; connectTo(host, port),
-            else =&gt; return Error::Err { .error = &quot;already connecting or connected&quot; },
+            Connection::Disconnected  =&gt; { connectTo(host, port); },
+            else  =&gt; { return Error::Err { .error = &quot;already connecting or connected&quot; }; },
         }
     }
 
@@ -365,7 +354,7 @@ switch (score) {
 }</code></pre>
 <p>The value's identity, <code>Disconnected</code>, <code>Connecting</code>, <code>Connected</code>, <code>Error</code>, is its case, and that case's data is attached to it. When <code>Connected</code> you have a file descriptor and nothing else; when <code>Connecting</code> you have a host and port and no descriptor yet. The type stops you reading the descriptor of a connection that is not yet connected, exactly the bug that plagues hand-rolled state machines with a <code>state</code> field and nullable fields.</p>
 <section><h2 id="s13-10">Exercises</h2></section>
-<section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>You need a value that is either a number or a string, and you must never read it as the wrong one. Which of the three tools do you use, and why are the other two wrong?</li><li><span class="ex-label">Comprehension</span>In your own words, explain why a variant can store a circle's radius and a rectangle's width in overlapping space while still making it impossible to read the wrong one. What does the variant store that the union does not?</li><li><span class="ex-label">Comprehension</span>Explain the three rules of a Coral switch (exhaustive, reachable, deliberate fallthrough) to someone who has only used C's switch. What does each rule protect against?</li><li><span class="ex-label">Implementation</span>Define <code>variant Temperature { Celsius { f64 deg; }, Fahrenheit { f64 deg; }, Kelvin { f64 deg; } }</code> and write <code>toCelsius(Temperature) f64</code> with an exhaustive switch. Then add a <code>Rankine</code> case and list every place the compiler complains.</li><li><span class="ex-label">Implementation</span>Add a <code>Div</code> case to the interpreter in 13.8. Decide what division by zero should do, return a <code>Result&lt;f64, str&gt;</code>, or abort with <code>@assertOut</code>, and justify your choice in two sentences.</li><li><span class="ex-label">Patterns</span>Write <code>classify(Vec&lt;i32&gt;) str</code> returning "empty", "single", "sorted-ascending", "sorted-descending", or "unsorted", using at least one guard and as few <code>if</code>s as you can manage.</li><li><span class="ex-label">Fallthrough</span>Write a switch where two cases genuinely need to share a tail of code, first with an <code>else</code>, then with <code>#[[fallthrough]]</code>. Which reads better, and when is each appropriate? What does the compiler say if you forget the attribute?</li><li><span class="ex-label">Ranges</span>Write a switch over an <code>i32</code> with arms <code>0</code>, <code>1..=10</code>, <code>-5..=-1</code>, and <code>else</code>. Which values would be covered twice if you wrote <code>0..=10</code> instead of <code>1..=10</code>? Does the compiler catch it?</li><li><span class="ex-label">Design</span>Model the events a text editor handles, a key press, a mouse click, a resize, a file-loaded notification, as a variant, then write the exhaustive switch that dispatches them.</li><li><span class="ex-label">Meta</span>The interpreter separates <code>eval</code> (behaviour) and <code>show</code> (formatting) into two switches over the same variant. Describe what happens to the codebase when you add a new operation versus when you add a new case. Write one paragraph arguing for the variant approach and one arguing for the class-hierarchy approach, then say which you find more convincing.</li></ol></section>
+<section class="exercises"><ol class="exercise-list"><li><span class="ex-label">Comprehension</span>You need a value that is either a number or a string, and you must never read it as the wrong one. Which of the three tools do you use, and why are the other two wrong?</li><li><span class="ex-label">Comprehension</span>In your own words, explain why a variant can store a circle's radius and a rectangle's width in overlapping space while still making it impossible to read the wrong one. What does the variant store that the union does not?</li><li><span class="ex-label">Comprehension</span>Explain the three rules of a Coral switch (exhaustive, reachable, deliberate fallthrough) to someone who has only used C's switch. What does each rule protect against?</li><li><span class="ex-label">Implementation</span>Define <code>variant Temperature { Celsius { f64 deg; }, Fahrenheit { f64 deg; }, Kelvin { f64 deg; } }</code> and write <code>toCelsius(Temperature) f64</code> with an exhaustive switch. Then add a <code>Rankine</code> case and list every place the compiler complains.</li><li><span class="ex-label">Implementation</span>Add a <code>Div</code> case to the interpreter in 13.8. Decide what division by zero should do, return a <code>Result&lt;f64, str&gt;</code>, or abort with <code>@assertOut</code>, and justify your choice in two sentences.</li><li><span class="ex-label">Patterns</span>Write <code>classify(Vec&lt;i32&gt;) str</code> returning "empty", "single", "sorted-ascending", "sorted-descending", or "unsorted", using at least one guard and as few <code>if</code>s as you can manage.</li><li><span class="ex-label">Fallthrough</span>Write a switch where two cases genuinely need to share a tail of code, first with an <code>else</code>, then with <code>#[[fallthrough]]</code>. Which reads better, and when is each appropriate? What does the compiler say if you forget the attribute?</li><li><span class="ex-label">Design</span>Model the events a text editor handles, a key press, a mouse click, a resize, a file-loaded notification, as a variant, then write the exhaustive switch that dispatches them.</li><li><span class="ex-label">Meta</span>The interpreter separates <code>eval</code> (behaviour) and <code>show</code> (formatting) into two switches over the same variant. Describe what happens to the codebase when you add a new operation versus when you add a new case. Write one paragraph arguing for the variant approach and one arguing for the class-hierarchy approach, then say which you find more convincing.</li></ol></section>
       <nav class="chapter-nav"><a href="../../speed/12-tuples-and-destructuring/index.html">← Previous</a><a href="../../speed/14-modules-imports-and-visibility/index.html">Next →</a></nav>
     </article>
     <footer class="site-footer">

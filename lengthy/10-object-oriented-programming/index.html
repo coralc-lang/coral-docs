@@ -101,11 +101,12 @@ alias.rc-&gt;count += 1;</code></pre>
         self.value += 1;
     }
 
-    i32 current() const {
+    #[[const]]
+    i32 current() {
         return self.value;
     }
 }</code></pre>
-<p><code>bump</code> mutates the receiver through <code>self</code>; <code>current</code> promises not to, and the trailing <code>const</code> is the promise. That promise has teeth: a const method that assigns to <code>self</code> is an error at the assignment, and a const method can be called on a value the caller considers read-only where a mutating one cannot.</p>
+<p><code>bump</code> mutates the receiver through <code>self</code>; <code>current</code> promises not to, and the <code>#[[const]]</code> attribute is the promise. It has teeth: a const method that assigns to <code>self</code> is an error at the assignment, and a const method can be called on a value the caller considers read-only where a mutating one cannot.</p>
 <p>A method that belongs to the type rather than to any particular value is <code>static</code>, and it has no <code>self</code>:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub extend Counter {
     static Counter start() {
@@ -114,7 +115,7 @@ alias.rc-&gt;count += 1;</code></pre>
 }</code></pre>
 <p>Statics are called on the type with the double colon, <code>Counter::start()</code>; instance methods are called on a value with the dot, <code>c.bump()</code>. The <code>::</code> versus <code>.</code> distinction is the distinction between a type and a value, and it is visible at every call site, which is the whole point.</p>
 <p>A common beginner stumble is mixing these up. If the thing on the left is a type name, use <code>::</code>; if it is a value you declared, use <code>.</code>. <code>Counter::start()</code> makes a new counter; <code>c.bump()</code> changes the one you already have.</p>
-<p>There is one more spelling you will meet in the standard library: the explicit receiver, written as a first parameter instead of implied by <code>self</code>. <code>T get(const self*)</code> and <code>void bump(self*)</code> mean the same thing as the trailing-<code>const</code> and mutating forms above, with the receiver's pointer spelled out. The implicit form is the dominant one in application code because the bodies read more naturally; the explicit form appears where a method must hand the receiver onward or store it. Both describe the same method.</p>
+<p>Every receiver is implicit. There is no <code>self</code> parameter to declare and no pointer spelling of the receiver to learn. A static method has no receiver; an instance method always has <code>self</code>. To mark a method read-only, use <code>#[[const]]</code>, and the compiler flags any mutation through <code>self</code>.</p>
 <section><h2 id="s10-5">Encapsulation and Information Hiding</h2></section>
 <p>Encapsulation is the practice of bundling data with the operations on it and controlling how the data is reached. The class languages enforce the control with <code>public</code>, <code>private</code>, and <code>protected</code>; Coral has none of those keywords. A field is reachable by any code that can name its type, and a method is callable by any code that can name its struct. What Coral controls instead is visibility between modules, and that is a single, coarse switch: <code>pub</code> or not.</p>
 <p>The reason the finer-grained keywords are absent is that Coral hides implementation with the type rather than with the field. An opaque type hides its storage behind a layout that has no meaning to the reader. A distinct type hides its representation behind a name:</p>
@@ -268,9 +269,9 @@ for (any Shape s : shapes) {
 pub extend Shape {
     f64 area() const {
         switch (self) {
-            Shape::Circle { radius }           =&gt; 3.14159 * radius * radius,
-            Shape::Rectangle { width, height } =&gt; width * height,
-            Shape::Point                       =&gt; 0.0,
+            Shape::Circle { radius }            =&gt; { 3.14159 * radius * radius; },
+            Shape::Rectangle { width, height }  =&gt; { width * height; },
+            Shape::Point                        =&gt; { 0.0; },
         }
     }
 }</code></pre>
@@ -280,9 +281,9 @@ pub extend Shape {
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void render&lt;T&gt;(T value) {
     comptime {
         switch (@typeof(value)) {
-            i32 =&gt; printInt(value),
-            f64 =&gt; printFloat(value),
-            else =&gt; @compileError(&quot;render has no case for this type&quot;),
+            i32  =&gt; { printInt(value); },
+            f64  =&gt; { printFloat(value); },
+            else  =&gt; { @compileError(&quot;render has no case for this type&quot;); },
         }
     }
 }</code></pre>

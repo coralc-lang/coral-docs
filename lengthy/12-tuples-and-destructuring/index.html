@@ -111,22 +111,22 @@ var keep = pair.0;        // just read the first element</code></pre>
 <section><h2 id="s12-6">Patterns: Matching Tuples in a switch</h2></section>
 <p>A <code>switch</code> takes a value, tries its arms in order, and runs the first one whose pattern matches. A tuple pattern is written with parentheses and the same commas as a tuple literal, and each position holds either a sub-pattern or a fresh name to bind:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (divide(10, 0)) {
-    (value, true)  =&gt; println(&quot;ok: {}&quot;, value),
-    (value, false) =&gt; println(&quot;division failed&quot;),
+    (value, true)   =&gt; { println(&quot;ok: {}&quot;, value); },
+    (value, false)  =&gt; { println(&quot;division failed&quot;); },
 }</code></pre>
 <p>Each arm is a tuple pattern: it matches the tuple position by position and binds the pieces it names. Because a <code>bool</code> has exactly two values and both arms are present, this switch is exhaustive and the compiler confirms it. If you later decide <code>divide</code> must also report an error string, the type changes and the compiler walks you through every switch that has to change, the same exhaustiveness benefit <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> describes at length.</p>
 <p>Here is that switch walked through slowly. Suppose <code>divide(10, 0)</code> returns the tuple <code>(0, false)</code>. The switch tries the first arm, <code>(value, true)</code>: it needs the second component to be <code>true</code>, but it is <code>false</code>, so this arm does not match. It tries the second arm, <code>(value, false)</code>: the second component is <code>false</code>, so it matches, binding <code>value</code> to <code>0</code> and running <code>println("division failed")</code>. First match wins, and the rest are skipped.</p>
 <p>Patterns nest, because the type nests:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (bounds(values)) {
-    (lo, hi, 0) =&gt; println(&quot;no data&quot;),
-    (lo, hi, n) =&gt; println(&quot;{} readings span {}&quot;, n, lo, hi),
+    (lo, hi, 0)  =&gt; { println(&quot;no data&quot;); },
+    (lo, hi, n)  =&gt; { println(&quot;{} readings span {}&quot;, n, lo, hi); },
 }</code></pre>
 <p>The first arm matches only when the count is exactly zero and binds the two zeroes into <code>lo</code> and <code>hi</code> (which you ignore by not using them). The second arm is a catch-all binding pattern that names all three pieces. Because there is no wildcard, when you want to ignore a piece you name it and simply do not use it, or you write it as a literal that pins the value. Coral's patterns are about <em>shape and value</em>, not about discarding, and the habit of naming a piece you will not read is the small price of having no <code>_</code>.</p>
 <p>And <code>else</code> still works as the catch-all when you do not want to enumerate:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (signOf(x), signOf(y)) {
-    (1, 1)   =&gt; println(&quot;both positive&quot;),
-    (0, 0)   =&gt; println(&quot;both zero&quot;),
-    else     =&gt; println(&quot;something else&quot;),
+    (1, 1)    =&gt; { println(&quot;both positive&quot;); },
+    (0, 0)    =&gt; { println(&quot;both zero&quot;); },
+    else      =&gt; { println(&quot;something else&quot;); },
 }</code></pre>
 <p>Notice the trick quietly at work here. We built a tuple out of two small values purely so that we could match on them. <code>(signOf(x), signOf(y))</code> is not stored in a variable or returned from a function; it is constructed at the moment of the switch and immediately taken apart. That is a recurring Coral idiom: when a decision depends on several small closed facts at once, package them into a tuple and match, and the compiler will check completeness for you. <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>, where patterns over tuples and variants are the main tool for taking data apart, builds on exactly this.</p>
 <p>One subtlety worth naming, because it trips people up. A binding pattern asks for the value at that position, and the value is copied or moved into the new name according to the usual ownership rules. Matching a tuple that owns heap data, say a <code>struct(String, usize)</code>, moves the <code>String</code> out of the tuple and into the new name. After that, the original tuple is partially moved and cannot be used as a whole. If you have not met move semantics yet, all you need for now is the rule of thumb: a pattern that binds a piece takes it, and does not copy it unless the piece is trivially copyable like a number.</p>
@@ -251,8 +251,8 @@ println(&quot;{} readings, range {}..{}&quot;, b.2, b.0, b.1);</code></pre>
 println(&quot;range {}..{}&quot;, b.0, b.1);</code></pre>
 <p>Now a caller who wants to branch on emptiness matches the tuple directly:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (bounds(values)) {
-    (lo, hi, 0) =&gt; println(&quot;no data&quot;),
-    (lo, hi, n) =&gt; println(&quot;{} readings span {}&quot;, n, lo, hi),
+    (lo, hi, 0)  =&gt; { println(&quot;no data&quot;); },
+    (lo, hi, n)  =&gt; { println(&quot;{} readings span {}&quot;, n, lo, hi); },
 }</code></pre>
 <p>Now add a second function that turns the bounds into a report string, to see the tuple flow through a pipeline:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str describe(const i32[] data)

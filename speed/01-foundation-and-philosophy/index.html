@@ -29,12 +29,10 @@
       <p class="chapter-kicker">Speed Edition · Chapter 1</p>
       <h1>Foundation and Philosophy</h1>
       <p class="lead">The "Why" Before the "How"</p>
-      <p>Every language exists to solve a problem. Understanding why Coral exists lets you predict its features instead of memorizing them.</p>
-<p>A reference manual says what a language looks like; a textbook says why. In Coral the why and the what are the same thing.</p>
+      <p>Every language exists to solve a problem. Understand why Coral exists and you can predict its features instead of memorizing them. A reference manual says what a language looks like; this book says why.</p>
 <section><h2 id="s1-1">The Origin</h2></section>
-<p>Coral began with a love of C: its simplicity, honesty, and directness. C++ added structure and generics, which appealed, but grew painful.</p>
-<p>C++ features piled up into slow compiles, exhausting learning, and hard-to-predict code. Each feature was reasonable; together they were not.</p>
-<p>Rust and Zig fixed some of this but felt alien to C thinkers. The cost of admission, especially Rust's borrow checker, was steep.</p>
+<p>Coral began with a love of C: its simplicity, honesty, and directness. C++ added structure and generics, but its features piled up into slow compiles and hard-to-predict code. Rust and Zig are not C, and I do not like their syntax; the syntax is the reason Coral exists, not the borrow checker. I do not like the borrow checker either; it should be something you turn on when you want it, not a mandatory way to write every program. Coral keeps C's syntax and mental model.</p>
+<p>The claim that C declarations are hard to read, that you start at the name and spiral outward, is nonsense. <code>i32 a = 8;</code> starts on the left: you see <code>i32</code>, know the type, then read the name and the initializer. That is easier than <code>let x: i32 = 43;</code>. Anyone who says otherwise is usually selling the language. AI, which does not read the way a human does, repeats the marketing that Rust and its OCaml-like relatives are cleaner as if it were a fact. It is not a fact. Who decides which syntax is cleaner, and who has the right to tell you?</p>
 <p>Coral answers one question: can a language keep what makes C great, add modern features and safety, and preserve C-style thinking?</p>
 <p>That question became a constraint. A feature earns its place only if it passes three tests:</p>
 <ul class="checklist"><li>Does it preserve the C mental model? If learning Coral means unlearning how you think about memory and the machine, the feature is working against the language, not for it.</li><li>Does it refuse to hide machinery from the programmer? Nothing runs behind your back. If a cost exists, you can point at the source line that pays it.</li><li>Does it make its cost visible in the code? The price of a feature, a copy, an allocation, a dispatch, a check, should be written in the program, not concealed in some library.</li></ul>
@@ -99,7 +97,7 @@ else
 <section><h2 id="s1-6">Paradigm Orientation</h2></section>
 <p>Coral is primarily imperative and procedural in the C tradition: statements operating on mutable state.</p>
 <p>On that core it layers:</p>
-<p>Structured data with behavior. Structs can contain methods, with an explicit receiver named self passed like any other parameter. A method call is a function call whose first argument is the receiver, so there is no vtable, hidden dispatch, or hidden copy unless asked for.</p>
+<p>Structured data with behavior. Structs can contain methods. An instance method receives its object through <code>self</code>, which is available inside the body without being declared in the parameter list. A method call is a function call whose receiver is supplied by the compiler, so there is no vtable, hidden dispatch, or hidden copy unless asked for.</p>
 <p>The standard library writes methods inside the struct body. Here is a rectangle:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Rect
 {
@@ -114,7 +112,7 @@ else
                y &gt;= self.bottom &amp;&amp; y &lt;= self.top;
     }
 }</code></pre>
-<p>self is a parameter like x and y, passed first by the compiler. Calling rect.contains(1.5, 2.0) costs exactly a function call.</p>
+<p><code>self</code> is the receiver, supplied by the compiler; it is not one of the parameters written in the signature. Calling <code>rect.contains(1.5, 2.0)</code> costs exactly a function call.</p>
 <p>Generic programming. Generics let a data structure or algorithm be written once and used with any type. Vec, hash map, set, and sorting are generic, compiled separately per instantiation.</p>
 <p>Trait-based polymorphism. Traits provide interface polymorphism through composition, not hierarchy. A type implements a trait by providing its methods; capability, not ancestry, is what matters.</p>
 <p>A trait declares the operations it requires:</p>
@@ -223,7 +221,7 @@ pub void main()
     }
 }</code></pre>
 <p>Methods may also be written inside the struct body, but the standard library and this book keep fields in the declaration and behavior in an extend block.</p>
-<p>The receiver self is available in every method. A static method, which belongs to the type rather than an instance, is called with the type name and a double colon:</p>
+<p>The receiver <code>self</code> is available implicitly in every instance method. A static method, which belongs to the type rather than an instance, has no <code>self</code> and is called with the type name and a double colon:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">var total = Vec&lt;u64&gt;::withCap(4);</code></pre>
 <p>The type is still named first, the operation second.</p>
 <p>Type-first syntax makes what the compiler enforces and what the reader sees line up.</p>
@@ -309,12 +307,15 @@ vaprint(&quot;[&quot;, label, &quot;][&quot;, self.name.asView(), &quot;] &quot;
 <p>Compile-time evaluation lets the compiler reason about types and values during compilation. The printing machinery uses comptime to choose a formatter:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime
 {
-    if (T == i8)  { _fprintI8(fd, (i8)val); return; }
-    if (T == u8)  { _fprintU8(fd, (u8)val); return; }
-    if (T == i32) { _fprintI32(fd, (i32)val); return; }
-    if (T == f64) { _fprintF64(fd, (f64)val); return; }
-    if (T == str) { _fprintBytes(fd, ((str)val).ptr, ((str)val).len); return; }
-    // ... and so on for every type print can handle
+    switch (@typeof(T))
+    {
+        i8  =&gt; { _fprintI8(out, (i8)val); return; },
+        u8  =&gt; { _fprintU8(out, (u8)val); return; },
+        i32 =&gt; { _fprintI32(out, (i32)val); return; },
+        f64 =&gt; { _fprintF64(out, (f64)val); return; },
+        str =&gt; { _fprintBytes(out, val.ptr, val.len); return; },
+        else =&gt; { @compileError(&quot;print: unsupported type&quot;); }
+    }
 }</code></pre>
 <p>This is metaprogramming with the language's own types and control flow. Generics monomorphize first, so by the time the comptime block runs, T is concrete and checkable.</p>
 <p>Errors include file, line, column, a source snippet, and related locations. The compiler reports errors in batches and recovers to find more.</p>

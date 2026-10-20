@@ -100,8 +100,8 @@ nothing.orElse(computeDefault);       // runs computeDefault only on None</code>
 <p>The choice determines what the caller may know. A map lookup returning <code>Option&lt;V&gt;</code> honestly says "a value or nothing." A file open returning <code>Result&lt;File, IoError&gt;</code> says "a file, or a specific reason," and <code>IoError</code> lets the caller retry, report the path, or use a default.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Result&lt;File, IoError&gt; opened = open(&quot;config.txt&quot;);
 switch (opened) {
-    Ok { value }  =&gt; use(value),
-    Err { error } =&gt; report(error),
+    Ok { value }   =&gt; { use(value); },
+    Err { error }  =&gt; { report(error); },
 }</code></pre>
 <p>The methods mirror <code>Option</code>'s: <code>isOk</code> and <code>isErr</code>; <code>unwrap</code> and <code>unwrapOr</code>; <code>unwrapErr</code> for tests; <code>okPtr</code> and <code>errPtr</code> returning pointers to the live case or null:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">if (opened.isOk()) {
@@ -147,14 +147,14 @@ count.orElse(retry);                  // recover on Err</code></pre>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">Result&lt;Config, ConfigError&gt; loadConfig(str path) {
     Result&lt;File, IoError&gt; opened = open(path);
     switch (opened) {
-        Err { error } =&gt; return ConfigError::Io { .cause = error };
+        Err { error }  =&gt; { return ConfigError::Io { .cause = error }; }
         else          =&gt; {}
     }
     File f = opened.unwrap();
 
     Result&lt;str, IoError&gt; contents = readAll(&amp;f);
     switch (contents) {
-        Err { error } =&gt; return ConfigError::Io { .cause = error };
+        Err { error }  =&gt; { return ConfigError::Io { .cause = error }; }
         else          =&gt; {}
     }
 
@@ -182,8 +182,8 @@ count.orElse(retry);                  // recover on Err</code></pre>
 <p>The compiler distinguishes the cases. A switch over <code>ConfigError</code> is checked for exhaustiveness, so "not found" can be handled differently from "syntax error," unlike a stringly-typed error. Cases needing the same response can share an arm with <code>|</code>:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">bool retryable(IoError e) {
     switch (e) {
-        IoError::Timeout | IoError::WouldBlock | IoError::Interrupted =&gt; true,
-        else =&gt; false,
+        IoError::Timeout | IoError::WouldBlock | IoError::Interrupted  =&gt; { true; },
+        else  =&gt; { false; },
     }
 }</code></pre>
 <p>Read <code>|</code> as "or": one body answers all three cases. It is the same separator <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> uses for literal patterns. A comma ends an arm and begins the next, so <code>IoError::Timeout, IoError::WouldBlock =&gt; true</code> is a different, probably unintended, program.</p>
@@ -229,12 +229,15 @@ Result&lt;i64, ConfigError&gt; parseTimeout(Map&lt;str, str&gt;* cfg) {
 <p>This asymmetry shapes the function. The happy path stays quiet while every failure is spelled out, so a reader sees exactly where it can give up. If both needed the same ceremony, neither would stand out.</p>
 <p>Each guard produces the specific error the caller needs, carrying the key, the offending value, and the bounds. The caller decides policy:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (parseTimeout(&amp;cfg)) {
-    Ok { value }                    =&gt; applyTimeout(value),
-    Err { error }                   =&gt; switch (error) {
-        ConfigError::MissingKey { key }  =&gt; useDefault(),
-        ConfigError::NotANumber { value } =&gt; warnAndUseDefault(value),
-        ConfigError::OutOfRange { value, min, max } =&gt;
-            clampToRange(value, min, max),
+    Ok { value } =&gt; { applyTimeout(value); },
+    Err { error } =&gt; {
+        switch (error) {
+            ConfigError::MissingKey { key } =&gt; { useDefault(); },
+            ConfigError::NotANumber { value } =&gt; { warnAndUseDefault(value); },
+            ConfigError::OutOfRange { value, min, max } =&gt; {
+                clampToRange(value, min, max);
+            }
+        }
     },
 }</code></pre>
 <p>The outer failure is handled; the inner error is inspected and each category gets its own response. The switch is exhaustive, so a fourth failure mode is a compile error here until the caller handles it. Failure is a value, the value names its cases, and the compiler checks every caller.</p>

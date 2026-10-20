@@ -47,23 +47,23 @@ void compilerBarrier() {
     asm volatile { &quot;&quot; ::: &quot;memory&quot; }
 }
 
-// publish a payload, then raise the flag that announces it
-void publish(u64* data, u64* flag, u64 value) {
+// publish a payload, then raise the ready flag that announces it
+void publish(u64* data, u64* ready, u64 value) {
     *data = value;          // the payload
     compilerBarrier();      // the compiler may not move the next store above this
-    *flag = 1u;             // the announcement
+    *ready = 1u;            // the announcement
 }
 
 import(lib) std::io::ios { println };
 
 void main() {
     u64 data = 0;
-    u64 flag = 0;
+    u64 ready = 0;
     // publish keeps the barrier between the two stores
-    publish(&amp;data, &amp;flag, 42u);
-    println(&quot;data {} flag {}&quot;, data, flag);
+    publish(&amp;data, &amp;ready, 42u);
+    println(&quot;data {} ready {}&quot;, data, ready);
 }</code></pre>
-<p>Parsing the barrier line by line: <code>asm volatile</code> is the statement; <code>""</code> is the empty template; the first <code>:</code> opens the output section and the second <code>:</code> closes it with nothing in it; the third <code>:</code> opens the input section, which is likewise empty, and the <code>"memory"</code> that follows is the clobber list. The whole block lowers to a C <code>__asm__ volatile("" ::: "memory")</code>, and the compiler is forbidden from reordering <code>*flag = 1u</code> above <code>*data = value</code>. The variables themselves are ordinary Coral locals and parameters; the barrier never mentions them, because it is not about a particular value, it is about all memory at once.</p>
+<p>Parsing the barrier line by line: <code>asm volatile</code> is the statement; <code>""</code> is the empty template; the first <code>:</code> opens the output section and the second <code>:</code> closes it with nothing in it; the third <code>:</code> opens the input section, which is likewise empty, and the <code>"memory"</code> that follows is the clobber list. The whole block lowers to a C <code>__asm__ volatile("" ::: "memory")</code>, and the compiler is forbidden from reordering <code>*ready = 1u</code> above <code>*data = value</code>. The variables themselves are ordinary Coral locals and parameters; the barrier never mentions them, because it is not about a particular value, it is about all memory at once.</p>
 <p class="step-label">Cost and notes</p>
 <p>The block emits no instructions and costs nothing at run time. It costs a little at compile time, because it forces the compiler to reload values it might otherwise have kept in a register. That is the whole point: it is a fence in the compiler's model, not in the hardware's. It does not stop the processor from reordering. If you also need the hardware to observe the order, that is a separate fence instruction, written in its own <code>asm</code> block with its own <code>"memory"</code> clobber. This is the block the standard library exposes as <code>memoryBarrier</code>, and it is the one to reach for whenever correctness depends on the order of ordinary memory accesses rather than on a special instruction.</p>
 <p class="step-label">Edge cases</p>

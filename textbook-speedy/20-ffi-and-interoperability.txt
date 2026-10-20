@@ -249,8 +249,8 @@ The wrapper also decides ownership. `File` owns the handle, so copying it would 
 Two finishing details: map error codes to a small closed set, and group shared handling paths with `|`:
 
     switch (err) {
-        FileError::NotFound | FileError::PermissionDenied => recover(),
-        FileError::Unknown { code }                       => panic(code),
+        FileError::NotFound | FileError::PermissionDenied => { recover(); },
+        FileError::Unknown { code } => { panic(code); }
     }
 
 This is the variants chapter's pattern matching applied at the boundary: a C integer becomes a compiler-checked Coral variant.
@@ -369,7 +369,7 @@ This program reads a text file through the wrapper, keeping the mess in one modu
     }
 
     pub Result<usize, FileError> fileRead(File* f, u8* buf, usize len) {
-        return (usize)fread((rawptr)buf, 1u, len, f->handle);
+        return Result<usize, FileError>::Ok { .value = (usize)fread((rawptr)buf, 1u, len, f->handle) };
     }
 
 Then the program that uses it, which never sees C:
@@ -381,7 +381,7 @@ Then the program that uses it, which never sees C:
     Result<String, FileError> readWholeFile(str path) {
         Result<File, FileError> opened = fileOpen(path);
         switch (opened) {
-            Err { error } => return Result<String, FileError>::Err { .error = error },
+            Err { error } => { return Result<String, FileError>::Err { .error = error }; },
             else          => {}
         }
         File f = opened.unwrap();
@@ -400,8 +400,8 @@ Then the program that uses it, which never sees C:
 
     void main() {
         switch (readWholeFile("config.txt")) {
-            Ok { value }  => println("read {} bytes", value.len),
-            Err { error } => eprintln("could not open the file"),
+            Ok { value } => { println("read {} bytes", value.len); },
+            Err { error } => { eprintln("could not open the file"); }
         }
     }
 

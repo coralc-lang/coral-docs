@@ -128,16 +128,16 @@ a[7] = 1;               // error E0307: index 7 out of bounds for [4]</code></pr
 <p>The E06xx range is the largest and the most frequently met, because it catches the mistakes a program makes about its own control flow and the flow of its data.</p>
 <p>E0608, switch not exhaustive and missing else, is the one the earlier chapters promised. A switch over an enum or variant that lists some cases, has no else, and does not cover every case is an error:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (shape) {
-    Shape::Circle { r } =&gt; area = pi * r * r,
+    Shape::Circle { r }  =&gt; { area = pi * r * r; },
     // error E0608: non-exhaustive switch; missing Shape::Square, Shape::Point
 }</code></pre>
 <p>The message names the missing cases, so the fix is immediate. This single diagnostic is why the variant-and-switch style of <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> is safe: forgetting a case is not a silently wrong program but a build failure with a list. When someone later adds a case to the enum, every switch that did not anticipate it stops compiling and hands you the list of places to update.</p>
 <p>E0609, unreachable switch case, catches a duplicate case value or a variant already covered by an earlier arm:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (c) {
-    Color::Red =&gt; ...,
-    Color::Red =&gt; ...,      // error E0609: unreachable case
+    Color::Red  =&gt; { ... },
+    Color::Red  =&gt; { ... },      // error E0609: unreachable case
 }</code></pre>
-<p>It is the compiler's way of saying "this arm can never run, you probably meant something else," and it catches the copy-paste mistake where you meant to change the case and forgot, as well as overlapping ranges such as <code>0..=10</code> and <code>5..=15</code>.</p>
+<p>It is the compiler's way of saying "this arm can never run, you probably meant something else," and it catches the copy-paste mistake where you meant to change the case and forgot.</p>
 <p>E0610, fallthrough attribute on last arm, catches a leftover <code>#[[fallthrough]]</code> at the end of a switch, where there is nothing left to fall into. It is almost always a copy-paste vestige from an arm that used to have a successor, and the compiler treats it as the mistake it is.</p>
 <p>The rest of the range concerns data flow across branches. E0601, branch reaches end of non-void block without value yield, catches a branch in a conditional or switch that skips returning a value while all the other paths yield one:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 pick(bool c) {
@@ -242,7 +242,7 @@ Payload taken = h.p;    // moves p out
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str label(Shape s) {
     i32 unused = 0;
     switch (s) {
-        Shape::Circle { r } =&gt; return &quot;circle&quot;,
+        Shape::Circle { r }  =&gt; { return &quot;circle&quot;; },
     }
 }</code></pre>
 <p>The compiler reports, in order. First E0801: unused variable <code>unused</code>. Next E0608: non-exhaustive switch over Shape, missing Shape::Square and Shape::Point. Then, because the switch may not return on every path, E0604: non-void function <code>label</code> can reach its end without returning. Three diagnostics, one root cause in two places: a forgotten unused variable and a switch that is not total.</p>

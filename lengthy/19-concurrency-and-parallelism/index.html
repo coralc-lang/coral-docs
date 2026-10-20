@@ -49,7 +49,9 @@ pub distinct Thread = rawptr;
 pub Result&lt;Thread, ThreadError&gt; threadCreate(rawptr(rawptr) fn, rawptr arg);</code></pre>
 <p>A thread runs a function. The function takes one <code>rawptr</code>, a raw, untyped pointer, and returns one <code>rawptr</code>. This is the C signature, and it is deliberately raw: the compiler has no way to know what your thread will need, so it hands you a pointer and trusts you to point it at something sensible. <code>Thread</code> itself is a <code>distinct</code> type over <code>rawptr</code>, which means it is a new type the compiler will not let you confuse with any other pointer. A thread handle is not a <code>rawptr</code> and not a <code>Thread</code> for a file descriptor; it is a <code>Thread</code>, and the type says so.</p>
 <p>Here is the smallest threaded program worth writing. It passes a number to a worker, the worker doubles it, and the main thread reads the result after joining:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">rawptr worker(rawptr arg) {
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::concurrent::thread { threadCreate, threadJoin, Thread, ThreadError };
+
+rawptr worker(rawptr arg) {
     i32* n = (i32*)arg;
     *n = *n * 2;
     return null;

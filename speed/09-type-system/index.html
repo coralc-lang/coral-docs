@@ -295,19 +295,25 @@ u64 big = small;      // error: u32 is not u64, write (u64)small</code></pre>
 <p>A <code>comptime</code> block runs during compilation and can compare types.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime
 {
-    if (T == i32) { ... }
-    if (T == f64) { ... }
+    switch (@typeof(T))
+    {
+        i32 =&gt; { ... },
+        f64 =&gt; { ... }
+    }
 }</code></pre>
-<p><code>T == i32</code> asks whether the type parameter is <code>i32</code>, and only the selected case is compiled. This is how the generic print functions choose a formatter per argument type. Inside a generic function, <code>T</code> is a compile-time fact.</p>
+<p>The pattern <code>i32</code> asks whether the type parameter is <code>i32</code>, and only the selected arm is compiled. This is how the generic print functions choose a formatter per argument type. Inside a generic function, <code>T</code> is a compile-time fact.</p>
 <p>In miniature, the recognizer the print machinery uses:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">comptime
 {
-    if (T == u64) { _printU64(val); return; }
-    if (T == f64) { _printF64(val); return; }
-    if (T == str) { _printView(val); return; }
-    // no match: a compile-time error naming the type
+    switch (@typeof(T))
+    {
+        u64 =&gt; { _printU64(val); return; },
+        f64 =&gt; { _printF64(val); return; },
+        str =&gt; { _printView(val); return; },
+        else =&gt; { @compileError(&quot;print: unsupported type&quot;); }
+    }
 }</code></pre>
-<p>For a <code>u64</code> argument, the compiler evaluates the block with <code>T</code> known to be <code>u64</code>, takes the first branch, and compiles exactly that call. The other branches vanish before the program exists. The decision is about the type, at build time.</p>
+<p>For a <code>u64</code> argument, the compiler evaluates the block with <code>T</code> known to be <code>u64</code>, takes the matching arm, and compiles exactly that call. The other branches vanish before the program exists. The decision is about the type, at build time.</p>
 <p><code>comptime</code> is not reflection: it does not run at runtime, and the compiled program contains only the selected code. No runtime type tag, no lookup, no value carrying its type.</p>
 <section><h2 id="s9-21">Static and Dynamic, and the Boundary</h2></section>
 <p>Coral has no reflection, no runtime type checking, and no <code>typeof</code> or <code>instanceof</code>.</p>
@@ -433,9 +439,9 @@ struct Grouped
     u8 tiny2;
     u64 big;
 }</code></pre>
-<p>Interleaved puts a <code>u64</code> between two one-byte fields, paying seven bytes of padding on each side: twenty-four bytes. Grouped puts the small fields together and pays six bytes: sixteen bytes. Same fields, same types, eight bytes of difference, and <code>sizeof</code> prints 24 and 16 on the platforms Coral targets. A million Interleaved values hold eight million bytes of padding the Grouped form never pays.</p>
+<p>Interleaved puts a <code>u64</code> between two one-byte fields, paying seven bytes of padding on each side: twenty-four bytes. Grouped puts the small fields together and pays six bytes: sixteen bytes. Same fields, same types, eight bytes of difference, and <code>@sizeof</code> prints 24 and 16 on the platforms Coral targets. A million Interleaved values hold eight million bytes of padding the Grouped form never pays.</p>
 <p>The fixed-width integers are their widths: <code>u8</code> one byte, <code>u16</code> two, <code>u32</code> four, <code>u64</code> eight, and a pointer the platform's word size. An <code>f32</code> is four bytes and an <code>f64</code> eight. An enum is an integer wide enough for its variants, and a distinct type has its base type's layout. A <code>Vec</code> is three fields and its size is the header, not the elements, which live on the heap.</p>
-<p>The <code>sizeof</code> operator reports a type's size. The library's memory pool computes its block size as the maximum of the element size and a pointer size. The layout is the C ABI, so a Coral struct has the same layout the platform's C compiler would give it.</p>
+<p>The <code>@sizeof</code> operator reports a type's size. The library's memory pool computes its block size as the maximum of the element size and a pointer size. The layout is the C ABI, so a Coral struct has the same layout the platform's C compiler would give it.</p>
 <section><h2 id="s9-27">Reading Types</h2></section>
 <p>Reading types is the habit a type-first language rewards. A signature reads as a sentence: the return type is the result, the parameters are the inputs.</p>
 <p>A <code>HashMap&lt;K, V&gt;</code> names keys and values, a <code>Vec&lt;T&gt;</code> the elements, and an <code>Arr&lt;T, N&gt;</code> the elements and the count. An <code>any Shape</code> reads the requirement in the type itself: the value must implement the trait, and the trait's methods are what the body may call. A plain generic <code>largestArea&lt;T&gt;</code> says less in the signature and more in the body, where the operations it calls are the requirement.</p>
@@ -469,7 +475,7 @@ struct Grouped
 <p>A type is an agreement with the compiler, the reader, and the machine about what a value is, what can be done with it, and how it is stored.</p>
 <p>The type checker types every expression and verifies every seam, so a compiled program has been checked in full.</p>
 <p>Modeling with types uses enums for fixed alternatives, structs for products, and options for possible absence, all compiler-checked.</p>
-<p>A type is a layout: fields lie in declaration order with platform alignment, fixed-width integers are their widths, <code>sizeof</code> reports the exact size, and the layout is the C ABI.</p>
+<p>A type is a layout: fields lie in declaration order with platform alignment, fixed-width integers are their widths, <code>@sizeof</code> reports the exact size, and the layout is the C ABI.</p>
 <p>Reading a signature reads a sentence: the return type is the result, the parameters are the inputs, and option and <code>Result</code> state absence and failure.</p>
 <p>Protocol-oriented design replaces duck typing: traits are declared promises, conformance is nominal and checked, and generics over traits call the protocol's methods.</p>
 <p>The type system is the type-first principle in full: a program that compiles has consistent types.</p>

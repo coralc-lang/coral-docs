@@ -6,7 +6,7 @@ More Than Just if and for
 
 Control flow decides what runs, how many times, and in what order. It is where a program's shape is decided, and where a language that fights you is most visible.
 
-Coral's control flow is C's, plus structure: a ranged for over containers, defer for guaranteed cleanup, and a pattern-matching switch with guards, ranges, and exhaustiveness checking. Every condition is a real bool, and control flow is explicit.
+Coral's control flow is C's, plus structure: a ranged for over containers, defer for guaranteed cleanup, and a pattern-matching switch with guards and exhaustiveness checking. Every condition is a real bool, and control flow is explicit.
 
 This chapter covers conditionals, loops, the @iter protocol, break and continue, and defer. Error handling with Result and Option has its own chapter, because it is control flow built on types rather than keywords.
 
@@ -174,9 +174,9 @@ A switch is also an expression: it produces the matched arm's value, so it can b
 
     u64 size = switch (kind)
     {
-        Size::Small => 16,
-        Size::Large => 1024,
-        else        => 0
+        Size::Small  => { 16; },
+        Size::Large  => { 1024; },
+        else         => { 0; }
     };
 
 Expression and statement forms are the same construct. An expression body contributes a value; a brace block runs statements and contributes nothing. A switch used as a value must give every arm an expression body. Choose the expression form for values and the statement form for actions.
@@ -187,11 +187,11 @@ The level-character decision as an expression:
     {
         return switch (level)
         {
-            LogLevel::Debug => 'D',
-            LogLevel::Info  => 'I',
-            LogLevel::Warn  => 'W',
-            LogLevel::Error => 'E',
-            LogLevel::Fatal => 'F'
+            LogLevel::Debug  => { 'D'; },
+            LogLevel::Info   => { 'I'; },
+            LogLevel::Warn   => { 'W'; },
+            LogLevel::Error  => { 'E'; },
+            LogLevel::Fatal  => { 'F'; }
         };
     }
 
@@ -203,7 +203,7 @@ The switch is where Coral's type system meets its C-shaped syntax: patterns come
 
 Patterns go beyond single constants and are built from the type system.
 
-A literal pattern matches one value. An enum pattern matches one variant, as in LogLevel::Warn. else matches anything. A barred list matches any of several patterns: 1 | 2. A range pattern matches a closed range: 0..=59. A variant pattern destructures and binds fields, as in Some { value } => ... A guard refines a pattern: pat if cond => runs only when both hold.
+A literal pattern matches one value. An enum pattern matches one variant, as in LogLevel::Warn. else matches anything. A barred list matches any of several patterns: 1 | 2. A variant pattern destructures and binds fields, as in Some { value } => ... A guard refines a pattern: pat if cond => runs only when both hold.
 
 Two beginner habits to correct: the catch-all is `else`, not `_`, which is not a wildcard, so write `else =>` for "anything left." Alternatives use bars: the bars in `1 | 2` are the "or" that lists them, so `1 | 2 => ...` is correct and `1, 2 => ...` is not.
 
@@ -213,30 +213,15 @@ Patterns say in one line what an if chain takes several. A switch over specific 
     {
         return switch (x)
         {
-            0     => 0,          // 0 bytes: representable in zero
-            1 | 2 => 1,          // one byte can hold 0..255
-            3 | 4 => 2,          // two bytes hold up to 65535
-            else  => 8           // anything larger: use the full width
+            0      => { 0; },          // 0 bytes: representable in zero
+            1 | 2  => { 1; },          // one byte can hold 0..255
+            3 | 4  => { 2; },          // two bytes hold up to 65535
+            else   => { 8; }           // anything larger: use the full width
         };
     }
 
 The barred list matches either value and else catches the rest, turning a long if chain into a handful of lines.
 
-Range patterns turn range tests into a table, as the grade function shows:
-
-    char gradeFor(u64 score)
-    {
-        return switch (score)
-        {
-            90..=100 => 'A',
-            80..=89  => 'B',
-            70..=79  => 'C',
-            60..=69  => 'D',
-            else     => 'F'
-        };
-    }
-
-Each arm states one band and its letter, so the whole scheme is a list of ranges.
 
 Patterns are most powerful with variants. A switch over a variant with an arm per case plus else turns the value into a decision, reaching fields directly:
 
@@ -244,8 +229,8 @@ Patterns are most powerful with variants. A switch over a variant with an arm pe
     {
         return switch (o)
         {
-            Some { value } => value,
-            else           => 0
+            Some { value }  => { value; },
+            else            => { 0; }
         };
     }
 
@@ -257,9 +242,9 @@ A guard combines a pattern with a condition, letting one arm cover many values a
     {
         return switch (temp)
         {
-            t if t < 0  => 'C',
-            t if t == 0 => 'Z',
-            else        => 'H'
+            t if t < 0   => { 'C'; },
+            t if t == 0  => { 'Z'; },
+            else         => { 'H'; }
         };
     }
 
@@ -275,14 +260,14 @@ Expression forms, the ternary and switch-as-expression, produce values. Use them
 
     u64 size = switch (kind)
     {
-        Size::Small => 16,
-        Size::Large => 1024,
-        else        => 0
+        Size::Small  => { 16; },
+        Size::Large  => { 1024; },
+        else         => { 0; }
     };
 
 There is a third expression form: the if expression.
 
-    u64 size = if (kind == Size::Small) 16 else 1024;
+    u64 size = if (kind == Size::Small) { 16 } else { 1024 };
 
 The if expression spells the ternary with keywords. Its condition must be a real bool, both branches must have compatible types, and it produces the chosen branch's value. A null-literal branch adopts the other branch's type. It is exactly as safe and type-checked as the operator, just a longer spelling. The library favors `?:` inline but supports both.
 
@@ -358,14 +343,7 @@ Summing a fixed array shows the canonical shape:
     for (u64 i = 0; i < n; i++)
         total += values[i];
 
-The header is flexible: any of the three parts can be empty. With no condition and no step, it is an infinite loop:
-
-    for (;;)
-    {
-        // runs until a break exits
-    }
-
-The empty condition is always true, so the loop runs until break or return. The JSON and CSV parsers use this to scan to a terminator.
+The header is flexible: the initialization can be omitted, the condition can be any bool expression, and the step can be any expression. An unbounded loop is written with the loop keyword, not with an empty for header.
 
 Reversing a buffer in place walks two indices toward the middle:
 
@@ -403,7 +381,7 @@ Coral also provides loop for an infinite loop, making the intent explicit withou
 
 `loop` says "repeat until something inside stops me." With no condition, only a `break` or a `return` exits, which suits servers and menus.
 
-The loop construct states intent: this loop is unbounded and exits inside the body. `for (;;)` says the header has no end condition; `loop` says this is an infinite loop. They behave the same; choose for clarity.
+The loop construct states intent: this loop is unbounded and exits inside the body. The loop keyword says this is an infinite loop, and it is the only spelling Coral provides for one.
 
 Infinite loops are for servers, event loops, interactive sessions, and parsers scanning to a terminator. The body always contains the exit. A minimal REPL:
 
@@ -662,7 +640,7 @@ Use the ranged for over container elements when the elements matter more than th
 
 Use loop when the loop is unbounded and its exit is decided inside the body: servers, event loops, parsers scanning to a terminator.
 
-The library demonstrates the range: indexed scans use for, boundary scans and node chains use while, parsers use for (;;) and loop, and argument packs use the ranged for.
+The library demonstrates the range: indexed scans use for, boundary scans and node chains use while, parsers use loop, and argument packs use the ranged for.
 
 4.18 Loop Fusion and Unrolling
 
@@ -866,13 +844,21 @@ The pattern-matching switch is at its best where types dispatch. A command dispa
         switch (cmd)
         {
             Command::Move =>
-                moveUnit(currentUnit),
+            {
+                moveUnit(currentUnit);
+            },
             Command::Attack =>
-                attackTarget(currentTarget),
+            {
+                attackTarget(currentTarget);
+            },
             Command::Heal =>
-                healUnit(currentUnit),
+            {
+                healUnit(currentUnit);
+            },
             Command::Quit =>
-                gameOver = true
+            {
+                gameOver = true;
+            }
         }
     }
 

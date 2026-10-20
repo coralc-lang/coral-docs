@@ -199,8 +199,8 @@ pub Result&lt;usize, FileError&gt; fileRead(File* f, u8* buf, usize len) {
 <p>The wrapper also decides ownership. <code>File</code> owns the handle, so copying it would double-close; the wrapper must forbid copying or use reference counting. C did not decide this for you, so the wrapper must decide once and express it in the type.</p>
 <p>Two finishing details: map error codes to a small closed set, and group shared handling paths with <code>|</code>:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (err) {
-    FileError::NotFound | FileError::PermissionDenied =&gt; recover(),
-    FileError::Unknown { code }                       =&gt; panic(code),
+    FileError::NotFound | FileError::PermissionDenied =&gt; { recover(); },
+    FileError::Unknown { code } =&gt; { panic(code); }
 }</code></pre>
 <p>This is the variants chapter's pattern matching applied at the boundary: a C integer becomes a compiler-checked Coral variant.</p>
 <p>When C reports failure with a sentinel and sets <code>errno</code>, the wrapper reads <code>errno</code> through its accessor. On POSIX, <code>errno</code> is reached through <code>__errno_location</code>, which returns a pointer to the current thread's error cell:</p>
@@ -288,7 +288,7 @@ pub Result&lt;File, FileError&gt; fileOpen(str path) {
 }
 
 pub Result&lt;usize, FileError&gt; fileRead(File* f, u8* buf, usize len) {
-    return (usize)fread((rawptr)buf, 1u, len, f-&gt;handle);
+    return Result&lt;usize, FileError&gt;::Ok { .value = (usize)fread((rawptr)buf, 1u, len, f-&gt;handle) };
 }</code></pre>
 <p>Then the program that uses it, which never sees C:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println, eprintln };
@@ -298,7 +298,7 @@ import file;
 Result&lt;String, FileError&gt; readWholeFile(str path) {
     Result&lt;File, FileError&gt; opened = fileOpen(path);
     switch (opened) {
-        Err { error } =&gt; return Result&lt;String, FileError&gt;::Err { .error = error },
+        Err { error } =&gt; { return Result&lt;String, FileError&gt;::Err { .error = error }; },
         else          =&gt; {}
     }
     File f = opened.unwrap();
@@ -317,8 +317,8 @@ Result&lt;String, FileError&gt; readWholeFile(str path) {
 
 void main() {
     switch (readWholeFile(&quot;config.txt&quot;)) {
-        Ok { value }  =&gt; println(&quot;read {} bytes&quot;, value.len),
-        Err { error } =&gt; eprintln(&quot;could not open the file&quot;),
+        Ok { value } =&gt; { println(&quot;read {} bytes&quot;, value.len); },
+        Err { error } =&gt; { eprintln(&quot;could not open the file&quot;); }
     }
 }</code></pre>
 <p><code>main</code> never sees a <code>rawptr</code>, <code>cchar</code>, or return code, only a <code>Result</code> and a <code>String</code>. The <code>File</code> is owned, so it closes automatically on success or failure. The buffer is a fixed array passed as pointer and length and converted by the wrapper. The boundary is invisible, and its discipline lives in one file.</p>

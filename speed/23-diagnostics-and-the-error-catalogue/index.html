@@ -128,16 +128,16 @@ a[7] = 1;               // error E0307: index 7 out of bounds for [4]</code></pr
 <p>E06xx is the largest and most frequent range: mistakes about control flow and data flow.</p>
 <p>E0608, switch not exhaustive and missing else, is the promised one. A switch over an enum or variant with no else that misses a case is an error:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (shape) {
-    Shape::Circle { r } =&gt; area = pi * r * r,
+    Shape::Circle { r }  =&gt; { area = pi * r * r; },
     // error E0608: non-exhaustive switch; missing Shape::Square, Shape::Point
 }</code></pre>
 <p>The message names the missing cases, so the fix is immediate. This makes <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a>'s variant-and-switch style safe: forgetting a case is a build failure with a list, and adding an enum case breaks every switch that did not anticipate it.</p>
 <p>E0609, unreachable switch case, catches a duplicate case or a variant already covered by an earlier arm:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (c) {
-    Color::Red =&gt; ...,
-    Color::Red =&gt; ...,      // error E0609: unreachable case
+    Color::Red  =&gt; { ... },
+    Color::Red  =&gt; { ... },      // error E0609: unreachable case
 }</code></pre>
-<p>This arm can never run. It catches copy-paste mistakes and overlapping ranges such as <code>0..=10</code> and <code>5..=15</code>.</p>
+<p>This arm can never run. It catches copy-paste mistakes where a case was meant to change but did not.</p>
 <p>E0610, fallthrough attribute on last arm, catches a leftover <code>#[[fallthrough]]</code> where there is nothing to fall into, usually a copy-paste vestige.</p>
 <p>The rest concerns data flow across branches. E0601, branch reaches end of non-void block without value yield, catches a path that skips returning while others yield:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">i32 pick(bool c) {
@@ -242,7 +242,7 @@ Payload taken = h.p;    // moves p out
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str label(Shape s) {
     i32 unused = 0;
     switch (s) {
-        Shape::Circle { r } =&gt; return &quot;circle&quot;,
+        Shape::Circle { r }  =&gt; { return &quot;circle&quot;; },
     }
 }</code></pre>
 <p>The compiler reports in order: E0801 unused variable <code>unused</code>; E0608 non-exhaustive switch over <code>Shape</code>, missing <code>Shape::Square</code> and <code>Shape::Point</code>; then E0604 non-void function <code>label</code> can reach its end without returning. Three diagnostics, one root cause in two places.</p>

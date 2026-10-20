@@ -98,20 +98,20 @@ The implementation.
             // the default is overwritten by whichever case matches below
             TokenKind kind = TokenKind::Eof;
             switch (c) {
-                '+' => kind = TokenKind::Plus,
-                '-' => kind = TokenKind::Minus,
-                '*' => kind = TokenKind::Star,
-                '/' => kind = TokenKind::Slash,
-                '<' => kind = TokenKind::Less,
-                '>' => kind = TokenKind::Greater,
-                '(' => kind = TokenKind::LParen,
-                ')' => kind = TokenKind::RParen,
-                '{' => kind = TokenKind::LBrace,
-                '}' => kind = TokenKind::RBrace,
-                ';' => kind = TokenKind::Semi,
-                '=' => kind = TokenKind::Assign,
+                '+' => { kind = TokenKind::Plus; },
+                '-' => { kind = TokenKind::Minus; },
+                '*' => { kind = TokenKind::Star; },
+                '/' => { kind = TokenKind::Slash; },
+                '<' => { kind = TokenKind::Less; },
+                '>' => { kind = TokenKind::Greater; },
+                '(' => { kind = TokenKind::LParen; },
+                ')' => { kind = TokenKind::RParen; },
+                '{' => { kind = TokenKind::LBrace; },
+                '}' => { kind = TokenKind::RBrace; },
+                ';' => { kind = TokenKind::Semi; },
+                '=' => { kind = TokenKind::Assign; },
                 // an unknown byte is skipped: this is a tokenizer, not a checker
-                else => { i += 1; continue; },
+                else => { i += 1; continue; }
             }
             // record the operator at its own byte, then step past it
             pushToken(&out, kind, i, 0, src.slice(i, i + 1));
@@ -125,26 +125,27 @@ The implementation.
     str kindName(TokenKind k) {
         // a printable name, used for diagnostics and for this demo
         switch (k) {
-            TokenKind::Number  => return "Number",
-            TokenKind::Ident   => return "Ident",
-            TokenKind::Plus    => return "Plus",
-            TokenKind::Minus   => return "Minus",
-            TokenKind::Star    => return "Star",
-            TokenKind::Slash   => return "Slash",
-            TokenKind::Less    => return "Less",
-            TokenKind::Greater => return "Greater",
-            TokenKind::LParen  => return "LParen",
-            TokenKind::RParen  => return "RParen",
-            TokenKind::LBrace  => return "LBrace",
-            TokenKind::RBrace  => return "RBrace",
-            TokenKind::Semi    => return "Semi",
-            TokenKind::Assign  => return "Assign",
-            TokenKind::If      => return "If",
-            TokenKind::Else    => return "Else",
-            TokenKind::While   => return "While",
-            TokenKind::Print   => return "Print",
-            TokenKind::Eof     => return "Eof",
+            TokenKind::Number => { return "Number"; },
+            TokenKind::Ident => { return "Ident"; },
+            TokenKind::Plus => { return "Plus"; },
+            TokenKind::Minus => { return "Minus"; },
+            TokenKind::Star => { return "Star"; },
+            TokenKind::Slash => { return "Slash"; },
+            TokenKind::Less => { return "Less"; },
+            TokenKind::Greater => { return "Greater"; },
+            TokenKind::LParen => { return "LParen"; },
+            TokenKind::RParen => { return "RParen"; },
+            TokenKind::LBrace => { return "LBrace"; },
+            TokenKind::RBrace => { return "RBrace"; },
+            TokenKind::Semi => { return "Semi"; },
+            TokenKind::Assign => { return "Assign"; },
+            TokenKind::If => { return "If"; },
+            TokenKind::Else => { return "Else"; },
+            TokenKind::While => { return "While"; },
+            TokenKind::Print => { return "Print"; },
+            TokenKind::Eof => { return "Eof"; }
         }
+        return "Unknown";
     }
 
     void main() {
@@ -214,21 +215,22 @@ The implementation.
     str opName(Op op) {
         // the symbol, for printing a tree back out
         switch (op) {
-            Op::Add => return "+",
-            Op::Sub => return "-",
-            Op::Mul => return "*",
-            Op::Div => return "/",
-            Op::Less => return "<",
-            Op::Greater => return ">",
+            Op::Add => { return "+"; },
+            Op::Sub => { return "-"; },
+            Op::Mul => { return "*"; },
+            Op::Div => { return "/"; },
+            Op::Less => { return "<"; },
+            Op::Greater => { return ">"; }
         }
+        return "?";
     }
 
     void show(Expr* e) {
         // copy the variant out so its fields are bound by the switch
         Expr node = *e;
         switch (node) {
-            Expr::Num { value } => print("{}", value),
-            Expr::Var { name } => print("{}", name),
+            Expr::Num { value } => { print("{}", value); },
+            Expr::Var { name } => { print("{}", name); },
             Expr::Neg { operand } => { print("(- "); show(operand); print(")"); },
             Expr::Bin { op, left, right } => {
                 // fully parenthesized so grouping is unambiguous
@@ -247,8 +249,8 @@ The implementation.
         switch (node) {
             // leaves own nothing beneath them
             Expr::Num | Expr::Var => {},
-            Expr::Neg { operand } => freeExpr(operand),
-            Expr::Bin { left, right } => { freeExpr(left); freeExpr(right); },
+            Expr::Neg { operand } => { freeExpr(operand); },
+            Expr::Bin { left, right } => { freeExpr(left); freeExpr(right); }
         }
         // children are freed first, so the parent's pointers are dead here
         dealloc<Expr>(e);
@@ -301,14 +303,14 @@ The implementation. This builds on the `Token`/`TokenKind` definitions of 39.1 a
     // operator tokens become the tree operators of the AST
     Op toOp(TokenKind k) {
         switch (k) {
-            TokenKind::Plus => return Op::Add,
-            TokenKind::Minus => return Op::Sub,
-            TokenKind::Star => return Op::Mul,
-            TokenKind::Slash => return Op::Div,
-            TokenKind::Less => return Op::Less,
-            TokenKind::Greater => return Op::Greater,
+            TokenKind::Plus => { return Op::Add; },
+            TokenKind::Minus => { return Op::Sub; },
+            TokenKind::Star => { return Op::Mul; },
+            TokenKind::Slash => { return Op::Div; },
+            TokenKind::Less => { return Op::Less; },
+            TokenKind::Greater => { return Op::Greater; },
             // reached only for tokens each level has already accepted
-            else => return Op::Add,
+            else => { return Op::Add; }
         }
     }
 
@@ -468,8 +470,8 @@ The implementation. This adds error state to the parser of 39.3 and changes the 
     void report(ParseError e) {
         // one arm per failure case, so nothing is forgotten
         switch (e) {
-            ParseError::Unexpected { what, pos } => println("error at {}: {}", pos, what),
-            ParseError::TrailingTokens { pos } => println("error at {}: unexpected extra tokens", pos),
+            ParseError::Unexpected { what, pos } => { println("error at {}: {}", pos, what); },
+            ParseError::TrailingTokens { pos } => { println("error at {}: unexpected extra tokens", pos); }
         }
     }
 
@@ -508,25 +510,25 @@ The implementation. The tree and constructors come from 39.2; only `eval` and `m
         // bind the variant so its fields are visible to the arms
         Expr node = *e;
         switch (node) {
-            Expr::Num { value } => return value,
+            Expr::Num { value } => { return value; },
             // no environment yet: every name is zero
-            Expr::Var { name } => return 0,
-            Expr::Neg { operand } => return -eval(operand),
+            Expr::Var { name } => { return 0; },
+            Expr::Neg { operand } => { return -eval(operand); },
             Expr::Bin { op, left, right } => {
                 // evaluate children first: this is a postorder walk
                 i64 l = eval(left);
                 i64 r = eval(right);
                 switch (op) {
                     // each arm turns two integers into one
-                    Op::Add => return l + r,
-                    Op::Sub => return l - r,
-                    Op::Mul => return l * r,
+                    Op::Add => { return l + r; },
+                    Op::Sub => { return l - r; },
+                    Op::Mul => { return l * r; },
                     // division by zero has no integer answer; define it as 0
-                    Op::Div => return r == 0 ? 0 : l / r,
-                    Op::Less => return l < r ? 1 : 0,
-                    Op::Greater => return l > r ? 1 : 0,
+                    Op::Div => { return r == 0 ? 0 : l / r; },
+                    Op::Less => { return l < r ? 1 : 0; },
+                    Op::Greater => { return l > r ? 1 : 0; }
                 }
-            },
+            }
         }
     }
 
@@ -556,7 +558,7 @@ The idea. Keep a hash map from name to value, the environment, and add a second 
 The implementation. This adds the `Stmt` variant and an environment parameter threaded through evaluation; the expression tree and constructors are unchanged from 39.2.
 
     import(lib) std::vec { Vec };
-    import(lib) std::collections.hashmap { HashMap };
+    import(lib) std::collections::hashmap { HashMap };
     import(lib) std::mman { alloc, dealloc };
     import(lib) std::io::ios { println };
 
@@ -605,22 +607,22 @@ The implementation. This adds the `Stmt` variant and an environment parameter th
     i64 eval(Expr* e, HashMap<str, i64>* env) {
         Expr node = *e;
         switch (node) {
-            Expr::Num { value } => return value,
+            Expr::Num { value } => { return value; },
             // an unbound name reads as zero, so evaluation is total
-            Expr::Var { name } => return env->get(name).unwrapOr(0),
-            Expr::Neg { operand } => return -eval(operand, env),
+            Expr::Var { name } => { return env->get(name).unwrapOr(0); },
+            Expr::Neg { operand } => { return -eval(operand, env); },
             Expr::Bin { op, left, right } => {
                 i64 l = eval(left, env);
                 i64 r = eval(right, env);
                 switch (op) {
-                    Op::Add => return l + r,
-                    Op::Sub => return l - r,
-                    Op::Mul => return l * r,
-                    Op::Div => return r == 0 ? 0 : l / r,
-                    Op::Less => return l < r ? 1 : 0,
-                    Op::Greater => return l > r ? 1 : 0,
+                    Op::Add => { return l + r; },
+                    Op::Sub => { return l - r; },
+                    Op::Mul => { return l * r; },
+                    Op::Div => { return r == 0 ? 0 : l / r; },
+                    Op::Less => { return l < r ? 1 : 0; },
+                    Op::Greater => { return l > r ? 1 : 0; }
                 }
-            },
+            }
         }
     }
 
@@ -632,8 +634,8 @@ The implementation. This adds the `Stmt` variant and an environment parameter th
                 // the insert result is ignored: i64 values cannot fail to store
                 env->insert(name, eval(value, env));
             },
-            Stmt::Print { value } => println("{}", eval(value, env)),
-            Stmt::ExprStmt { value } => eval(value, env),
+            Stmt::Print { value } => { println("{}", eval(value, env)); },
+            Stmt::ExprStmt { value } => { eval(value, env); }
         }
     }
 
@@ -670,7 +672,7 @@ The idea. Add a `Block`, a sequence of statements, and two statement cases point
 The implementation. This extends the `Stmt` variant and `runStmt` of 39.6; the environment and expression evaluator are unchanged.
 
     import(lib) std::vec { Vec };
-    import(lib) std::collections.hashmap { HashMap };
+    import(lib) std::collections::hashmap { HashMap };
     import(lib) std::mman { alloc, dealloc };
     import(lib) std::io::ios { println };
 
@@ -718,8 +720,8 @@ The implementation. This extends the `Stmt` variant and `runStmt` of 39.6; the e
         Stmt st = *s;
         switch (st) {
             Stmt::Assign { name, value } => { env->insert(name, eval(value, env)); },
-            Stmt::Print { value } => println("{}", eval(value, env)),
-            Stmt::ExprStmt { value } => eval(value, env),
+            Stmt::Print { value } => { println("{}", eval(value, env)); },
+            Stmt::ExprStmt { value } => { eval(value, env); },
             Stmt::If { cond, thenBody, elseBody } => {
                 // a null elseBody means there was no else clause
                 if (eval(cond, env) != 0) runBlock(thenBody, env);
@@ -789,12 +791,12 @@ The implementation. The tree and constructors come from 39.2; the evaluator is r
     // a tree operator and a machine opcode are different types
     OpCode opToCode(Op op) {
         switch (op) {
-            Op::Add => return OpCode::Add,
-            Op::Sub => return OpCode::Sub,
-            Op::Mul => return OpCode::Mul,
-            Op::Div => return OpCode::Div,
-            Op::Less => return OpCode::Less,
-            Op::Greater => return OpCode::Greater,
+            Op::Add => { return OpCode::Add; },
+            Op::Sub => { return OpCode::Sub; },
+            Op::Mul => { return OpCode::Mul; },
+            Op::Div => { return OpCode::Div; },
+            Op::Less => { return OpCode::Less; },
+            Op::Greater => { return OpCode::Greater; }
         }
     }
 
@@ -802,9 +804,9 @@ The implementation. The tree and constructors come from 39.2; the evaluator is r
         Expr node = *e;
         switch (node) {
             // a literal becomes a push of its own value
-            Expr::Num { value } => emit(c, OpCode::Push, value),
+            Expr::Num { value } => { emit(c, OpCode::Push, value); },
             // variables are not compiled yet: they push zero
-            Expr::Var { name } => emit(c, OpCode::Push, 0),
+            Expr::Var { name } => { emit(c, OpCode::Push, 0); },
             Expr::Neg { operand } => { compile(c, operand); emit(c, OpCode::Neg, 0); },
             Expr::Bin { op, left, right } => {
                 // postorder: operands first, operator last
@@ -821,14 +823,14 @@ The implementation. The tree and constructors come from 39.2; the evaluator is r
         i64 r = stack->pop();
         i64 l = stack->pop();
         switch (op) {
-            OpCode::Add => stack->push(l + r),
-            OpCode::Sub => stack->push(l - r),
-            OpCode::Mul => stack->push(l * r),
-            OpCode::Div => stack->push(r == 0 ? 0 : l / r),
-            OpCode::Less => stack->push(l < r ? 1 : 0),
-            OpCode::Greater => stack->push(l > r ? 1 : 0),
+            OpCode::Add => { stack->push(l + r); },
+            OpCode::Sub => { stack->push(l - r); },
+            OpCode::Mul => { stack->push(l * r); },
+            OpCode::Div => { stack->push(r == 0 ? 0 : l / r); },
+            OpCode::Less => { stack->push(l < r ? 1 : 0); },
+            OpCode::Greater => { stack->push(l > r ? 1 : 0); },
             // Push, Neg, and Halt are handled by the machine, not here
-            else => stack->push(0),
+            else => { stack->push(0); }
         }
     }
 
@@ -838,12 +840,12 @@ The implementation. The tree and constructors come from 39.2; the evaluator is r
         for (usize i = 0; i < code->count(); i += 1) {
             Instr in = code->at(i);
             switch (in.op) {
-                OpCode::Push => stack.push(in.arg),
+                OpCode::Push => { stack.push(in.arg); },
                 // unary negate needs only the top of the stack
-                OpCode::Neg => stack.push(-stack.pop()),
+                OpCode::Neg => { stack.push(-stack.pop()); },
                 OpCode::Add | OpCode::Sub | OpCode::Mul | OpCode::Div
-                    | OpCode::Less | OpCode::Greater => apply(&stack, in.op),
-                OpCode::Halt => break,
+                    | OpCode::Less | OpCode::Greater => { apply(&stack, in.op); },
+                OpCode::Halt => { break; }
             }
         }
         // a well-formed program leaves exactly one value on the stack
@@ -879,7 +881,7 @@ The implementation. This is the full assembly. It parses three statement forms, 
 
     import(lib) std::vec { Vec };
     import(lib) std::text::string { String };
-    import(lib) std::collections.hashmap { HashMap };
+    import(lib) std::collections::hashmap { HashMap };
     import(lib) std::mman { alloc, dealloc };
     import(lib) std::result { Result };
     import(lib) std::io::ios { println, readLine };
@@ -990,21 +992,21 @@ The implementation. This is the full assembly. It parses three statement forms, 
     i64 eval(Expr* e, HashMap<String, i64>* env) {
         Expr node = *e;
         switch (node) {
-            Expr::Num { value } => return value,
-            Expr::Var { name } => return lookup(env, name),
-            Expr::Neg { operand } => return -eval(operand, env),
+            Expr::Num { value } => { return value; },
+            Expr::Var { name } => { return lookup(env, name); },
+            Expr::Neg { operand } => { return -eval(operand, env); },
             Expr::Bin { op, left, right } => {
                 i64 l = eval(left, env);
                 i64 r = eval(right, env);
                 switch (op) {
-                    Op::Add => return l + r,
-                    Op::Sub => return l - r,
-                    Op::Mul => return l * r,
-                    Op::Div => return r == 0 ? 0 : l / r,
-                    Op::Less => return l < r ? 1 : 0,
-                    Op::Greater => return l > r ? 1 : 0,
+                    Op::Add => { return l + r; },
+                    Op::Sub => { return l - r; },
+                    Op::Mul => { return l * r; },
+                    Op::Div => { return r == 0 ? 0 : l / r; },
+                    Op::Less => { return l < r ? 1 : 0; },
+                    Op::Greater => { return l > r ? 1 : 0; }
                 }
-            },
+            }
         }
     }
 
@@ -1012,18 +1014,18 @@ The implementation. This is the full assembly. It parses three statement forms, 
     void runStmt(Stmt* s, HashMap<String, i64>* env) {
         Stmt st = *s;
         switch (st) {
-            Stmt::Assign { name, value } => assign(env, name, eval(value, env)),
+            Stmt::Assign { name, value } => { assign(env, name, eval(value, env)); },
             // at a terminal, a print and a bare expression both show a value
-            Stmt::Print { value } => println("{}", eval(value, env)),
-            Stmt::ExprStmt { value } => println("{}", eval(value, env)),
+            Stmt::Print { value } => { println("{}", eval(value, env)); },
+            Stmt::ExprStmt { value } => { println("{}", eval(value, env)); }
         }
     }
 
     void report(ParseError e) {
         // errors report a byte offset into the current line
         switch (e) {
-            ParseError::Unexpected { what, pos } => println("error at {}: {}", pos, what),
-            ParseError::TrailingTokens { pos } => println("error at {}: trailing tokens", pos),
+            ParseError::Unexpected { what, pos } => { println("error at {}: {}", pos, what); },
+            ParseError::TrailingTokens { pos } => { println("error at {}: trailing tokens", pos); }
         }
     }
 

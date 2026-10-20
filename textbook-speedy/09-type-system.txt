@@ -429,23 +429,29 @@ A `comptime` block runs during compilation and can compare types.
 
     comptime
     {
-        if (T == i32) { ... }
-        if (T == f64) { ... }
+        switch (@typeof(T))
+        {
+            i32 => { ... },
+            f64 => { ... }
+        }
     }
 
-`T == i32` asks whether the type parameter is `i32`, and only the selected case is compiled. This is how the generic print functions choose a formatter per argument type. Inside a generic function, `T` is a compile-time fact.
+The pattern `i32` asks whether the type parameter is `i32`, and only the selected arm is compiled. This is how the generic print functions choose a formatter per argument type. Inside a generic function, `T` is a compile-time fact.
 
 In miniature, the recognizer the print machinery uses:
 
     comptime
     {
-        if (T == u64) { _printU64(val); return; }
-        if (T == f64) { _printF64(val); return; }
-        if (T == str) { _printView(val); return; }
-        // no match: a compile-time error naming the type
+        switch (@typeof(T))
+        {
+            u64 => { _printU64(val); return; },
+            f64 => { _printF64(val); return; },
+            str => { _printView(val); return; },
+            else => { @compileError("print: unsupported type"); }
+        }
     }
 
-For a `u64` argument, the compiler evaluates the block with `T` known to be `u64`, takes the first branch, and compiles exactly that call. The other branches vanish before the program exists. The decision is about the type, at build time.
+For a `u64` argument, the compiler evaluates the block with `T` known to be `u64`, takes the matching arm, and compiles exactly that call. The other branches vanish before the program exists. The decision is about the type, at build time.
 
 `comptime` is not reflection: it does not run at runtime, and the compiled program contains only the selected code. No runtime type tag, no lookup, no value carrying its type.
 
@@ -622,11 +628,11 @@ The same three fields in two orders move eight bytes:
         u64 big;
     }
 
-Interleaved puts a `u64` between two one-byte fields, paying seven bytes of padding on each side: twenty-four bytes. Grouped puts the small fields together and pays six bytes: sixteen bytes. Same fields, same types, eight bytes of difference, and `sizeof` prints 24 and 16 on the platforms Coral targets. A million Interleaved values hold eight million bytes of padding the Grouped form never pays.
+Interleaved puts a `u64` between two one-byte fields, paying seven bytes of padding on each side: twenty-four bytes. Grouped puts the small fields together and pays six bytes: sixteen bytes. Same fields, same types, eight bytes of difference, and `@sizeof` prints 24 and 16 on the platforms Coral targets. A million Interleaved values hold eight million bytes of padding the Grouped form never pays.
 
 The fixed-width integers are their widths: `u8` one byte, `u16` two, `u32` four, `u64` eight, and a pointer the platform's word size. An `f32` is four bytes and an `f64` eight. An enum is an integer wide enough for its variants, and a distinct type has its base type's layout. A `Vec` is three fields and its size is the header, not the elements, which live on the heap.
 
-The `sizeof` operator reports a type's size. The library's memory pool computes its block size as the maximum of the element size and a pointer size. The layout is the C ABI, so a Coral struct has the same layout the platform's C compiler would give it.
+The `@sizeof` operator reports a type's size. The library's memory pool computes its block size as the maximum of the element size and a pointer size. The layout is the C ABI, so a Coral struct has the same layout the platform's C compiler would give it.
 
 9.27 Reading Types
 
@@ -694,7 +700,7 @@ The type checker types every expression and verifies every seam, so a compiled p
 
 Modeling with types uses enums for fixed alternatives, structs for products, and options for possible absence, all compiler-checked.
 
-A type is a layout: fields lie in declaration order with platform alignment, fixed-width integers are their widths, `sizeof` reports the exact size, and the layout is the C ABI.
+A type is a layout: fields lie in declaration order with platform alignment, fixed-width integers are their widths, `@sizeof` reports the exact size, and the layout is the C ABI.
 
 Reading a signature reads a sentence: the return type is the result, the parameters are the inputs, and option and `Result` state absence and failure.
 

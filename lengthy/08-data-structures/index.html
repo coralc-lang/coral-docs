@@ -234,7 +234,7 @@ void freeList(Node&lt;i32&gt;* head)
 <section><h2 id="s8-9">Pointer Stability, and When Indirection Wins</h2></section>
 <p>There is one thing the linked list buys that the vector cannot, and it is the reason the list is not obsolete in an age of caches: stable addresses.</p>
 <p>When a vector grows, it allocates a new buffer and copies the elements into it, so a pointer to an element of the vector is invalidated the instant the vector grows, the element it pointed to now lives somewhere else, or has been freed. Every reference into a vector is a bet that the vector will not grow while the reference is held. A linked list makes no such bet: each element lives in a node of its own, and a pointer to a node stays valid no matter how many other nodes are added or removed, as long as that node is not itself removed. The node's identity is its address, and the address survives.</p>
-<p>This pointer stability is what makes intrusive structures possible. An intrusive structure stores its links inside the data itself, a cache entry that is simultaneously a node of the recency list and a value of the lookup map, a task that sits on a scheduler's list while the scheduler holds a pointer to it. The structure can rearrange itself by moving links without ever moving the data, because the data's address is fixed. The standard library's <code>Cache</code>, in <code>std::collections.cache</code>, is exactly this: a hash map for lookup and a doubly linked list for recency, with each entry doing both jobs at once.</p>
+<p>This pointer stability is what makes intrusive structures possible. An intrusive structure stores its links inside the data itself, a cache entry that is simultaneously a node of the recency list and a value of the lookup map, a task that sits on a scheduler's list while the scheduler holds a pointer to it. The structure can rearrange itself by moving links without ever moving the data, because the data's address is fixed. The standard library's <code>Cache</code>, in <code>std::collections::cache</code>, is exactly this: a hash map for lookup and a doubly linked list for recency, with each entry doing both jobs at once.</p>
 <p>The trade is honest and the choice follows from the access pattern. When the work is iterating and indexing, the vector's locality wins overwhelmingly, and it is the default. When the work is rearranging links and holding pointers to elements that must not move, the list's stable addresses win, and no amount of cache-friendliness buys back what pointer stability gives you. The two structures are not ranked; they are different points on the trade between contiguous-and-movable and scattered-and-stable.</p>
 <section><h2 id="s8-10">The Deque and the Ring Buffer: Both Ends</h2></section>
 <p>A vector is fast at the back and slow at the front: <code>push</code> appends in constant time, but <code>insert(0, x)</code> shifts the entire buffer. Many programs need the opposite, a work queue that takes from the front and adds to the back, and for those the standard library provides the deque.</p>
@@ -249,7 +249,7 @@ void freeList(Node&lt;i32&gt;* head)
 }</code></pre>
 <p>The <code>mask</code> field is the ring trick. The capacity is a power of two, the mask is one less than the capacity, and advancing an index means adding one and masking, the same as wrapping around. <code>count</code> subtracts the indices and masks; <code>_grow</code> allocates a new buffer and copies the elements from head to tail in order. Because no end is special, both are positions on a circle, both ends are constant time, and unlike a linked list the storage is still contiguous, so iteration is still cache-friendly.</p>
 <p>The deque's operations are <code>pushFront</code> and <code>pushBack</code>, <code>popFront</code> and <code>popBack</code>, <code>front</code> and <code>back</code>, and index access through <code>at</code> and <code>set</code>, which index from the head. The standard library's <code>Queue</code> is a thin wrapper over the deque, and many algorithms use the deque directly:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.deque { Deque };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::deque { Deque };
 
 Deque&lt;u64&gt; work = Deque&lt;u64&gt;::new();
 work.pushBack(1);
@@ -260,8 +260,8 @@ while (!work.isEmpty())
     u64 job = work.popFront();
     if (job &gt; 0) work.pushBack(job - 1);
 }</code></pre>
-<p>The same ring idea appears with a fixed capacity in <code>RingBuf</code>, in <code>std::collections.ringbuf</code>. A ring buffer never allocates after construction; when it is full, a push overwrites the oldest element. Its declaration adds a <code>full</code> flag, because with a head and a tail that can wrap, "empty" and "full" look the same without one:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.ringbuf { RingBuf };
+<p>The same ring idea appears with a fixed capacity in <code>RingBuf</code>, in <code>std::collections::ringbuf</code>. A ring buffer never allocates after construction; when it is full, a push overwrites the oldest element. Its declaration adds a <code>full</code> flag, because with a head and a tail that can wrap, "empty" and "full" look the same without one:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::ringbuf { RingBuf };
 
 RingBuf&lt;f64&gt; recent = RingBuf&lt;f64&gt;::new(16);
 recent.push(1.5);
@@ -284,7 +284,7 @@ jobs.enqueue(1);
 jobs.enqueue(2);
 u64 first = jobs.dequeue();   // 1</code></pre>
 <p>The queue's deepest use is the breadth-first walk, where the order of the queue is the order of discovery. Starting from one node, mark it and enqueue it. Each iteration dequeues a node, visits it, and enqueues its unmarked neighbours. Because the queue yields in arrival order, every node at distance one is visited before any at distance two: the walk spreads outward one layer at a time, the queue carrying the frontier. A mark set can be a <code>Bitset</code> when the nodes are small integers in a known range:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.bitset { Bitset };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::bitset { Bitset };
 
 pub void bfs(u64 start, const Vec&lt;Vec&lt;u64&gt;&gt;* adj, void(u64) visit)
 {
@@ -329,7 +329,7 @@ pub struct HashMap&lt;K, V&gt;
     bool(K, K) eqFn;
 }</code></pre>
 <p>The two function fields are the crucial part. A hash map cannot hash an arbitrary <code>T</code>, and it has no built-in notion of equality, so it asks the caller for both: <code>hashFn</code> turns a key into a number, and <code>eqFn</code> decides whether two keys are equal. The map is generic in the key and value types, but the meaning of a key is supplied as a pair of functions. The constructor takes them:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.hashmap { HashMap };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::hashmap { HashMap };
 
 pub usize hashU64(u64 k) { return (usize)k; }
 pub bool eqU64(u64 a, u64 b) { return a == b; }
@@ -430,7 +430,7 @@ pub bool eqPoint(Point a, Point b)
 HashMap&lt;Point, str&gt; labels = HashMap&lt;Point, str&gt;::new(hashPoint, eqPoint);</code></pre>
 <p>The hash combines both coordinates so that a change in either changes the hash, and the equality compares the same two coordinates, so the two functions agree about what a key is. Violate either half, make the equality and the hash disagree, and the map quietly fails.</p>
 <section><h2 id="s8-15">Order as a Feature: The Tree Map</h2></section>
-<p>Hashing deliberately destroys order. Sometimes order is the point: you want to iterate the keys smallest to largest, or find all keys in a range. The ordered map keeps its entries in a balanced binary search tree, so they can be found, iterated, and ranged in key order. Coral's ordered map, <code>Map</code> in <code>std::collections.map</code>, is an AVL tree, a binary search tree that keeps itself balanced by tracking each node's height:</p>
+<p>Hashing deliberately destroys order. Sometimes order is the point: you want to iterate the keys smallest to largest, or find all keys in a range. The ordered map keeps its entries in a balanced binary search tree, so they can be found, iterated, and ranged in key order. Coral's ordered map, <code>Map</code> in <code>std::collections::map</code>, is an AVL tree, a binary search tree that keeps itself balanced by tracking each node's height:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct MapEntry&lt;K, V&gt;
 {
     K key;
@@ -448,7 +448,7 @@ pub struct Map&lt;K, V&gt;
     bool failed;
 }</code></pre>
 <p>The ordering comes from the comparison function <code>cmpFn</code>, which the constructor takes: it compares two keys and returns negative, zero, or positive, the same three-way protocol used by <code>str::compare</code> and by binary search. A rotation is the whole trick of balance: when a subtree becomes too tall on one side, the tree rearranges a few pointers locally to move a node up on the heavy side and reattach the middle subtree, preserving the search order. After an insertion or removal the tree walks back up the changed path, rebalancing at each node, so the tree is never deeper than a small constant times the logarithm of its size.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.map { Map };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::map { Map };
 
 pub i32 cmpView(str a, str b) { return a.compare(b); }
 pub void printPair(str k, u64 v) { println(&quot;{} : {}&quot;, k, v); }
@@ -469,7 +469,7 @@ scores.each(printPair);       // delivered in key order: ada, bob, cecile</code>
     bool(T, T) eqFn;
 }</code></pre>
 <p>Membership is constant time on average, inherited from the map. <code>insert</code> records a value, <code>contains</code> asks whether a value is present, and <code>remove</code> forgets one. This is the collection for "have I seen this before," and because the cost of <code>contains</code> does not grow with the set's size, the seen-list stays constant-time as it grows:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.set { Set };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::set { Set };
 
 Set&lt;u64&gt; seen = Set&lt;u64&gt;::new(hashU64, eqU64);
 Vec&lt;u64&gt; unique = Vec&lt;u64&gt;::new();
@@ -505,7 +505,7 @@ Set&lt;u64&gt; both   = seen.union(&amp;other);          // in either</code></pr
 }</code></pre>
 <p><code>set</code> turns a bit on, <code>clear</code> turns it off, <code>toggle</code> flips it, and <code>test</code> reads it; <code>countOnes</code> and <code>countZeros</code> count by clearing the lowest set bit in a loop, and <code>and</code>, <code>or</code>, <code>xor</code>, and <code>not</code> apply the word operations across the whole bitset. The memory is the point: one bit per element, so a million elements occupy a hundred and twenty-five kilobytes, a fraction of what a set of a million entries would use. Membership is constant time, testing a single bit, and the set algebra is a few word operations per word.</p>
 <p>The classic demonstration is the sieve of Eratosthenes, whose universe is exactly a dense range of integers, one bit per integer:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.bitset { Bitset };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::bitset { Bitset };
 
 pub Vec&lt;u64&gt; primesBelow(u64 n)
 {
@@ -547,7 +547,7 @@ pub Vec&lt;u64&gt; primesBelow(u64 n)
 }</code></pre>
 <p><code>pop</code> takes the root, the highest-priority element, moves the last element into the root's place, and sifts it down. Each sift moves one level down a tree of logarithmic height, so each operation is logarithmic.</p>
 <p>The heap's beauty is that the tree lives in the array with no pointers: the children and parent of any node are computed from the node's index, so the heap never allocates a node. The cost of that layout is that the heap is not a sorted structure, the array is not in order, only the heap property holds, that every parent precedes its children in priority. That is enough, because the queue only ever needs the root, and the sift operations restore the property after each push and pop.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.priorityqueue { PriorityQueue };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::priorityqueue { PriorityQueue };
 
 pub bool lessU64(u64 a, u64 b) { return a &lt; b; }
 
@@ -577,7 +577,7 @@ pub struct Cache&lt;K, V&gt;
     bool(K, K) eqFn;
 }</code></pre>
 <p>The map finds an entry by key in constant time. The linked list keeps the entries in recency order, with the most recently used at the head and the least recently used at the tail. Every access moves the accessed entry to the head in constant time, because the entry's pointers make the move a few assignments; every insertion beyond the limit evicts the tail. The entry is the node of the list and the value of the map at once, which is why the map stores a pointer to the entry: the map finds it, and the entry carries the recency links. This is the pointer stability of section8.9 made useful, the entry's address never changes, so the map and the list can both refer to it while it moves freely through the recency order.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.cache { Cache };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::cache { Cache };
 
 Cache&lt;u64, u64&gt; table = Cache&lt;u64, u64&gt;::new(128, hashU64, eqU64);
 table.insert(7, 49);
@@ -611,7 +611,7 @@ pub struct Tree&lt;T&gt;
 }</code></pre>
 <p>A tree node is a value and a vector of pointers to its child nodes. The "generic" in the name means the value can be anything; the children being a vector means the number of children per node is not fixed, which makes this an n-ary tree where a binary search tree forces exactly two. The tree itself is even simpler: a pointer to the root. Everything else hangs off the root, exactly as a file system hangs off its root directory.</p>
 <p>The key property, and the reason the tree is usable, is that the node pointers returned by <code>setRoot</code> and <code>addChild</code> are stable. A child is created, and its pointer is what the caller keeps to add grandchildren under it:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.tree { Tree, TreeNode };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::tree { Tree, TreeNode };
 
 Tree&lt;str&gt; org = Tree&lt;str&gt;::new();
 TreeNode&lt;str&gt;* ceo = org.setRoot(&quot;ceo&quot;);
@@ -641,7 +641,7 @@ pub struct Trie
     usize count;
 }</code></pre>
 <p>Every node carries an array of 256 child pointers, one per possible byte value, and a flag recording whether a complete word ends there. A word is inserted by walking its bytes, creating the missing nodes along the path, and setting <code>isEnd</code> at the final node. A lookup is the same walk: <code>contains</code> returns false the moment a child is missing, and true only if the final node's <code>isEnd</code> is set, so <code>cat</code> is found if its path ends in a word-end but <code>ca</code> is not. <code>startsWith</code> is the same walk without the word-end check, which is exactly the prefix question:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.trie { Trie };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::trie { Trie };
 
 Trie dict = Trie::new();
 dict.insert(&quot;cat&quot;);

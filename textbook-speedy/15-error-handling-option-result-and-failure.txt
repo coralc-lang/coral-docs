@@ -114,8 +114,8 @@ The choice determines what the caller may know. A map lookup returning `Option<V
 
     Result<File, IoError> opened = open("config.txt");
     switch (opened) {
-        Ok { value }  => use(value),
-        Err { error } => report(error),
+        Ok { value }   => { use(value); },
+        Err { error }  => { report(error); },
     }
 
 The methods mirror `Option`'s: `isOk` and `isErr`; `unwrap` and `unwrapOr`; `unwrapErr` for tests; `okPtr` and `errPtr` returning pointers to the live case or null:
@@ -192,14 +192,14 @@ The idiom is a switch that returns the error case and continues on success:
     Result<Config, ConfigError> loadConfig(str path) {
         Result<File, IoError> opened = open(path);
         switch (opened) {
-            Err { error } => return ConfigError::Io { .cause = error };
+            Err { error }  => { return ConfigError::Io { .cause = error }; }
             else          => {}
         }
         File f = opened.unwrap();
 
         Result<str, IoError> contents = readAll(&f);
         switch (contents) {
-            Err { error } => return ConfigError::Io { .cause = error };
+            Err { error }  => { return ConfigError::Io { .cause = error }; }
             else          => {}
         }
 
@@ -241,8 +241,8 @@ The compiler distinguishes the cases. A switch over `ConfigError` is checked for
 
     bool retryable(IoError e) {
         switch (e) {
-            IoError::Timeout | IoError::WouldBlock | IoError::Interrupted => true,
-            else => false,
+            IoError::Timeout | IoError::WouldBlock | IoError::Interrupted  => { true; },
+            else  => { false; },
         }
     }
 
@@ -307,12 +307,15 @@ This asymmetry shapes the function. The happy path stays quiet while every failu
 Each guard produces the specific error the caller needs, carrying the key, the offending value, and the bounds. The caller decides policy:
 
     switch (parseTimeout(&cfg)) {
-        Ok { value }                    => applyTimeout(value),
-        Err { error }                   => switch (error) {
-            ConfigError::MissingKey { key }  => useDefault(),
-            ConfigError::NotANumber { value } => warnAndUseDefault(value),
-            ConfigError::OutOfRange { value, min, max } =>
-                clampToRange(value, min, max),
+        Ok { value } => { applyTimeout(value); },
+        Err { error } => {
+            switch (error) {
+                ConfigError::MissingKey { key } => { useDefault(); },
+                ConfigError::NotANumber { value } => { warnAndUseDefault(value); },
+                ConfigError::OutOfRange { value, min, max } => {
+                    clampToRange(value, min, max);
+                }
+            }
         },
     }
 

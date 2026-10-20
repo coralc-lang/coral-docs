@@ -30,7 +30,7 @@
       <h1>Control Flow</h1>
       <p class="lead">More Than Just if and for</p>
       <p>Control flow decides what runs, how many times, and in what order. It is where a program's shape is decided, and where a language that fights you is most visible.</p>
-<p>Coral's control flow is C's, plus structure: a ranged for over containers, defer for guaranteed cleanup, and a pattern-matching switch with guards, ranges, and exhaustiveness checking. Every condition is a real bool, and control flow is explicit.</p>
+<p>Coral's control flow is C's, plus structure: a ranged for over containers, defer for guaranteed cleanup, and a pattern-matching switch with guards and exhaustiveness checking. Every condition is a real bool, and control flow is explicit.</p>
 <p>This chapter covers conditionals, loops, the @iter protocol, break and continue, and defer. Error handling with Result and Option has its own chapter, because it is control flow built on types rather than keywords.</p>
 <section><h2 id="s4-1">The if Statement</h2></section>
 <p>The if statement evaluates a bool condition and runs a block when it is true.</p>
@@ -156,9 +156,9 @@ char levelChar(LogLevel level)
 <p>A switch is also an expression: it produces the matched arm's value, so it can be assigned, returned, or passed.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 size = switch (kind)
 {
-    Size::Small =&gt; 16,
-    Size::Large =&gt; 1024,
-    else        =&gt; 0
+    Size::Small  =&gt; { 16; },
+    Size::Large  =&gt; { 1024; },
+    else         =&gt; { 0; }
 };</code></pre>
 <p>Expression and statement forms are the same construct. An expression body contributes a value; a brace block runs statements and contributes nothing. A switch used as a value must give every arm an expression body. Choose the expression form for values and the statement form for actions.</p>
 <p>The level-character decision as an expression:</p>
@@ -166,51 +166,38 @@ char levelChar(LogLevel level)
 {
     return switch (level)
     {
-        LogLevel::Debug =&gt; &#x27;D&#x27;,
-        LogLevel::Info  =&gt; &#x27;I&#x27;,
-        LogLevel::Warn  =&gt; &#x27;W&#x27;,
-        LogLevel::Error =&gt; &#x27;E&#x27;,
-        LogLevel::Fatal =&gt; &#x27;F&#x27;
+        LogLevel::Debug  =&gt; { &#x27;D&#x27;; },
+        LogLevel::Info   =&gt; { &#x27;I&#x27;; },
+        LogLevel::Warn   =&gt; { &#x27;W&#x27;; },
+        LogLevel::Error  =&gt; { &#x27;E&#x27;; },
+        LogLevel::Fatal  =&gt; { &#x27;F&#x27;; }
     };
 }</code></pre>
 <p>The expression switch supports pattern matching over the language's types: enum variants, literal constants, and an else for the rest. Because the compiler knows the types, it can check coverage: over an enum, every variant must be handled or an else must cover the remainder. This is exhaustiveness checking.</p>
 <p>The switch is where Coral's type system meets its C-shaped syntax: patterns come from types, else names the catch-all, and the result composes as an expression.</p>
 <section><h2 id="s4-5">Pattern Matching</h2></section>
 <p>Patterns go beyond single constants and are built from the type system.</p>
-<p>A literal pattern matches one value. An enum pattern matches one variant, as in LogLevel::Warn. else matches anything. A barred list matches any of several patterns: 1 | 2. A range pattern matches a closed range: 0..=59. A variant pattern destructures and binds fields, as in Some { value } =&gt; ... A guard refines a pattern: pat if cond =&gt; runs only when both hold.</p>
+<p>A literal pattern matches one value. An enum pattern matches one variant, as in LogLevel::Warn. else matches anything. A barred list matches any of several patterns: 1 | 2. A variant pattern destructures and binds fields, as in Some { value } =&gt; ... A guard refines a pattern: pat if cond =&gt; runs only when both hold.</p>
 <p>Two beginner habits to correct: the catch-all is <code>else</code>, not <code>_</code>, which is not a wildcard, so write <code>else =&gt;</code> for "anything left." Alternatives use bars: the bars in <code>1 | 2</code> are the "or" that lists them, so <code>1 | 2 =&gt; ...</code> is correct and <code>1, 2 =&gt; ...</code> is not.</p>
 <p>Patterns say in one line what an if chain takes several. A switch over specific values plus a general case reads as a table:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 byteCount(u64 x)
 {
     return switch (x)
     {
-        0     =&gt; 0,          // 0 bytes: representable in zero
-        1 | 2 =&gt; 1,          // one byte can hold 0..255
-        3 | 4 =&gt; 2,          // two bytes hold up to 65535
-        else  =&gt; 8           // anything larger: use the full width
+        0      =&gt; { 0; },          // 0 bytes: representable in zero
+        1 | 2  =&gt; { 1; },          // one byte can hold 0..255
+        3 | 4  =&gt; { 2; },          // two bytes hold up to 65535
+        else   =&gt; { 8; }           // anything larger: use the full width
     };
 }</code></pre>
 <p>The barred list matches either value and else catches the rest, turning a long if chain into a handful of lines.</p>
-<p>Range patterns turn range tests into a table, as the grade function shows:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">char gradeFor(u64 score)
-{
-    return switch (score)
-    {
-        90..=100 =&gt; &#x27;A&#x27;,
-        80..=89  =&gt; &#x27;B&#x27;,
-        70..=79  =&gt; &#x27;C&#x27;,
-        60..=69  =&gt; &#x27;D&#x27;,
-        else     =&gt; &#x27;F&#x27;
-    };
-}</code></pre>
-<p>Each arm states one band and its letter, so the whole scheme is a list of ranges.</p>
 <p>Patterns are most powerful with variants. A switch over a variant with an arm per case plus else turns the value into a decision, reaching fields directly:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 unwrapOrZero(Option&lt;u64&gt; o)
 {
     return switch (o)
     {
-        Some { value } =&gt; value,
-        else           =&gt; 0
+        Some { value }  =&gt; { value; },
+        else            =&gt; { 0; }
     };
 }</code></pre>
 <p>Coverage checking makes this safe: handle every variant and the switch is total; use else and you state that the rest is handled together.</p>
@@ -219,9 +206,9 @@ char levelChar(LogLevel level)
 {
     return switch (temp)
     {
-        t if t &lt; 0  =&gt; &#x27;C&#x27;,
-        t if t == 0 =&gt; &#x27;Z&#x27;,
-        else        =&gt; &#x27;H&#x27;
+        t if t &lt; 0   =&gt; { &#x27;C&#x27;; },
+        t if t == 0  =&gt; { &#x27;Z&#x27;; },
+        else         =&gt; { &#x27;H&#x27;; }
     };
 }</code></pre>
 <p>Coral's patterns are the type system made executable: the patterns are the types, and the switch selects behavior by type.</p>
@@ -231,12 +218,12 @@ char levelChar(LogLevel level)
 <p>Expression forms, the ternary and switch-as-expression, produce values. Use them when the decision controls which value is assigned, returned, or passed.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 size = switch (kind)
 {
-    Size::Small =&gt; 16,
-    Size::Large =&gt; 1024,
-    else        =&gt; 0
+    Size::Small  =&gt; { 16; },
+    Size::Large  =&gt; { 1024; },
+    else         =&gt; { 0; }
 };</code></pre>
 <p>There is a third expression form: the if expression.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 size = if (kind == Size::Small) 16 else 1024;</code></pre>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 size = if (kind == Size::Small) { 16 } else { 1024 };</code></pre>
 <p>The if expression spells the ternary with keywords. Its condition must be a real bool, both branches must have compatible types, and it produces the chosen branch's value. A null-literal branch adopts the other branch's type. It is exactly as safe and type-checked as the operator, just a longer spelling. The library favors <code>?:</code> inline but supports both.</p>
 <p>A decision that produces a value can be written inline without a separate statement. Switch statement and switch expression are one construct; choose by whether you are choosing actions or values.</p>
 <section><h2 id="s4-7">The while Loop</h2></section>
@@ -286,12 +273,7 @@ while (i &lt; n)
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 total = 0;
 for (u64 i = 0; i &lt; n; i++)
     total += values[i];</code></pre>
-<p>The header is flexible: any of the three parts can be empty. With no condition and no step, it is an infinite loop:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">for (;;)
-{
-    // runs until a break exits
-}</code></pre>
-<p>The empty condition is always true, so the loop runs until break or return. The JSON and CSV parsers use this to scan to a terminator.</p>
+<p>The header is flexible: the initialization can be omitted, the condition can be any bool expression, and the step can be any expression. An unbounded loop is written with the loop keyword, not with an empty for header.</p>
 <p>Reversing a buffer in place walks two indices toward the middle:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void reverse(u64* data, u64 n)
 {
@@ -318,7 +300,7 @@ for (u64 i = 0; i &lt; n; i++)
     // runs until a break or return exits
 }</code></pre>
 <p><code>loop</code> says "repeat until something inside stops me." With no condition, only a <code>break</code> or a <code>return</code> exits, which suits servers and menus.</p>
-<p>The loop construct states intent: this loop is unbounded and exits inside the body. <code>for (;;)</code> says the header has no end condition; <code>loop</code> says this is an infinite loop. They behave the same; choose for clarity.</p>
+<p>The loop construct states intent: this loop is unbounded and exits inside the body. The loop keyword says this is an infinite loop, and it is the only spelling Coral provides for one.</p>
 <p>Infinite loops are for servers, event loops, interactive sessions, and parsers scanning to a terminator. The body always contains the exit. A minimal REPL:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">loop
 {
@@ -496,7 +478,7 @@ Result&lt;u64, i32&gt; parseRatio(str s)
 <p>Use for over a counted range of indices: fixed iteration counts, buffer walks, table building.</p>
 <p>Use the ranged for over container elements when the elements matter more than the indices.</p>
 <p>Use loop when the loop is unbounded and its exit is decided inside the body: servers, event loops, parsers scanning to a terminator.</p>
-<p>The library demonstrates the range: indexed scans use for, boundary scans and node chains use while, parsers use for (;;) and loop, and argument packs use the ranged for.</p>
+<p>The library demonstrates the range: indexed scans use for, boundary scans and node chains use while, parsers use loop, and argument packs use the ranged for.</p>
 <section><h2 id="s4-18">Loop Fusion and Unrolling</h2></section>
 <p>Two compiler concepts explain what happens to your loops.</p>
 <p>Loop unrolling duplicates the body so several iterations run per pass, cutting branch and counter overhead and exposing more independent work. The compiler decides from loop size and trip count. Write simple, regular loops it can unroll safely.</p>
@@ -622,13 +604,21 @@ void runCommand(Command cmd)
     switch (cmd)
     {
         Command::Move =&gt;
-            moveUnit(currentUnit),
+        {
+            moveUnit(currentUnit);
+        },
         Command::Attack =&gt;
-            attackTarget(currentTarget),
+        {
+            attackTarget(currentTarget);
+        },
         Command::Heal =&gt;
-            healUnit(currentUnit),
+        {
+            healUnit(currentUnit);
+        },
         Command::Quit =&gt;
-            gameOver = true
+        {
+            gameOver = true;
+        }
     }
 }</code></pre>
 <p>The switch matches the variants directly, and the compiler verifies every variant is handled with no missing arm and no accidental fallthrough. Adding a command makes the compiler demand its arm, so the dispatcher is total by construction.</p>

@@ -28,7 +28,7 @@ The three are inseparable: layout enables operations, operations give layout its
 
 A data structure is a choice about how to arrange data in memory, and each arrangement makes some jobs fast and others slow.
 
-In Coral the layout is not hidden. Here is the vector exactly as `std::collections.vec` declares it:
+In Coral the layout is not hidden. Here is the vector exactly as `std::collections::vec` declares it:
 
     pub struct Vec<T>
     {
@@ -314,7 +314,7 @@ The linked list buys one thing the vector cannot: stable addresses.
 
 When a vector grows, it allocates a new buffer and copies elements, so a pointer into it is invalidated the instant it grows. A linked list makes no such bet: each element lives in its own node, and a pointer stays valid however many other nodes are added or removed, as long as that node is not removed.
 
-Pointer stability makes intrusive structures possible. An intrusive structure stores links inside the data itself: a cache entry that is both a recency-list node and a map value, or a task on a scheduler's list. Links move without moving the data. The library's `Cache` in `std::collections.cache` is exactly this: a hash map for lookup and a doubly linked list for recency, with each entry doing both jobs.
+Pointer stability makes intrusive structures possible. An intrusive structure stores links inside the data itself: a cache entry that is both a recency-list node and a map value, or a task on a scheduler's list. Links move without moving the data. The library's `Cache` in `std::collections::cache` is exactly this: a hash map for lookup and a doubly linked list for recency, with each entry doing both jobs.
 
 For iterating and indexing, the vector's locality wins overwhelmingly and it is the default. For rearranging links and holding pointers to elements that must not move, the list's stable addresses win. The structures are not ranked; they are different points on a trade.
 
@@ -337,7 +337,7 @@ The `mask` field is the ring trick. Capacity is a power of two, mask is capacity
 
 The operations are `pushFront`/`pushBack`, `popFront`/`popBack`, `front`/`back`, and index access through `at`/`set`, which index from the head. `Queue` is a thin wrapper over the deque:
 
-    import(lib) std::collections.deque { Deque };
+    import(lib) std::collections::deque { Deque };
 
     Deque<u64> work = Deque<u64>::new();
     work.pushBack(1);
@@ -349,9 +349,9 @@ The operations are `pushFront`/`pushBack`, `popFront`/`popBack`, `front`/`back`,
         if (job > 0) work.pushBack(job - 1);
     }
 
-The ring idea also appears with fixed capacity in `RingBuf`, in `std::collections.ringbuf`. It never allocates after construction; when full, a push overwrites the oldest element. Its declaration adds a `full` flag because with wrapping indices, empty and full look the same:
+The ring idea also appears with fixed capacity in `RingBuf`, in `std::collections::ringbuf`. It never allocates after construction; when full, a push overwrites the oldest element. Its declaration adds a `full` flag because with wrapping indices, empty and full look the same:
 
-    import(lib) std::collections.ringbuf { RingBuf };
+    import(lib) std::collections::ringbuf { RingBuf };
 
     RingBuf<f64> recent = RingBuf<f64>::new(16);
     recent.push(1.5);
@@ -382,7 +382,7 @@ A queue is first-in-first-out: the first added is the first removed. It is the s
 
 The queue's deepest use is breadth-first search, where queue order is discovery order. Mark and enqueue the start. Each iteration dequeues a node, visits it, and enqueues its unmarked neighbours. Every node at distance one is visited before any at distance two, so the walk spreads outward one layer at a time. A `Bitset` can serve as the mark set for small integer nodes:
 
-    import(lib) std::collections.bitset { Bitset };
+    import(lib) std::collections::bitset { Bitset };
 
     pub void bfs(u64 start, const Vec<Vec<u64>>* adj, void(u64) visit)
     {
@@ -435,7 +435,7 @@ The standard hash map uses open addressing: entries live in one array, and each 
 
 A hash map cannot hash an arbitrary `T` or know equality, so it asks the caller for both: `hashFn` turns a key into a number, and `eqFn` decides whether two keys are equal. The constructor takes them:
 
-    import(lib) std::collections.hashmap { HashMap };
+    import(lib) std::collections::hashmap { HashMap };
 
     pub usize hashU64(u64 k) { return (usize)k; }
     pub bool eqU64(u64 a, u64 b) { return a == b; }
@@ -562,7 +562,7 @@ The hash combines both coordinates so a change in either changes the hash, and e
 
 8.15 Order as a Feature: The Tree Map
 
-Hashing deliberately destroys order. Sometimes order is the point: iterate keys smallest to largest, or find all keys in a range. The ordered map keeps entries in a balanced binary search tree. Coral's `Map` in `std::collections.map` is an AVL tree, tracking each node's height:
+Hashing deliberately destroys order. Sometimes order is the point: iterate keys smallest to largest, or find all keys in a range. The ordered map keeps entries in a balanced binary search tree. Coral's `Map` in `std::collections::map` is an AVL tree, tracking each node's height:
 
     pub struct MapEntry<K, V>
     {
@@ -583,7 +583,7 @@ Hashing deliberately destroys order. Sometimes order is the point: iterate keys 
 
 Ordering comes from `cmpFn`, which compares two keys and returns negative, zero, or positive, the same three-way protocol as `str::compare` and binary search. A rotation rebalances: when a subtree is too tall on one side, a few pointer changes move a node up and reattach the middle subtree, preserving search order. After insertion or removal the tree rebalances along the changed path, so depth stays a small constant times the logarithm of size.
 
-    import(lib) std::collections.map { Map };
+    import(lib) std::collections::map { Map };
 
     pub i32 cmpView(str a, str b) { return a.compare(b); }
     pub void printPair(str k, u64 v) { println("{} : {}", k, v); }
@@ -611,7 +611,7 @@ A set drops the values and keeps the keys. It holds distinct elements, answers "
 
 Membership is constant time on average, inherited from the map. `insert` records a value, `contains` asks whether it is present, and `remove` forgets one. This is the collection for "have I seen this before":
 
-    import(lib) std::collections.set { Set };
+    import(lib) std::collections::set { Set };
 
     Set<u64> seen = Set<u64>::new(hashU64, eqU64);
     Vec<u64> unique = Vec<u64>::new();
@@ -658,7 +658,7 @@ The word count is the bit count divided by sixty-four, rounded up. Each bit oper
 
 The classic demonstration is the sieve of Eratosthenes, whose universe is exactly a dense integer range:
 
-    import(lib) std::collections.bitset { Bitset };
+    import(lib) std::collections::bitset { Bitset };
 
     pub Vec<u64> primesBelow(u64 n)
     {
@@ -709,7 +709,7 @@ Priorities come from the `less` function the constructor takes. The queue does n
 
 The heap's beauty is that the tree lives in the array with no pointers: children and parent are computed from the index, so the heap never allocates a node. The cost is that the array is not sorted; only the heap property holds. That is enough, because the queue only needs the root, and sifting restores the property after each push and pop.
 
-    import(lib) std::collections.priorityqueue { PriorityQueue };
+    import(lib) std::collections::priorityqueue { PriorityQueue };
 
     pub bool lessU64(u64 a, u64 b) { return a < b; }
 
@@ -745,7 +745,7 @@ A cache remembers a limited number of entries and forgets the rest. Coral's `Cac
 
 The map finds an entry by key in constant time. The linked list keeps entries in recency order, most recent at the head, least recent at the tail. Every access moves the entry to the head in constant time; every insertion beyond the limit evicts the tail. The entry is both a list node and a map value, so the map stores a pointer to it. This is the pointer stability of section8.9 made useful.
 
-    import(lib) std::collections.cache { Cache };
+    import(lib) std::collections::cache { Cache };
 
     Cache<u64, u64> table = Cache<u64, u64>::new(128, hashU64, eqU64);
     table.insert(7, 49);
@@ -789,7 +789,7 @@ A tree node is a value and a vector of pointers to child nodes. "Generic" means 
 
 The key property is that node pointers returned by `setRoot` and `addChild` are stable. A child is created, and the caller keeps its pointer to add grandchildren:
 
-    import(lib) std::collections.tree { Tree, TreeNode };
+    import(lib) std::collections::tree { Tree, TreeNode };
 
     Tree<str> org = Tree<str>::new();
     TreeNode<str>* ceo = org.setRoot("ceo");
@@ -826,7 +826,7 @@ A trie is for "do many strings share prefixes?" Words are stored as a tree where
 
 Every node carries an array of 256 child pointers, one per byte value, and a flag marking whether a word ends there. Insert walks the bytes, creating missing nodes and setting `isEnd` at the final node. `contains` returns false when a child is missing and true only if the final node's `isEnd` is set, so `cat` is found but `ca` is not. `startsWith` is the same walk without the word-end check:
 
-    import(lib) std::collections.trie { Trie };
+    import(lib) std::collections::trie { Trie };
 
     Trie dict = Trie::new();
     dict.insert("cat");

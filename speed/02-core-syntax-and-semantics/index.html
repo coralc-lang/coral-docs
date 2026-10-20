@@ -29,17 +29,12 @@
       <p class="chapter-kicker">Speed Edition · Chapter 2</p>
       <h1>Core Syntax and Semantics</h1>
       <p class="lead">The "Hello World" Trap</p>
-      <p>Most books open with Hello World and then plunge into variables and output, teaching a ritual rather than a mental model.</p>
-<p>This chapter starts beneath the surface: source characters, comments, identifiers, primitive types, and declaration and assignment rules. Hello World waits until it can be understood in full.</p>
-<p>Foundations deserve patience. Skin over this chapter and later ones feel built on sand.</p>
+      <p>Most books open with Hello World, teaching a ritual rather than a mental model. This chapter starts beneath the surface: source characters, comments, identifiers, primitive types, and declaration and assignment rules. Hello World waits until it can be understood in full.</p>
 <section><h2 id="s2-1">The Source File</h2></section>
-<p>A Coral source file is UTF-8 text. The language's character handling is built on that. UTF-8 is ASCII-compatible and represents every Unicode character in one to four bytes.</p>
-<p>Code, comments, and string literals can use the full range of writing systems, with no configuration, magic comment, or BOM.</p>
-<p>Text is data and data is bytes. Pinning the encoding to UTF-8 removes a category of cross-machine bugs from the toolchain.</p>
-<p>A byte is eight bits; text is stored as bytes using an encoding such as UTF-8, an agreed dictionary mapping characters to numbers. Because Coral pins it, the same file means the same thing everywhere.</p>
+<p>A Coral source file is UTF-8 text. UTF-8 is ASCII-compatible and represents every Unicode character in one to four bytes, so code, comments, and string literals can use any writing system with no configuration, magic comment, or BOM. Pinning the encoding removes a category of cross-machine bugs.</p>
 <p>Source files use .crl. A build file, itself Coral source, is build.coral at the project root. Those are the only filename conventions.</p>
 <section><h2 id="s2-2">Comments</h2></section>
-<p>Coral has two comment forms, both inherited from C.</p>
+<p>Coral has three comment forms. Two are inherited from C; the third is for documentation.</p>
 <p>A line comment begins with two slashes and runs to the end of the line:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// This entire line is a comment.
 u64 x = 42; // Everything after the slashes is a comment too.</code></pre>
@@ -49,6 +44,10 @@ u64 x = 42; // Everything after the slashes is a comment too.</code></pre>
    spans multiple
    lines. */</code></pre>
 <p>Block comments do not nest; the first closing sequence ends the comment. So commenting out code that already contains a block comment can resurrect part of it. Use line comments for single lines and block comments for explanations; if you must disable a chunk, delete it.</p>
+<p>A documentation comment begins with three slashes and attaches to the declaration that follows:</p>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">/// Adds two numbers and returns their sum.
+pub i32 add(i32 a, i32 b) { return a + b; }</code></pre>
+<p>The editor and language server show <code>///</code> comments on hover and in completion, the way clangd and rust-analyzer do. The compiler still ignores them; four or more slashes are an ordinary comment.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">// pub i32 add(i32 a, i32 b) { // Error, the code on this line is invalid
     return a + b;
 }</code></pre>
@@ -63,7 +62,7 @@ u64 x = 42; // Everything after the slashes is a comment too.</code></pre>
 <p>Functions and variables use camelCase: push, reserve, countCodepoints, formatInt. Functions are verbs; variables are short, meaningful nouns such as len, cap, count.</p>
 <p>Constants use UPPER_CASE with underscores: INT64_MIN, U64_MAX, CLOCK_MONOTONIC. This makes them visually distinct from variables.</p>
 <p>Type parameters use a single uppercase letter: T for the primary type, U for a secondary, N for a compile-time value. This is convention, not enforcement, but the standard library follows it.</p>
-<p>A method receiver is always named self. This is a keyword, not a convention; this is not a keyword in Coral.</p>
+<p>An instance method's receiver is named <code>self</code> and is implicit: it is available in the body but never written in the parameter list. A static method has no <code>self</code>.</p>
 <section><h2 id="s2-4">Reserved Words</h2></section>
 <p>A reserved word is an identifier the language has claimed. You cannot use it for your own names. Grouped by role:</p>
 <p>Declarations: struct, variant, union, enum, trait, extend, const, var, import, mod, typedef, distinct, pub, extern, static, flag.</p>
@@ -121,7 +120,7 @@ U64_MAX = 18446744073709551615</code></pre>
 v = v + 1;   // v is now 0; the byte wrapped around
 u8 w = 0;
 w = w - 1;   // w is now 255</code></pre>
-<p>A common trap is expecting a warning when a value is too big. There is none; the answer wraps quietly. Choose a wider type up front. <code>u64</code> is a safe default when unsure.</p>
+<p>A common trap is expecting a warning when a value is too big. Arithmetic on values wraps quietly at run time, with no warning. Only a literal that does not fit its type is caught, and it is a compile-time error, T0010 <code>literal out of range</code>. Choose a wider type up front; <code>u64</code> is a safe default when unsure.</p>
 <p>You must think about range when writing arithmetic. If a value can exceed its type, use a wider type or handle the wrap explicitly. The standard library does this constantly, for example using two 64-bit fields in a duration, or checking before doubling a vector's capacity.</p>
 <p>Signedness is part of a type's meaning. Signed types suit values that can go negative: differences and offsets. Unsigned types suit lengths, capacities, sizes, indices, and bytes. Mixing is legal but conversions are explicit, which prevents the C bug where a negative becomes a huge unsigned value.</p>
 <p>Bitwise operations treat integers as bit patterns: AND, OR, XOR, complement, left shift, arithmetic right shift, and logical right shift. A signed right shift preserves the sign bit; an unsigned one fills with zeros. The endian and byte-order helpers use shifts and masks, which is integers as bit patterns in its purest form.</p>
@@ -299,11 +298,11 @@ b = tmp;</code></pre>
 <p>Operators and expressions are defined in terms of these types; control flow consumes this bool; functions compose these values; the safety machinery enforces these types. Master type-first and the rest follows.</p>
 <p><a href="../02-core-syntax-and-semantics/index.html">Chapter 2</a> Summary</p>
 <p>Coral source is UTF-8 text in .crl files, with no encoding ceremony.</p>
-<p>Comments are line comments with two slashes and block comments between slash-asterisk and asterisk-slash. Comments explain why, not what.</p>
-<p>Identifiers begin with a letter or underscore, are case sensitive, and follow C-style conventions: PascalCase for types, camelCase for functions and variables, UPPER_CASE for constants. The method receiver is always self.</p>
+<p>Comments come in three forms: line comments with two slashes, block comments between slash-asterisk and asterisk-slash, and <code>///</code> documentation comments that editors surface for the declaration below. Comments explain why, not what.</p>
+<p>Identifiers begin with a letter or underscore, are case sensitive, and follow C-style conventions: PascalCase for types, camelCase for functions and variables, UPPER_CASE for constants. The receiver is the implicit <code>self</code> of an instance method.</p>
 <p>Whitespace is insignificant, statements end at semicolons, and no line-continuation characters are needed. Indentation is style, not syntax.</p>
 <p>Primitive types are fixed-width and explicit: i8 through i64, u8 through u64, f32 and f64, bool, char, and void.</p>
-<p>Integer arithmetic is modular and wraps at the type width. Signed and unsigned are distinct, bitwise operations are first-class, and endianness uses explicit byte-swap and host-to-network functions.</p>
+<p>Integer arithmetic on values is modular and wraps at the type width; a literal that does not fit its type is a compile-time error. Signed and unsigned are distinct, bitwise operations are first-class, and endianness uses explicit byte-swap and host-to-network functions.</p>
 <p>Floating point follows IEEE 754, cannot represent most decimal fractions exactly, requires tolerance-based comparison, and makes NaN unequal to everything, including itself.</p>
 <p>A char is one Unicode code point in 32 bits; a u8 is a byte. A code point occupies one to four UTF-8 bytes, and a grapheme cluster may span several code points.</p>
 <p>Booleans have exactly two values, no truthiness, and short-circuiting AND and OR.</p>

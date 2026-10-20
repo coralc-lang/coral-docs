@@ -63,9 +63,9 @@ The double colon `::` means "the case `Red` of the type `TrafficLight`." The lef
 Enums let the compiler enforce a value's legal choices: a function taking a `TrafficLight` can never receive a stray `3`, and a switch over it can be checked for completeness. A fact that used to live in a comment becomes something the compiler enforces.
 
     switch (light) {
-        TrafficLight::Red    => stop(),
-        TrafficLight::Green  => go(),
-        TrafficLight::Yellow => slowDown(),
+        TrafficLight::Red     => { stop(); },
+        TrafficLight::Green   => { go(); },
+        TrafficLight::Yellow  => { slowDown(); },
     }
 
 Three arms, no `else`, and the compiler is satisfied because all three lights are covered. Add a fourth light and this switch stops building until the new case is handled.
@@ -168,9 +168,9 @@ Variants can have methods, inline or in an extend block. The shape example with 
     pub extend Shape {
         f64 area() {
             switch (self) {
-                Shape::Circle { radius }         => 3.14159 * radius * radius,
-                Shape::Rectangle { width, height } => width * height,
-                Shape::Point                     => 0.0,
+                Shape::Circle { radius }          => { 3.14159 * radius * radius; },
+                Shape::Rectangle { width, height }  => { width * height; },
+                Shape::Point                      => { 0.0; },
             }
         }
     }
@@ -223,9 +223,9 @@ We have built values that are one of several things. Now we take them apart with
 Suppose a user types a command character and you want different behaviour for each:
 
     switch (command) {
-        'q' | 'Q' => quit(),
-        'h'      => help(),
-        else     => unknown(),
+        'q' | 'Q'  => { quit(); },
+        'h'       => { help(); },
+        else      => { unknown(); },
     }
 
 Read left to right: if the command is 'q' or 'Q', quit; if 'h', help; otherwise unknown. Each line is an arm. The thing left of `=>` is a pattern, a shape to match, and the right is what to do. The first matching arm wins.
@@ -241,20 +241,20 @@ Patterns match against the shape of a value. The main kinds:
 Literal patterns match a specific constant. Several literals joined with `|` mean "any of these":
 
     switch (httpStatus) {
-        200            => println("OK"),
-        301 | 302 | 307 => println("redirect"),
-        404             => println("not found"),
-        500 | 502 | 503 => println("server error"),
-        else           => println("other"),
+        200             => { println("OK"); },
+        301 | 302 | 307  => { println("redirect"); },
+        404              => { println("not found"); },
+        500 | 502 | 503  => { println("server error"); },
+        else            => { println("other"); },
     }
 
 Variant patterns match a case and pull its fields into local names. This is the workhorse:
 
     switch (message) {
-        Message::Login { username, password } => authenticate(username, password),
-        Message::Logout { reason }            => logOut(reason),
-        Message::Data { sequence, payload }   => store(sequence, payload),
-        Message::Ping                         => sendPong(),
+        Message::Login { username, password }  => { authenticate(username, password); },
+        Message::Logout { reason }             => { logOut(reason); },
+        Message::Data { sequence, payload }    => { store(sequence, payload); },
+        Message::Ping                          => { sendPong(); },
     }
 
 The names in braces are fresh locals scoped to that arm. Name only the fields you need: `Message::Login { username } => ...` binds just the username and ignores the password. `Some { value }` and `Option::Some { value }` mean the same thing.
@@ -262,10 +262,10 @@ The names in braces are fresh locals scoped to that arm. Name only the fields yo
 Tuple patterns match position by position, covered in Chapter12. A small useful one, deciding what a pair of signs means:
 
     switch ((x >= 0.0, y >= 0.0)) {
-        (true, true)   => println("first quadrant"),
-        (false, true)  => println("second quadrant"),
-        (false, false) => println("third quadrant"),
-        (true, false)  => println("fourth quadrant"),
+        (true, true)    => { println("first quadrant"); },
+        (false, true)   => { println("second quadrant"); },
+        (false, false)  => { println("third quadrant"); },
+        (true, false)   => { println("fourth quadrant"); },
     }
 
 Four possible combinations, all listed, so the switch is exhaustive and the compiler confirms it. Encoding a decision as a tuple of small closed values and matching turns a chain of `if`s into a table the compiler can check.
@@ -273,9 +273,9 @@ Four possible combinations, all listed, so the switch is exhaustive and the comp
 Binding patterns give a name to the whole value. A bare identifier in pattern position is a binding, not a constant to compare against:
 
     switch (point) {
-        (x, 0) => println("on the x-axis at {}", x),
-        (0, y) => println("on the y-axis at {}", y),
-        (x, y) => println("at ({}, {})", x, y),
+        (x, 0)  => { println("on the x-axis at {}", x); },
+        (0, y)  => { println("on the y-axis at {}", y); },
+        (x, y)  => { println("at ({}, {})", x, y); },
     }
 
 The wildcard is written `else`, not an underscore. Coral uses `else` for "anything not matched above."
@@ -285,10 +285,10 @@ Guards: patterns with a condition
 Sometimes shape is not enough and you want "a key event, but only the escape key." A guard is an `if` clause between pattern and arrow. It is checked only after the pattern matches and may read the names the pattern bound:
 
     switch (event) {
-        Event::Key { code } if code == ESC => quit(),
-        Event::Key { code }                => handleKey(code),
-        Event::Resize { width, height }    => onResize(width, height),
-        else                               => ignore(),
+        Event::Key { code } if code == ESC  => { quit(); },
+        Event::Key { code }                 => { handleKey(code); },
+        Event::Resize { width, height }     => { onResize(width, height); },
+        else                                => { ignore(); },
     }
 
 The first arm matches any key event, binds its code, and asks whether it is ESC. If not, the arm fails and the next is tried. Without guards you would need one arm per key or a nested `if`; with them, the condition lives with the pattern.
@@ -303,8 +303,8 @@ First, be exhaustive. A switch over an enum or variant must cover every case or 
 
     str name(Color c) {
         switch (c) {
-            Color::Red   => return "red",
-            Color::Green => return "green",
+            Color::Red    => { return "red"; },
+            Color::Green  => { return "green"; },
             // Color::Blue is missing!
         }
     }
@@ -319,11 +319,11 @@ Exhaustiveness means the compiler will not let you leave a case unhandled. Addin
 Second, be reachable. An arm that can never run is an error. A duplicate case, or a case an earlier arm already covered, is reported:
 
     switch (c) {
-        Color::Red   => ...,
-        Color::Red   => ...,      // error E0609: unreachable case
+        Color::Red    => { ... },
+        Color::Red    => { ... },      // error E0609: unreachable case
     }
 
-This catches a copy-paste mistake and overlapping ranges.
+This catches a copy-paste mistake where a case was meant to change but did not.
 
 Third, fallthrough must be deliberate. Arms do not fall through by default, but sometimes you want the C behaviour. Say so with `#[[fallthrough]]`:
 
@@ -350,11 +350,11 @@ Because arms produce values, a switch can be the right-hand side of an assignmen
 
     str severityLabel(LogLevel level) {
         return switch (level) {
-            LogLevel::Debug => "DEBUG",
-            LogLevel::Info  => "INFO",
-            LogLevel::Warn  => "WARN",
-            LogLevel::Error => "ERROR",
-            LogLevel::Fatal => "FATAL",
+            LogLevel::Debug  => { "DEBUG"; },
+            LogLevel::Info   => { "INFO"; },
+            LogLevel::Warn   => { "WARN"; },
+            LogLevel::Error  => { "ERROR"; },
+            LogLevel::Fatal  => { "FATAL"; },
         };
     }
 
@@ -362,12 +362,12 @@ Each arm is an expression; all arms are strings and every `LogLevel` is covered,
 
     f64 area(Shape s) {
         return switch (s) {
-            Shape::Circle { radius } => 3.14159 * radius * radius,
+            Shape::Circle { radius }  => { 3.14159 * radius * radius; },
             Shape::Rectangle { width, height } => {
                 f64 a = width * height;
                 return a;
             }
-            Shape::Point => 0.0,
+            Shape::Point  => { 0.0; },
         };
     }
 
@@ -375,23 +375,9 @@ A switch used for side effects is a statement and takes a semicolon. A switch us
 
 A value-computing switch turns a label into a result without temporary variables, and the compiler still checks exhaustiveness, so the promised value exists for every case in the type.
 
-13.7 Matching on Ranges and the Exhaustiveness Check Applied
+13.7 The Exhaustiveness Check Applied
 
-Literal patterns cover exact values. For the common "between these bounds" case, Coral has range patterns, checked for overlap as literals are for duplicates.
-
-    char grade;
-    switch (score) {
-        90..=100 => grade = 'A',
-        80..=89  => grade = 'B',
-        70..=79  => grade = 'C',
-        60..=69  => grade = 'D',
-        0..=59   => grade = 'F',
-        else     => grade = '?',
-    }
-
-`..=` is an inclusive range, "from 90 up to and including 100." `..` is exclusive. Overlapping ranges make the second unreachable (E0609), a bug class that slips past `if` chains.
-
-Reach for ranges, enums, and tuples rather than long `if` chains because the compiler can check a closed, structured decision for completeness and overlap, and it cannot check a chain of `if`s at all. Every decision expressed as a match over a closed set is work handed to the compiler.
+Reach for enums and tuples rather than long `if` chains because the compiler can check a closed, structured decision for completeness, and it cannot check a chain of `if`s at all. Every decision expressed as a match over a closed set is work handed to the compiler.
 
 13.8 A Worked Example: An Arithmetic Interpreter
 
@@ -410,10 +396,10 @@ Evaluate a number by returning it; a sum by evaluating both sides and adding; a 
 
     f64 eval(Expr e) {
         return switch (e) {
-            Expr::Num { value }       => value,
-            Expr::Add { left, right } => eval(left) + eval(right),
-            Expr::Mul { left, right } => eval(left) * eval(right),
-            Expr::Neg { operand }     => -eval(operand),
+            Expr::Num { value }        => { value; },
+            Expr::Add { left, right }  => { eval(left) + eval(right); },
+            Expr::Mul { left, right }  => { eval(left) * eval(right); },
+            Expr::Neg { operand }      => { -eval(operand); },
         };
     }
 
@@ -425,10 +411,10 @@ Printing shows the same mirroring from another operation:
 
     str show(Expr e) {
         return switch (e) {
-            Expr::Num { value }       => formatFloat(value),
-            Expr::Add { left, right } => "(" + show(left) + " + " + show(right) + ")",
-            Expr::Mul { left, right } => "(" + show(left) + " * " + show(right) + ")",
-            Expr::Neg { operand }     => "-" + show(operand),
+            Expr::Num { value }        => { formatFloat(value); },
+            Expr::Add { left, right }  => { "(" + show(left) + " + " + show(right) + ")"; },
+            Expr::Mul { left, right }  => { "(" + show(left) + " * " + show(right) + ")"; },
+            Expr::Neg { operand }      => { "-" + show(operand); },
         };
     }
 
@@ -470,8 +456,8 @@ Now the operations are methods that match the current state and produce the next
     pub extend Connection {
         Result<Connection, str> open(str host, u16 port) {
             return switch (self) {
-                Connection::Disconnected => connectTo(host, port),
-                else => return Error::Err { .error = "already connecting or connected" },
+                Connection::Disconnected  => { connectTo(host, port); },
+                else  => { return Error::Err { .error = "already connecting or connected" }; },
             }
         }
 
@@ -501,8 +487,6 @@ The value's identity, `Disconnected`, `Connecting`, `Connected`, `Error`, is its
 
 7. Fallthrough. Write a switch where two cases genuinely need to share a tail of code, first with an `else`, then with `#[[fallthrough]]`. Which reads better, and when is each appropriate? What does the compiler say if you forget the attribute?
 
-8. Ranges. Write a switch over an `i32` with arms `0`, `1..=10`, `-5..=-1`, and `else`. Which values would be covered twice if you wrote `0..=10` instead of `1..=10`? Does the compiler catch it?
+8. Design. Model the events a text editor handles, a key press, a mouse click, a resize, a file-loaded notification, as a variant, then write the exhaustive switch that dispatches them.
 
-9. Design. Model the events a text editor handles, a key press, a mouse click, a resize, a file-loaded notification, as a variant, then write the exhaustive switch that dispatches them.
-
-10. Meta. The interpreter separates `eval` (behaviour) and `show` (formatting) into two switches over the same variant. Describe what happens to the codebase when you add a new operation versus when you add a new case. Write one paragraph arguing for the variant approach and one arguing for the class-hierarchy approach, then say which you find more convincing.
+9. Meta. The interpreter separates `eval` (behaviour) and `show` (formatting) into two switches over the same variant. Describe what happens to the codebase when you add a new operation versus when you add a new case. Write one paragraph arguing for the variant approach and one arguing for the class-hierarchy approach, then say which you find more convincing.

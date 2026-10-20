@@ -43,22 +43,22 @@ import(lib) std::result { Result };</code></pre>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-text">module (import path)               type               backing structure          order         per-op cost
 std::collections::vec              Vec&lt;T&gt;             growable array (ptr/len/cap) insertion     push,pop,at O(1); insert,remove O(n)
 std::collections::arr              Arr&lt;T, N&gt;          inline fixed array          insertion     all O(1); no heap
-std::collections.map               Map&lt;K, V&gt;          AVL tree                    key order     O(log n)
-std::collections.hashmap           HashMap&lt;K, V&gt;      linear-probing hash table   none          O(1) average
-std::collections.unordered_map     UnorderedMap&lt;K, V&gt; HashMap wrapper             none          O(1) average
-std::collections.set               Set&lt;T&gt;             HashMap&lt;T, bool&gt;            none          O(1) average
-std::collections.queue             Queue&lt;T&gt;           Deque wrapper (one end)     FIFO          O(1) amortised
-std::collections.deque             Deque&lt;T&gt;           growable ring (masked)      both ends     O(1) amortised
-std::collections.ringbuf           RingBuf&lt;T&gt;         fixed ring, overwrite-old   circular      O(1)
-std::collections.priorityqueue     PriorityQueue&lt;T&gt;   binary heap over an array   min-first     O(log n)
-std::collections.linkedlist        LinkedList&lt;T&gt;      doubly linked list          insertion     ends O(1); scan O(n)
-std::collections.tree              Tree&lt;T&gt;            vector-of-children tree      traversal     append child O(1)
-std::collections.trie              Trie               byte-keyed prefix tree      prefix        O(key length)
-std::collections.bitset            Bitset             packed 64-bit words          bit index     test,set,toggle O(1)
-std::collections.cache             Cache&lt;K, V&gt;        hash map + LRU list         recency       O(1) average
-std::collections.iter              free functions over a `Vec&lt;T&gt;`
-std::collections.sort              free functions over a `Vec&lt;T&gt;`
-std::collections.range             IterRange          half-open index bounds      index         O(1)</code></pre>
+std::collections::map               Map&lt;K, V&gt;          AVL tree                    key order     O(log n)
+std::collections::hashmap           HashMap&lt;K, V&gt;      linear-probing hash table   none          O(1) average
+std::collections::unordered_map     UnorderedMap&lt;K, V&gt; HashMap wrapper             none          O(1) average
+std::collections::set               Set&lt;T&gt;             HashMap&lt;T, bool&gt;            none          O(1) average
+std::collections::queue             Queue&lt;T&gt;           Deque wrapper (one end)     FIFO          O(1) amortised
+std::collections::deque             Deque&lt;T&gt;           growable ring (masked)      both ends     O(1) amortised
+std::collections::ringbuf           RingBuf&lt;T&gt;         fixed ring, overwrite-old   circular      O(1)
+std::collections::priorityqueue     PriorityQueue&lt;T&gt;   binary heap over an array   min-first     O(log n)
+std::collections::linkedlist        LinkedList&lt;T&gt;      doubly linked list          insertion     ends O(1); scan O(n)
+std::collections::tree              Tree&lt;T&gt;            vector-of-children tree      traversal     append child O(1)
+std::collections::trie              Trie               byte-keyed prefix tree      prefix        O(key length)
+std::collections::bitset            Bitset             packed 64-bit words          bit index     test,set,toggle O(1)
+std::collections::cache             Cache&lt;K, V&gt;        hash map + LRU list         recency       O(1) average
+std::collections::iter              free functions over a `Vec&lt;T&gt;`
+std::collections::sort              free functions over a `Vec&lt;T&gt;`
+std::collections::range             IterRange          half-open index bounds      index         O(1)</code></pre>
 <p>Three facts hold across the whole table. First, every container is generic and monomorphised: <code>Vec&lt;i32&gt;</code> and <code>Vec&lt;String&gt;</code> are separate types that share one source, exactly as in <a href="../07-generics-and-comptime/index.html">Chapter 7</a>. Second, no container takes an allocator parameter. They all allocate through the single process-wide allocator in <code>std::memory::mman</code> (<code>alloc&lt;T&gt;</code>, <code>dealloc&lt;T&gt;</code>, <code>realloc&lt;T&gt;</code>, which route to <code>defaultAllocator</code>). That is why the allocators and arenas live in their own section, 16.12, and why they are described there honestly as a separate facility rather than as a knob on the containers. Third, struct fields carry no visibility keyword, <code>pub</code> is a declaration modifier, not a field modifier, so a container's fields are readable and writable from anywhere. <code>Vec.data</code>, <code>Vec.len</code>, <code>Vec.cap</code>, and <code>MapEntry</code>'s fields are part of the observable interface, not hidden behind it.</p>
 <section><h2 id="s16-1">Vec&lt;T&gt;: The Dynamic Array</h2></section>
 <p>Vec&lt;T&gt; is the workhorse of the whole library, and it is worth understanding it completely, because a great deal of everything else is built on top of it or modelled after it.</p>
@@ -153,7 +153,7 @@ Arr&lt;i32, 4&gt; location = Arr&lt;i32, 4&gt; { 1, 2, 3, 4 };</code></pre>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">pub struct Arr&lt;T, N&gt; {
     T data[N];
 }</code></pre>
-<p>There is no pointer, no length field, and no capacity: <code>N</code> is the length, and it is baked into the type. The entire storage is the single inline array <code>data</code>. That has three consequences. The value is exactly <code>N * sizeof(T)</code> bytes with no indirection, so an Arr inside a struct keeps its elements in the struct and not off on the heap. Copying an Arr copies every element, so an Arr is only cheap to pass around when it is small or when you pass a pointer to it. And <code>N</code> is not <code>usize</code>, it is a comptime parameter, which is why you write <code>Arr&lt;i32, 4&gt;</code> and why generic code that wants "an array of unknown length" has to be generic over <code>N</code> as a parameter rather than over a runtime value.</p>
+<p>There is no pointer, no length field, and no capacity: <code>N</code> is the length, and it is baked into the type. The entire storage is the single inline array <code>data</code>. That has three consequences. The value is exactly <code>N * @sizeof(T)</code> bytes with no indirection, so an Arr inside a struct keeps its elements in the struct and not off on the heap. Copying an Arr copies every element, so an Arr is only cheap to pass around when it is small or when you pass a pointer to it. And <code>N</code> is not <code>usize</code>, it is a comptime parameter, which is why you write <code>Arr&lt;i32, 4&gt;</code> and why generic code that wants "an array of unknown length" has to be generic over <code>N</code> as a parameter rather than over a runtime value.</p>
 <p>Because <code>N</code> is a compile-time constant, the compiler can check every constant index into an Arr, so an out-of-range constant is a build error rather than a runtime trap. The API mirrors Vec's access methods: <code>ptr</code>, <code>constPtr</code>, <code>count</code>, <code>isEmpty</code>, <code>at</code>, <code>set</code>, <code>atPtr</code>, <code>front</code>, <code>back</code>, <code>fill</code>, <code>copyTo</code>, and <code>copyFrom</code>:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">location.set(0, 9);
 i32 first = location.front();
@@ -298,7 +298,7 @@ q.clear();</code></pre>
 <p>Simply put, a Queue is the checkout line at a shop: the first person to join is the first served, and you only ever add at the back and take from the front. <code>Deque&lt;T&gt;</code> is the same line with a second door at the front, so you can join or leave at either end. <code>RingBuf&lt;T&gt;</code> is a circular conveyor that holds a fixed number of items and, once it is full, knocks the oldest one off to make room for the newest, the shape you want for "the last N readings."</p>
 <p>A common beginner mistake is to use a <code>Vec</code> as a queue by calling <code>removeAt(0)</code>. That works, but each removal slides every remaining element down one slot, so it is O(n) where a Queue is O(1). Reaching for the container whose name says "queue" is the fix.</p>
 <p><code>Deque&lt;T&gt;</code> is a double-ended queue: a growable ring that supports both ends. It is the structure for a work list that grows at both ends and for a sliding window:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.deque { Deque };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::deque { Deque };
 
 Deque&lt;i32&gt; d = Deque&lt;i32&gt;::new();
 d.pushBack(2);
@@ -308,7 +308,7 @@ i32 right = d.popBack();       // 2
 i32 at    = d.at(0);           // random access by logical index
 d.set(0, 9);</code></pre>
 <p><code>RingBuf&lt;T&gt;</code> is a fixed-capacity ring: a queue whose storage is a fixed array with head and tail indices that wrap. It never allocates after construction, and when it is full, pushing overwrites the oldest element, which is precisely the behaviour you want in a logging buffer or a recent-history window:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.ringbuf { RingBuf };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::ringbuf { RingBuf };
 
 RingBuf&lt;f64&gt; samples = RingBuf&lt;f64&gt;::new(1024);
 samples.push(sample);          // overwrites the oldest once full
@@ -343,7 +343,7 @@ i32 peeked = pq.peek();        // the next one out, without removing</code></pre
 <p>The implementation is a textbook binary heap stored flat: the children of index <code>i</code> are <code>2*i + 1</code> and <code>2*i + 2</code>, and the parent of <code>i</code> is <code>(i - 1) / 2</code>. <code>push</code> appends and sifts up; <code>pop</code> moves the last element to the root and sifts down. The backing array starts at capacity 16 and doubles in <code>_grow</code> when full. The method set is <code>new</code>, <code>dispose</code>, <code>count</code>, <code>isEmpty</code>, <code>push</code>, <code>pop</code>, <code>peek</code>, <code>clear</code>, plus <code>@drop</code>. <code>peek</code> and <code>pop</code> assert on emptiness, and there is no <code>decreaseKey</code> or arbitrary <code>remove</code>, so a decrease-key algorithm has to be expressed by pushing a duplicate entry and discarding stale pops, the usual "lazy deletion" pattern. <code>clear</code> only resets <code>len</code>; it does not free the backing array, which stays allocated for reuse.</p>
 <section><h2 id="s16-8">LinkedList&lt;T&gt;</h2></section>
 <p>A linked list is a chain of nodes, each pointing at the next. It is the structure to reach for sparingly, an array beats it for almost every access pattern because of cache locality, but it is unbeatable when you need O(1) insertion and removal given a cursor, and it expresses an intrusive pointer-linked structure directly.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.linkedlist { LinkedList };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::linkedlist { LinkedList };
 
 LinkedList&lt;i32&gt; l = LinkedList&lt;i32&gt;::new();
 l.pushBack(1);
@@ -375,7 +375,7 @@ pub struct Tree&lt;T&gt; {
     TreeNode&lt;T&gt;* root;
 }
 
-import(lib) std::collections.tree { Tree };
+import(lib) std::collections::tree { Tree };
 
 Tree&lt;str&gt; root = Tree&lt;str&gt;::new();
 TreeNode&lt;str&gt;* r = root.setRoot(&quot;root&quot;);
@@ -391,7 +391,7 @@ usize total = root.size();
 Vec&lt;str&gt; flat = root.toVec();</code></pre>
 <p>Because a Tree is not a Vec, iteration is through <code>preOrder</code> and <code>postOrder</code>, which take a <code>void(T)</code> function. The method set is <code>new</code>, <code>dispose</code>, <code>isEmpty</code>, <code>setRoot</code>, <code>addChild</code>, <code>childCount</code>, <code>childAt</code>, <code>removeChild</code>, <code>preOrder</code>, <code>postOrder</code>, <code>depth</code>, <code>size</code>, <code>toVec</code>, plus <code>@drop</code>. Some behaviours are sharp edges worth naming. <code>setRoot</code> is also the way to <em>replace</em> a tree: called on a tree that already has a root, it first disposes the entire old tree and frees every node. <code>addChild(null, val)</code> returns <code>null</code> rather than trapping, so a caller that lost its parent pointer gets a null child and a null result rather than a crash. <code>removeChild(parent, i)</code> does not just unlink the i-th child; it disposes that child's whole subtree and frees it. <code>childAt</code> returns an <code>Option</code>, while <code>childCount</code> returns a plain count. <code>depth(node)</code> is the height of the subtree rooted at <code>node</code> (a leaf is 1, a null node is 0), and <code>size()</code> counts every node in the tree, not the depth. <code>toVec</code> produces values in pre-order, matching <code>preOrder</code>. <code>Tree</code> is generic over any <code>T</code>, and it never drops <code>T</code>: dispose frees the node objects and their child arrays, and it is the caller's job to clean up owned values first.</p>
 <p><code>Trie</code> is the prefix tree, keyed on the bytes of a string. It is ideal for autocomplete, spell-check dictionaries, and routing tables, where the query is "all keys with this prefix":</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.trie { Trie };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::trie { Trie };
 
 Trie dict = Trie::new();
 dict.insert(&quot;car&quot;);
@@ -406,7 +406,7 @@ dict.each(printWord);</code></pre>
 <p>One subtlety is easy to miss in a worked example: <code>each</code> walks the trie with a scratch byte buffer sized to the deepest key and constructs each callback argument with <code>str::fromParts(buf, depth)</code>. That string <em>views the scratch buffer</em>, so it is valid only for the duration of the callback, copy it (for example with <code>String::from</code>) if you intend to keep it. Because the children are visited in index order 0..255, <code>each</code> yields keys in ascending byte order, which is lexicographic order for pure ASCII keys.</p>
 <section><h2 id="s16-10">Bitset and Cache</h2></section>
 <p><code>Bitset</code> is a fixed-width set of bits packed into 64-bit words. It is the right structure for a dense set of small non-negative integers, a set of visited nodes in a graph, an array of feature flags, where a <code>Set&lt;usize&gt;</code> would spend sixty-four bits storing what one bit could hold.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.bitset { Bitset };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::bitset { Bitset };
 
 Bitset visited = Bitset::new(256);
 visited.set(42);
@@ -427,7 +427,7 @@ visited.setAll();
 visited.clearAll();</code></pre>
 <p>The method set is <code>new</code>, <code>dispose</code>, <code>count</code>, <code>wordCount</code>, <code>set</code>, <code>clear</code>, <code>toggle</code>, <code>test</code>, <code>setAll</code>, <code>clearAll</code>, <code>countOnes</code>, <code>countZeros</code>, <code>hasAny</code>, <code>none</code>, <code>all</code>, <code>and</code>, <code>or</code>, <code>xor</code>, <code>not</code>, plus <code>@drop</code>. Read <code>count()</code> carefully: it returns <code>numBits</code>, the width you asked for at construction, <em>not</em> the number of set bits, the population count is <code>countOnes()</code>. <code>wordCount()</code> returns the number of 64-bit words, <code>ceil(numBits / 64)</code>. <code>set</code>, <code>clear</code>, <code>toggle</code>, and <code>test</code> all assert <code>bit &lt; numBits</code>, so an out-of-range bit index is a trap and not a silent no-op. The four bitwise operations <code>and</code>, <code>or</code>, <code>xor</code>, and <code>not</code> mutate the receiver in place; the first three assert that <code>other-&gt;numBits</code> equals the receiver's, so a 256-bit set cannot be combined with a 128-bit one. <code>not</code> and <code>setAll</code> mask off the unused high bits of the last word, so <code>all()</code> correctly reports true only when every one of the <code>numBits</code> bits is set, never the padding. There is no <code>get</code> alias outside <code>test</code>, and no way to grow a Bitset: its width is fixed at construction.</p>
 <p><code>Cache&lt;K, V&gt;</code> is a bounded, eviction-aware map, the standard tool when a map must not grow without limit. Right now the eviction policy is a true LRU: on every hit the entry is moved to the most-recently-used end, and when the cache is full the coldest entry is dropped. Because it also needs a hash and an equality for keys, the constructor takes all three:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.cache { Cache };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::cache { Cache };
 
 Cache&lt;str, Page&gt; pages = Cache&lt;str, Page&gt;::new(128, hashStr, eqStr);
 
@@ -465,7 +465,7 @@ isize idx = binarySearchI32(&amp;v, 2);     // index, or -1</code></pre>
 <p>For any other element type, <code>sortBy</code> takes the "less than" predicate, and <code>binarySearchBy</code> takes the three-way comparator:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">sortBy(&amp;v, lessSomeType);
 isize where = binarySearchBy(&amp;v, key, cmpSomeType);</code></pre>
-<p><code>std::collections.iter</code> provides the adaptors that make bulk operations read as transformations rather than loops. Each takes a pointer to a Vec and a function, and each returns a new Vec or a folded value:</p>
+<p><code>std::collections::iter</code> provides the adaptors that make bulk operations read as transformations rather than loops. Each takes a pointer to a Vec and a function, and each returns a new Vec or a folded value:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::iter {
     map, filter, reduce, forEach, find, findIndex,
     hasAny, all, take, skip, slice, zip,
@@ -518,8 +518,8 @@ import(lib) std::memory::pool { Pool };</code></pre>
 <p>Put the collections to work on a task that needs several at once: count how often each word appears in a text and print the ten most frequent. Three containers cooperate, a hashed map to count, its key list to fan out, and a priority queue to rank. The example also has to honour the ownership rules of 16.12, because a word read from a line is a borrowed <code>str</code> view that dies with the next line: the map has to own its keys, and the program has to free them.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println, readLine };
 import(lib) std::text::strutil { splitVec, trim };
-import(lib) std::collections.hashmap { HashMap, HashMapEntry };
-import(lib) std::collections.priorityqueue { PriorityQueue };
+import(lib) std::collections::hashmap { HashMap, HashMapEntry };
+import(lib) std::collections::priorityqueue { PriorityQueue };
 import(lib) std::text::string { String };
 
 // The keys are owned Strings, so hash and compare their bytes (FNV-1a).
@@ -588,7 +588,7 @@ void main() {
 <p>Five moving parts, each doing what it is for. The HashMap accumulates counts by key, and it owns each key because the program copied the borrowed word into a <code>String</code> before inserting it. Its <code>keys</code> method produces a Vec of the distinct words to fan out over, and the <code>WordCount</code> views are safe because the map's key buffers outlive the ranking loop. The PriorityQueue orders the entries by a comparator so the top ten are simply the first ten pops. A small struct packages the pair. Then, because the map does not free its keys for you, <code>eachEntry(freeEntry)</code> releases every key buffer before <code>dispose</code> releases the table, the same pattern <code>std::parser::ini</code> uses. No container does another's job, and the whole program is a page. That is the shape a good standard library enables: the data structures are right, so the algorithm is short, and the cleanup is three lines rather than a mystery.</p>
 <section><h2 id="s16-14">A Worked Example: An LRU Page Cache</h2></section>
 <p>The second example uses the Cache container for the task it exists for, then shows what it would cost to build by hand.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections.cache { Cache };
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::collections::cache { Cache };
 import(lib) std::text::string { String };
 
 usize hashStr(str k) { ... }        // as above

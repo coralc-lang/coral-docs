@@ -267,16 +267,16 @@ pub struct Employee {
 pub f64 weeklyPay(const Employee* e) {
     // depends only on the pay arrangement
     return switch (e-&gt;pay) {
-        Pay::Salaried { base }        =&gt; base,
-        Pay::Hourly { rate, hours }   =&gt; rate * (f64)hours,
+        Pay::Salaried { base } =&gt; { base; },
+        Pay::Hourly { rate, hours } =&gt; { rate * (f64)hours; }
     };
 }
 
 pub bool managesOthers(const Employee* e) {
     // depends only on the role
     return switch (e-&gt;role) {
-        Role::Manager { reports } =&gt; reports &gt; 0,
-        else                      =&gt; false,
+        Role::Manager { reports } =&gt; { reports &gt; 0; },
+        else =&gt; { false; }
     };
 }</code></pre>
 <p>Now the fields travel with the case that owns them: a <code>Pay::Hourly</code> has its hours, and there is no way to ask a salaried employee for an hourly rate because the value does not have one. <code>weeklyPay</code> depends only on the pay arrangement, and <code>managesOthers</code> only on the role, so they are coupled to less. Adding a role is a new case the compiler insists every switch handle; adding a pay arrangement is a new case that only the pay switch sees.</p>
@@ -305,9 +305,9 @@ pub struct Shape {
 pub f64 area(const Shape* s) {
     // adding a shape means editing this very function
     switch (s-&gt;kind) {
-        ShapeKind::Circle    =&gt; return 3.14159 * s-&gt;a * s-&gt;a,
-        ShapeKind::Rectangle =&gt; return s-&gt;a * s-&gt;b,
-        ShapeKind::Triangle  =&gt; return 0.5 * s-&gt;a * s-&gt;b,
+        ShapeKind::Circle =&gt; { return 3.14159 * s-&gt;a * s-&gt;a; },
+        ShapeKind::Rectangle =&gt; { return s-&gt;a * s-&gt;b; },
+        ShapeKind::Triangle =&gt; { return 0.5 * s-&gt;a * s-&gt;b; }
     }
 }</code></pre>
 <p>Adding a <code>Pentagon</code> means editing this function, which means recompiling and retesting everything that touches <code>area</code>. A bug introduced here affects circles.</p>
@@ -469,12 +469,14 @@ pub Result&lt;i32, AgeError&gt; parseAge(str s) {
 pub void showAge(str s) {
     // the switch is exhaustive: no success path can ignore the error
     switch (parseAge(s)) {
-        Result::Ok { value }  =&gt; println(&quot;age {}&quot;, value),
-        Result::Err { error } =&gt; switch (error) {
-            AgeError::NotANumber { text } =&gt; println(&quot;&#x27;{}&#x27; is not a number&quot;, text),
-            AgeError::Negative { value }  =&gt; println(&quot;age {} is negative&quot;, value),
-            AgeError::TooLarge { value }  =&gt; println(&quot;age {} is implausibly large&quot;, value),
-        },
+        Result::Ok { value } =&gt; { println(&quot;age {}&quot;, value); },
+        Result::Err { error } =&gt; {
+            switch (error) {
+                AgeError::NotANumber { text } =&gt; { println(&quot;&#x27;{}&#x27; is not a number&quot;, text); },
+                AgeError::Negative { value } =&gt; { println(&quot;age {} is negative&quot;, value); },
+                AgeError::TooLarge { value } =&gt; { println(&quot;age {} is implausibly large&quot;, value); }
+            }
+        }
     }
 }</code></pre>
 <p>Now the type carries the failure and the reason. The compiler will not let <code>showAge</code> reach the value without handling the error, and the three failure modes are distinct cases a caller can respond to differently. There is no sentinel to collide with real data because there is no sentinel; the success case and the failure case are different shapes.</p>
@@ -736,8 +738,8 @@ pub void main() {
     while (readLine(&amp;line)) {
         // the Result forces us to count the rejected lines
         switch (parseRecord(line.asView())) {
-            Result::Ok { value }  =&gt; records.push(value),
-            Result::Err { error } =&gt; rejected += 1,
+            Result::Ok { value } =&gt; { records.push(value); },
+            Result::Err { error } =&gt; { rejected += 1; }
         }
     }
     Summary s = summarise(&amp;records, rejected);
@@ -879,9 +881,9 @@ pub Cart discounted(const Cart* c, f64 percent) {
 pub f64 compute(Op op, f64 a, f64 b) {
     // every new operation is a new arm here
     switch (op) {
-        Op::Add =&gt; return a + b,
-        Op::Sub =&gt; return a - b,
-        Op::Mul =&gt; return a * b,
+        Op::Add =&gt; { return a + b; },
+        Op::Sub =&gt; { return a - b; },
+        Op::Mul =&gt; { return a * b; }
     }
 }</code></pre>
 <p>Every new operation is an edit to <code>compute</code> and to the enum, and every edit risks the operations that already worked.</p>

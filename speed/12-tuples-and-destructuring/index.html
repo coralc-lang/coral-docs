@@ -111,22 +111,22 @@ var keep = pair.0;        // just read the first element</code></pre>
 <section><h2 id="s12-6">Patterns: Matching Tuples in a switch</h2></section>
 <p>A <code>switch</code> tries its arms in order and runs the first matching pattern. A tuple pattern uses parentheses and commas like a tuple literal, and each position holds a sub-pattern or a fresh name to bind:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (divide(10, 0)) {
-    (value, true)  =&gt; println(&quot;ok: {}&quot;, value),
-    (value, false) =&gt; println(&quot;division failed&quot;),
+    (value, true)   =&gt; { println(&quot;ok: {}&quot;, value); },
+    (value, false)  =&gt; { println(&quot;division failed&quot;); },
 }</code></pre>
 <p>Each arm matches position by position and binds the pieces it names. Because <code>bool</code> has exactly two values and both arms are present, the switch is exhaustive and the compiler confirms it. If <code>divide</code> later reports an error string, the type changes and the compiler walks you through every switch, the benefit <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> describes at length.</p>
 <p>For <code>divide(10, 0)</code> returning <code>(0, false)</code>, the first arm <code>(value, true)</code> fails because the second component is <code>false</code>. The second arm matches, binds <code>value</code> to <code>0</code>, and runs its body. First match wins.</p>
 <p>Patterns nest, because the type nests:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (bounds(values)) {
-    (lo, hi, 0) =&gt; println(&quot;no data&quot;),
-    (lo, hi, n) =&gt; println(&quot;{} readings span {}&quot;, n, lo, hi),
+    (lo, hi, 0)  =&gt; { println(&quot;no data&quot;); },
+    (lo, hi, n)  =&gt; { println(&quot;{} readings span {}&quot;, n, lo, hi); },
 }</code></pre>
 <p>The first arm matches only when the count is zero, binding both zeroes into <code>lo</code> and <code>hi</code>, which you ignore by not using them. The second names all three. With no wildcard, ignore a piece by naming it and not using it, or pin it with a literal. Coral's patterns are about shape and value, not discarding.</p>
 <p><code>else</code> is the catch-all when you do not want to enumerate:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (signOf(x), signOf(y)) {
-    (1, 1)   =&gt; println(&quot;both positive&quot;),
-    (0, 0)   =&gt; println(&quot;both zero&quot;),
-    else     =&gt; println(&quot;something else&quot;),
+    (1, 1)    =&gt; { println(&quot;both positive&quot;); },
+    (0, 0)    =&gt; { println(&quot;both zero&quot;); },
+    else      =&gt; { println(&quot;something else&quot;); },
 }</code></pre>
 <p>The idiom: <code>(signOf(x), signOf(y))</code> is built at the switch and immediately taken apart, never stored. When a decision depends on several small closed facts, package them into a tuple and match, and the compiler checks completeness. <a href="../13-variants-enums-unions-and-pattern-matching/index.html">Chapter 13</a> builds on this.</p>
 <p>One subtlety: a binding pattern copies or moves the value into the new name by the usual ownership rules. Matching <code>struct(String, usize)</code> moves the <code>String</code> out, leaving the original partially moved and unusable as a whole. A pattern that binds a piece takes it unless the piece is trivially copyable like a number.</p>
@@ -250,8 +250,8 @@ println(&quot;{} readings, range {}..{}&quot;, b.2, b.0, b.1);</code></pre>
 println(&quot;range {}..{}&quot;, b.0, b.1);</code></pre>
 <p>A caller who wants to branch on emptiness matches the tuple directly:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (bounds(values)) {
-    (lo, hi, 0) =&gt; println(&quot;no data&quot;),
-    (lo, hi, n) =&gt; println(&quot;{} readings span {}&quot;, n, lo, hi),
+    (lo, hi, 0)  =&gt; { println(&quot;no data&quot;); },
+    (lo, hi, n)  =&gt; { println(&quot;{} readings span {}&quot;, n, lo, hi); },
 }</code></pre>
 <p>A second function turns the bounds into a report string, showing the tuple flow through a pipeline:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">str describe(const i32[] data)

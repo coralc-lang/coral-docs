@@ -199,8 +199,8 @@ pub Result&lt;usize, FileError&gt; fileRead(File* f, u8* buf, usize len) {
 <p>The wrapper is also where the ownership contract is decided. The <code>File</code> owns the handle, so copying a <code>File</code> would double-close it; the wrapper must either forbid copying or use a reference count the way a file descriptor is meant to be shared. The language does not decide this for you, because C did not decide it for you. The wrapper's job is to make the decision once, in one place, and to express it in the type so that the rest of the program inherits it.</p>
 <p>Two more details make a wrapper feel finished. First, map error codes to a small closed set of cases, so callers can switch on them. Second, use the switch's <code>|</code> to group cases that share a handling path:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">switch (err) {
-    FileError::NotFound | FileError::PermissionDenied =&gt; recover(),
-    FileError::Unknown { code }                       =&gt; panic(code),
+    FileError::NotFound | FileError::PermissionDenied =&gt; { recover(); },
+    FileError::Unknown { code } =&gt; { panic(code); }
 }</code></pre>
 <p>This is the same pattern-matching from the book's variants chapter, applied to the boundary: the C error, an integer, has become a Coral variant the compiler can check.</p>
 <p>When a C function reports failure by returning a sentinel and setting <code>errno</code>, the wrapper reads <code>errno</code> through its accessor and turns it into a case. On POSIX, <code>errno</code> is reached through <code>__errno_location</code>, which returns a pointer to the current thread's error cell:</p>
@@ -288,7 +288,7 @@ pub Result&lt;File, FileError&gt; fileOpen(str path) {
 }
 
 pub Result&lt;usize, FileError&gt; fileRead(File* f, u8* buf, usize len) {
-    return (usize)fread((rawptr)buf, 1u, len, f-&gt;handle);
+    return Result&lt;usize, FileError&gt;::Ok { .value = (usize)fread((rawptr)buf, 1u, len, f-&gt;handle) };
 }</code></pre>
 <p>Then the program that uses it, which never sees C at all:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">import(lib) std::io::ios { println, eprintln };
@@ -298,7 +298,7 @@ import file;
 Result&lt;String, FileError&gt; readWholeFile(str path) {
     Result&lt;File, FileError&gt; opened = fileOpen(path);
     switch (opened) {
-        Err { error } =&gt; return Result&lt;String, FileError&gt;::Err { .error = error },
+        Err { error } =&gt; { return Result&lt;String, FileError&gt;::Err { .error = error }; },
         else          =&gt; {}
     }
     File f = opened.unwrap();
@@ -317,8 +317,8 @@ Result&lt;String, FileError&gt; readWholeFile(str path) {
 
 void main() {
     switch (readWholeFile(&quot;config.txt&quot;)) {
-        Ok { value }  =&gt; println(&quot;read {} bytes&quot;, value.len),
-        Err { error } =&gt; eprintln(&quot;could not open the file&quot;),
+        Ok { value } =&gt; { println(&quot;read {} bytes&quot;, value.len); },
+        Err { error } =&gt; { eprintln(&quot;could not open the file&quot;); }
     }
 }</code></pre>
 <p><code>main</code> never sees a <code>rawptr</code>, a <code>cchar</code>, or a return code. It sees a <code>Result</code> and a <code>String</code>, because <code>readWholeFile</code> turned C's <code>fopen</code>/<code>fread</code>/<code>fclose</code> world into Coral's <code>Result</code> world and hid the difference. The <code>File</code> is owned, so it is closed automatically when <code>readWholeFile</code> returns, success or failure, the descriptor is released. The buffer is a fixed array, passed down as a pointer and a length, converted by the wrapper. This is what a good FFI looks like from the outside: the boundary is invisible, and the discipline of the boundary lives in one wrapper rather than scattered across the program.</p>

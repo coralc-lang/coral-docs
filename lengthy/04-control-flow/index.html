@@ -30,7 +30,7 @@
       <h1>Control Flow</h1>
       <p class="lead">More Than Just if and for</p>
       <p>Control flow is the skeleton of a program. It is the set of mechanisms that decide what runs, how many times, and in what order. Most books treat control flow as trivial, a few keywords to memorize on the way to more interesting topics. That is a mistake. Control flow is where the shape of a program is decided, and it is where the difference between a language that is pleasant to write and a language that fights you is most visible. Spend your whole career in a language whose loops are awkward and you will never quite name what is rubbing against you, only that something is.</p>
-<p>Coral's control flow is C's control flow, with the same fundamental constructs, and the previous chapters' philosophy holds: a C programmer should be able to predict what Coral code does. But Coral adds structure on top of the C core. It has a ranged for loop that iterates over containers directly. It has a defer statement that makes resource cleanup a local, guaranteed operation. It has a pattern-matching switch, with arms, guards, ranges, and exhaustiveness checking, built on the language's explicit types. And it has the discipline, carried from the earlier chapters, that every condition is a real bool, that every loop has a defined shape, and that control flow is always explicit.</p>
+<p>Coral's control flow is C's control flow, with the same fundamental constructs, and the previous chapters' philosophy holds: a C programmer should be able to predict what Coral code does. But Coral adds structure on top of the C core. It has a ranged for loop that iterates over containers directly. It has a defer statement that makes resource cleanup a local, guaranteed operation. It has a pattern-matching switch, with arms, guards, and exhaustiveness checking, built on the language's explicit types. And it has the discipline, carried from the earlier chapters, that every condition is a real bool, that every loop has a defined shape, and that control flow is always explicit.</p>
 <p>This chapter covers conditionals, loops, the @iter protocol, break and continue, and the defer mechanism that Coral uses for guaranteed cleanup. Error handling, the Result and Option machinery that Coral uses instead of exceptions, is the subject of its own chapter, because it is control flow of a different kind, built on types rather than keywords.</p>
 <section><h2 id="s4-1">The if Statement</h2></section>
 <p>The if statement is the simplest conditional. It evaluates a bool condition, and when that bool is true, it runs a block.</p>
@@ -115,7 +115,7 @@ if (i &lt; self.len &amp;&amp; self.ptr[i] == c) ...</code></pre>
     else =&gt; { /* value is something else */ }
 }</code></pre>
 <p>If you are new to a switch, picture a vending machine: you press one code and the matching item drops out. Here the "code" is the value of the expression, and each arm is a shelf labelled with the pattern it serves. The <code>else</code> arm is the catch-all shelf for anything not matched above.</p>
-<p>The expression in parentheses is evaluated once. Its value is matched against the patterns in order, and the first arm that matches runs. The arms are separated by commas, and an arm's body is a block: a single expression, or several statements inside braces. The arm ends where its body ends, so there is no break to write and no accidental fallthrough. The else arm is the catch-all, and it plays the role C's default plays; it must come last. When an arm should fall through into the next one, you say so explicitly with the #[[fallthrough]] attribute, and the compiler still warns that you did, silence is never a fallthrough.</p>
+<p>The expression in parentheses is evaluated once. Its value is matched against the patterns in order, and the first arm that matches runs. The arms are separated by commas, and every arm's body is a block inside braces. The block may hold statements, or a single value as its last expression. The arm ends where its body ends, so there is no break to write and no accidental fallthrough. The else arm is the catch-all, and it plays the role C's default plays; it must come last. When an arm should fall through into the next one, you say so explicitly with the #[[fallthrough]] attribute, and the compiler still warns that you did, silence is never a fallthrough.</p>
 <p>The patterns are constants, compared against the switch value. They are typically integer constants, character constants, or enum variants, and the compiler checks that they are compatible with the switch expression's type. Using enum variants as patterns is a common and powerful pattern: a switch over an enum handles every possible value of that enum, and the arms are named by their meanings rather than by raw numbers. Consider mapping a log level to its one-letter label:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">enum LogLevel { Debug, Info, Warn, Error, Fatal }
 
@@ -156,61 +156,48 @@ char levelChar(LogLevel level)
 <p>A switch is also an expression: it produces the value of the arm whose pattern matches, so it can be assigned, returned, or passed as an argument.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 size = switch (kind)
 {
-    Size::Small =&gt; 16,
-    Size::Large =&gt; 1024,
-    else        =&gt; 0
+    Size::Small  =&gt; { 16; },
+    Size::Large  =&gt; { 1024; },
+    else         =&gt; { 0; }
 };</code></pre>
-<p>The expression form and the statement form are the same construct. An arm whose body is a single expression contributes that expression's value; an arm whose body is a brace block runs its statements and contributes nothing. A switch used as a value, then, must give every arm an expression body. This is the same split as between the ternary operator and the if statement: expressions produce values, statements perform actions. When the decision chooses a value, write the switch as an expression and assign it in one line; when it chooses actions, write it as a statement with block arms.</p>
+<p>The expression form and the statement form are the same construct. An arm's body is always a block, and the block's value is its last expression: an arm that ends in a value contributes it, while an arm that ends in a statement contributes nothing. A switch used as a value, then, must give every arm a value as the last expression in its block. This is the same split as between the ternary operator and the if statement: expressions produce values, statements perform actions. When the decision chooses a value, write the switch as an expression and assign it in one line; when it chooses actions, write it as a statement with blocks.</p>
 <p>The same level-character decision from the last section, as an expression, shows how compact a decision can be:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">char levelChar(LogLevel level)
 {
     return switch (level)
     {
-        LogLevel::Debug =&gt; &#x27;D&#x27;,
-        LogLevel::Info  =&gt; &#x27;I&#x27;,
-        LogLevel::Warn  =&gt; &#x27;W&#x27;,
-        LogLevel::Error =&gt; &#x27;E&#x27;,
-        LogLevel::Fatal =&gt; &#x27;F&#x27;
+        LogLevel::Debug  =&gt; { &#x27;D&#x27;; },
+        LogLevel::Info   =&gt; { &#x27;I&#x27;; },
+        LogLevel::Warn   =&gt; { &#x27;W&#x27;; },
+        LogLevel::Error  =&gt; { &#x27;E&#x27;; },
+        LogLevel::Fatal  =&gt; { &#x27;F&#x27;; }
     };
 }</code></pre>
 <p>The expression-oriented switch supports the kind of pattern matching that the language's types make meaningful. It can match enum variants, an arm per variant with an else for the rest. It can match against literal constants. And because the compiler understands the types, it can check the coverage of the switch: over an enum, it can verify that every variant is handled, or that an else arm is present to cover the remainder. This is exhaustiveness checking, the guarantee that a decision over a complete set of values is total. The compiler will not silently leave a variant unhandled when it can prove a value would fall through, and it accepts an explicit else when the programmer means the remainder to be handled generically.</p>
 <p>The switch is where Coral's modern type system meets its C-shaped syntax. The patterns are built from the language's types, the else arm names the catch-all, and the result is an expression that composes with everything else in the language.</p>
 <section><h2 id="s4-5">Pattern Matching</h2></section>
 <p>The patterns in a switch go beyond a single constant, and they are built from the type system's building blocks.</p>
-<p>A literal pattern matches exactly one value, such as 0 or 'x'. An enum pattern matches one variant, written with the type and the variant joined by ::, as in LogLevel::Warn. The else pattern matches anything, and a switch may end with one. A barred list matches any one of several patterns: 1 | 2 matches when the value is 1 or 2. A range pattern matches a closed range: 0..=59 matches any value from 0 through 59. A variant pattern destructures a variant and binds its fields, as in Some { value } =&gt; ..., which is how a switch over an Option or a Result reaches the value inside. A guard refines a pattern with a condition: pat if cond =&gt; runs only when pat matches and cond is true.</p>
+<p>A literal pattern matches exactly one value, such as 0 or 'x'. An enum pattern matches one variant, written with the type and the variant joined by ::, as in LogLevel::Warn. The else pattern matches anything, and a switch may end with one. A barred list matches any one of several patterns: 1 | 2 matches when the value is 1 or 2. A variant pattern destructures a variant and binds its fields, as in Some { value } =&gt; ..., which is how a switch over an Option or a Result reaches the value inside. A guard refines a pattern with a condition: pat if cond =&gt; runs only when pat matches and cond is true.</p>
 <p>Two beginner habits are worth correcting early. The catch-all is the word <code>else</code>, not an underscore: <code>_</code> is not a wildcard in Coral, so write <code>else =&gt;</code> when you mean "anything left." And the bars in <code>1 | 2</code> are the "or" that lists alternatives, one pattern per side; a comma is not how alternatives are joined, so <code>1 | 2 =&gt; ...</code> is the correct spelling and <code>1, 2 =&gt; ...</code> is not.</p>
 <p>The purpose of patterns is to say, in one line, what an if chain would take several lines to say. Consider a switch that must handle several specific values and then a general case. The specific values are listed as their own patterns, the barred list gathers the related ones, and else handles everything else. The decision is a table, read top to bottom, and the intent is visible at a glance:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 byteCount(u64 x)
 {
     return switch (x)
     {
-        0     =&gt; 0,          // 0 bytes: representable in zero
-        1 | 2 =&gt; 1,          // one byte can hold 0..255
-        3 | 4 =&gt; 2,          // two bytes hold up to 65535
-        else  =&gt; 8           // anything larger: use the full width
+        0      =&gt; { 0; },          // 0 bytes: representable in zero
+        1 | 2  =&gt; { 1; },          // one byte can hold 0..255
+        3 | 4  =&gt; { 2; },          // two bytes hold up to 65535
+        else   =&gt; { 8; }           // anything larger: use the full width
     };
 }</code></pre>
 <p>The barred list matches either of the listed values, and else catches everything else. A decision that would take an if chain of comparisons, or a switch with hundreds of arms, is a handful of lines.</p>
-<p>Range patterns turn a chain of range tests into a table too, which the letter-grade function from section4.1 now shows in pattern form:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">char gradeFor(u64 score)
-{
-    return switch (score)
-    {
-        90..=100 =&gt; &#x27;A&#x27;,
-        80..=89  =&gt; &#x27;B&#x27;,
-        70..=79  =&gt; &#x27;C&#x27;,
-        60..=69  =&gt; &#x27;D&#x27;,
-        else     =&gt; &#x27;F&#x27;
-    };
-}</code></pre>
-<p>Each arm states one band of scores and its letter, and the reader sees the whole grading scheme as a list of ranges.</p>
 <p>Patterns are most powerful with variants. A variant defines a fixed set of cases, and a switch over a variant with an arm per case, plus an else for the unhandled remainder, is the canonical way to turn a variant value into a decision. Variant patterns reach the fields directly:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 unwrapOrZero(Option&lt;u64&gt; o)
 {
     return switch (o)
     {
-        Some { value } =&gt; value,
-        else           =&gt; 0
+        Some { value }  =&gt; { value; },
+        else            =&gt; { 0; }
     };
 }</code></pre>
 <p>The compiler's coverage checking makes this safe: when you handle every variant, the compiler confirms the switch is total; when you use an else, you state in one arm that the rest is intended to be handled together.</p>
@@ -219,9 +206,9 @@ char levelChar(LogLevel level)
 {
     return switch (temp)
     {
-        t if t &lt; 0  =&gt; &#x27;C&#x27;,
-        t if t == 0 =&gt; &#x27;Z&#x27;,
-        else        =&gt; &#x27;H&#x27;
+        t if t &lt; 0   =&gt; { &#x27;C&#x27;; },
+        t if t == 0  =&gt; { &#x27;Z&#x27;; },
+        else         =&gt; { &#x27;H&#x27;; }
     };
 }</code></pre>
 <p>The patterns of Coral are the type system made executable. The language does not have a separate pattern-matching language grafted on; the patterns are the types, and the switch is where the type of a value selects its behavior.</p>
@@ -231,12 +218,12 @@ char levelChar(LogLevel level)
 <p>The expression forms, the ternary operator from the previous chapter and the switch used as an expression, produce values. They are used when the decision controls what value an expression has: which number to assign, which result to return, which argument to pass.</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 size = switch (kind)
 {
-    Size::Small =&gt; 16,
-    Size::Large =&gt; 1024,
-    else        =&gt; 0
+    Size::Small  =&gt; { 16; },
+    Size::Large  =&gt; { 1024; },
+    else         =&gt; { 0; }
 };</code></pre>
 <p>There is a third expression form besides the ternary and the switch expression: the if expression.</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 size = if (kind == Size::Small) 16 else 1024;</code></pre>
+<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 size = if (kind == Size::Small) { 16 } else { 1024 };</code></pre>
 <p>The if expression spells the ternary operator with keywords. It evaluates its condition, and like every other condition in Coral that condition must be a real bool, no truthiness, no implicit conversions. It produces the value of whichever branch runs. The two branches must have compatible types, and when one branch is a null literal it adopts the other branch's type, the same way the ternary behaves. The keyword form is exactly as safe and exactly as type-checked as the operator; it is simply a longer spelling of the same decision. Because <code>?:</code> reads more compactly inline, the standard library reaches for it and uses the keyword if expression sparingly, but both forms are supported, and neither is more correct than the other. Coral does not force you to choose between "if produces no value" and "you must use the cryptic operator."</p>
 <p>This is the essence of the expression-oriented style: a decision that produces a value, written inline, without a separate statement. The switch statement and the switch expression are the same construct; the form you choose depends on whether you are choosing actions or choosing values. Coral provides both, and the standard library uses both, with statements for work and expressions for values.</p>
 <section><h2 id="s4-7">The while Loop</h2></section>
@@ -286,12 +273,7 @@ while (i &lt; n)
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">u64 total = 0;
 for (u64 i = 0; i &lt; n; i++)
     total += values[i];</code></pre>
-<p>The three parts of the for header are flexible. The initialization can declare a fresh counter, as above, or it can be omitted. The condition can be any bool expression. The step can be any expression. Any of the three can be empty. A for loop with no condition and no step is an infinite loop, and the standard library writes infinite loops in this style:</p>
-<pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">for (;;)
-{
-    // runs until a break exits
-}</code></pre>
-<p>The empty condition is always true, so the loop runs until a break or a return exits it. This is the C idiom for an unbounded loop whose exit is decided inside the body, and Coral keeps it. The JSON parser and the CSV parser both use for (;;) loops for exactly this purpose, scanning forward until they hit a terminator and then breaking.</p>
+<p>The three parts of the for header are flexible. The initialization can declare a fresh counter, as above, or it can be omitted; the condition can be any bool expression; the step can be any expression. An unbounded loop is written with the loop keyword of section4.9, not with an empty for header.</p>
 <p>The for loop is also where a running total takes its most readable shape. Reversing a buffer in place walks two indices toward the middle, and the for loop states the whole walk in its header:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">void reverse(u64* data, u64 n)
 {
@@ -318,7 +300,7 @@ for (u64 i = 0; i &lt; n; i++)
     // runs until a break or return exits
 }</code></pre>
 <p>In plain words, <code>loop</code> says "repeat forever until something inside tells me to stop." Because the header has no condition, the only way out is a <code>break</code> or a <code>return</code> in the body. That is perfect for programs that are meant to keep running, a server waiting for connections, a menu waiting for input.</p>
-<p>The loop construct is the clear statement of intent: this loop is unbounded, and its exit is decided inside the body. Where for (;;) says "the loop's header has no end condition," loop says "this is an infinite loop." The two are equivalent in behavior, and the choice is one of clarity. The loop keyword is used when the body's break conditions are the whole story, and an explicit infinite loop reads better than an empty for header.</p>
+<p>The loop construct is the clear statement of intent: this loop is unbounded, and its exit is decided inside the body. The loop keyword says "this is an infinite loop," and it is the only spelling Coral provides for one. The body's break conditions are the whole story, and the keyword makes that explicit.</p>
 <p>The infinite loop is the loop of servers, event loops, and interactive sessions, which run until told to stop. It is also the loop of careful parsers that advance position until a terminator appears. The body of an infinite loop always contains the exit, a break or a return, and the loop construct makes that structure visible. A minimal REPL shows the pattern:</p>
 <pre class="code-block"><button class="copy-btn" type="button">Copy</button><code class="language-coral">loop
 {
@@ -389,7 +371,7 @@ void main()
     c.n = 5;
 
     for (var value : c(1, 4))
-        println(&quot;{..}&quot;, value);   // 1, 2, 3
+        println(&quot;{}&quot;, value);   // 1, 2, 3
 }</code></pre>
 <p><code>IterRange</code> is a two-field struct, <code>start</code> and <code>end</code>, declared in <code>std::collections::range</code>. It is deliberately non-generic, so importing a collection does not implicitly instantiate a container such as <code>Vec&lt;T&gt;</code> merely because <code>range()</code> is declared.</p>
 <p>The collections that opt in, and what iterating them costs:</p>
@@ -526,7 +508,7 @@ Result&lt;u64, i32&gt; parseRatio(str s)
 <p>Use for when the loop runs over a counted range of indices. Iterating a fixed number of times, walking a buffer by index, and building tables are for-loop work.</p>
 <p>Use the ranged for when iterating over the elements of a container and the elements matter more than the indices. Printing a collection, transforming each element, and searching elements are ranged-for work.</p>
 <p>Use loop when the loop is unbounded and its exit is decided entirely inside the body. Servers, event loops, and parsers that scan until a terminator are loop work.</p>
-<p>The standard library demonstrates the whole range. The string methods use for for indexed scans and while for boundary scans. The parsers use for (;;) for token loops and loop for their main scan. The collection methods use for for element walks and while for node chains. The variadic print functions use the ranged for for argument packs. Reading the standard library is reading a catalog of which loop fits which job.</p>
+<p>The standard library demonstrates the whole range. The string methods use for for indexed scans and while for boundary scans. The parsers use loop for token loops and their main scan. The collection methods use for for element walks and while for node chains. The variadic print functions use the ranged for for argument packs. Reading the standard library is reading a catalog of which loop fits which job.</p>
 <section><h2 id="s4-18">Loop Fusion and Unrolling</h2></section>
 <p>Two loop concepts appear in compiler discussions and are worth understanding at a conceptual level, because they explain what the compiler does with your loops and why code is written the way it is.</p>
 <p>Loop unrolling is the compiler duplicating the loop body so that several iterations run per pass. Instead of one body per iteration with a branch each time, the unrolled loop runs several bodies in sequence with one branch per group. That cuts loop overhead, the branch and the counter update, and lets the processor see more independent work to overlap. The compiler decides whether and how much to unroll from the loop's size and trip count. Your part is to write loops that are simple and regular, which the compiler can unroll safely. A loop that always looks the same, a counter from zero to a bound by one, is a loop the compiler can unroll.</p>
@@ -651,14 +633,18 @@ void runCommand(Command cmd)
 {
     switch (cmd)
     {
-        Command::Move =&gt;
-            moveUnit(currentUnit),
-        Command::Attack =&gt;
-            attackTarget(currentTarget),
-        Command::Heal =&gt;
-            healUnit(currentUnit),
-        Command::Quit =&gt;
-            gameOver = true
+        Command::Move =&gt; {
+            moveUnit(currentUnit);
+        },
+        Command::Attack =&gt; {
+            attackTarget(currentTarget);
+        },
+        Command::Heal =&gt; {
+            healUnit(currentUnit);
+        },
+        Command::Quit =&gt; {
+            gameOver = true;
+        }
     }
 }</code></pre>
 <p>The switch matches the enum's variants directly, and the compiler verifies that every variant is handled: no arm is missing, and no fallthrough silently runs the wrong action. Adding a new command to the enum makes the compiler demand its arm, because the exhaustiveness check refuses to leave a variant unhandled. The dispatcher is total by construction, and the type system enforces the totality. The decision is a table of the type's variants, and the type is the table's index.</p>
